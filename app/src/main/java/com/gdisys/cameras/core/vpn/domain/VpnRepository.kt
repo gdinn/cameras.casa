@@ -5,8 +5,8 @@ import com.wireguard.android.backend.Tunnel
 import kotlinx.coroutines.flow.StateFlow
 
 interface VpnRepository {
-    val vpnState: StateFlow<Tunnel.State>
-    suspend fun connect(config: VpnConfig)
-    suspend fun disconnect()
-    fun getTunnelState(): Tunnel.State
+  val vpnState: StateFlow<Tunnel.State>
+  suspend fun connect(config: VpnConfig)
+  suspend fun disconnect()
+  fun getTunnelState(): Tunnel.State
 }

@@ -6,14 +6,14 @@ import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 class DisconnectVpnUseCase @Inject constructor(
-    private val vpnRepository: VpnRepository
+  private val vpnRepository: VpnRepository
 ) {
-    suspend operator fun invoke(): Result<Unit> = withContext(Dispatchers.Default) {
-        return@withContext try {
-            vpnRepository.disconnect()
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
+  suspend operator fun invoke(): Result<Unit> = withContext(Dispatchers.Default) {
+    return@withContext try {
+      vpnRepository.disconnect()
+      Result.success(Unit)
+    } catch (e: Exception) {
+      Result.failure(e)
     }
+  }
 }

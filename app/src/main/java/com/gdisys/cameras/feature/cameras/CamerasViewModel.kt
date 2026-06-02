@@ -18,32 +18,32 @@ import javax.inject.Inject
 
 @HiltViewModel
 class CamerasViewModel @Inject constructor(
-    private val vpnRepository: VpnRepository,
-    private val connectVpnUseCase: ConnectVpnUseCase,
-    private val disconnectVpnUseCase: DisconnectVpnUseCase,
-    private val dataStoreManager: DataStoreManager
+  private val vpnRepository: VpnRepository,
+  private val connectVpnUseCase: ConnectVpnUseCase,
+  private val disconnectVpnUseCase: DisconnectVpnUseCase,
+  private val dataStoreManager: DataStoreManager
 ) : ViewModel() {
-    val vpnState: StateFlow<Tunnel.State> = vpnRepository.vpnState
+  val vpnState: StateFlow<Tunnel.State> = vpnRepository.vpnState
 
-    private val _isConnecting = MutableStateFlow(false)
-    val isConnecting: StateFlow<Boolean> = _isConnecting.asStateFlow()
+  private val _isConnecting = MutableStateFlow(false)
+  val isConnecting: StateFlow<Boolean> = _isConnecting.asStateFlow()
 
-    fun connectVpn() {
-        viewModelScope.launch {
-            _isConnecting.value = true
-            try {
-                dataStoreManager.userPrefsState.first().toVpnConfigOrNull()?.let { config ->
-                    connectVpnUseCase(config)
-                }
-            } finally {
-                _isConnecting.value = false
-            }
+  fun connectVpn() {
+    viewModelScope.launch {
+      _isConnecting.value = true
+      try {
+        dataStoreManager.userPrefsState.first().toVpnConfigOrNull()?.let { config ->
+          connectVpnUseCase(config)
         }
+      } finally {
+        _isConnecting.value = false
+      }
     }
+  }
 
-    fun disconnectVpn() {
-        viewModelScope.launch {
-            disconnectVpnUseCase()
-        }
+  fun disconnectVpn() {
+    viewModelScope.launch {
+      disconnectVpnUseCase()
     }
+  }
 }

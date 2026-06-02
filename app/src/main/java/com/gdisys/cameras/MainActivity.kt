@@ -41,61 +41,61 @@ import javax.inject.Inject
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
-    @Inject
-    lateinit var dataStoreManager: DataStoreManager
+  @Inject
+  lateinit var dataStoreManager: DataStoreManager
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setContent {
-            CamerasTheme() {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
-                ) {
-                    RoutingScreen(dataStoreManager)
-                }
-            }
+  override fun onCreate(savedInstanceState: Bundle?) {
+    super.onCreate(savedInstanceState)
+    setContent {
+      CamerasTheme() {
+        Surface(
+          modifier = Modifier.fillMaxSize(),
+          color = MaterialTheme.colorScheme.background
+        ) {
+          RoutingScreen(dataStoreManager)
         }
+      }
     }
+  }
 }
 
 @Composable
 private fun RoutingScreen(dataStoreManager: DataStoreManager) {
-    val context = LocalContext.current
-    val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    // Estado para controlar a exibição da UI de carregamento
-    var isCheckingData by remember { mutableStateOf(true) }
+  val context = LocalContext.current
+  val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+  // Estado para controlar a exibição da UI de carregamento
+  var isCheckingData by remember { mutableStateOf(true) }
 
-    // LaunchedEffect com Unit garante que este bloco execute apenas uma vez
-    // quando o Composable entrar na árvore, ideal para checagens iniciais.
+  // LaunchedEffect com Unit garante que este bloco execute apenas uma vez
+  // quando o Composable entrar na árvore, ideal para checagens iniciais.
 
-    LaunchedEffect(Unit) {
-        // 1. Simula uma leitura assíncrona de dados locais
-        // (Ex: consultando um banco SQLite, DataStore ou arquivo criptografado)
+  LaunchedEffect(Unit) {
+    // 1. Simula uma leitura assíncrona de dados locais
+    // (Ex: consultando um banco SQLite, DataStore ou arquivo criptografado)
 
-        applicationScope.launch {
-            val userPrefs = dataStoreManager.userPrefsState.first().toVpnConfigOrNull()
-            if (userPrefs == null) {
-                Toast.makeText(context, "Sem credenciais", Toast.LENGTH_SHORT).show()
-                context.startActivity(Intent(context, ConfigActivity::class.java))
-            } else {
-                context.startActivity(Intent(context, CamerasActivity::class.java))
-            }
-            (context as? Activity)?.finish()
-        }
+    applicationScope.launch {
+      val userPrefs = dataStoreManager.userPrefsState.first().toVpnConfigOrNull()
+      if (userPrefs == null) {
+        Toast.makeText(context, "Sem credenciais", Toast.LENGTH_SHORT).show()
+        context.startActivity(Intent(context, ConfigActivity::class.java))
+      } else {
+        context.startActivity(Intent(context, CamerasActivity::class.java))
+      }
+      (context as? Activity)?.finish()
     }
+  }
 
-    // UI exibida enquanto a checagem acontece (opcional, mas recomendado)
-    if (isCheckingData) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                CircularProgressIndicator()
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(text = "Verificando dados locais...")
-            }
-        }
+  // UI exibida enquanto a checagem acontece (opcional, mas recomendado)
+  if (isCheckingData) {
+    Box(
+      modifier = Modifier.fillMaxSize(),
+      contentAlignment = Alignment.Center
+    ) {
+      Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        CircularProgressIndicator()
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(text = "Verificando dados locais...")
+      }
     }
+  }
 }

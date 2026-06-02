@@ -12,9 +12,9 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 abstract class VpnModule {
 
-    @Binds
-    @Singleton
-    abstract fun bindVpnRepository(
-        vpnRepositoryImpl: VpnRepositoryImpl
-    ): VpnRepository
+  @Binds
+  @Singleton
+  abstract fun bindVpnRepository(
+    vpnRepositoryImpl: VpnRepositoryImpl
+  ): VpnRepository
 }

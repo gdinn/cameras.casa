@@ -68,254 +68,254 @@ import java.net.URL
 
 @Composable
 fun WebRtcVideoPlayer(
-    streamUrl: String,
-    factory: PeerConnectionFactory,
-    eglBase: EglBase,
-    modifier: Modifier = Modifier,
+  streamUrl: String,
+  factory: PeerConnectionFactory,
+  eglBase: EglBase,
+  modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
+  val context = LocalContext.current
+  val scope = rememberCoroutineScope()
 
-    val renderer = remember {
-        SurfaceViewRenderer(context).apply {
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-            init(eglBase.eglBaseContext, null)
-            setMirror(false)
-            setEnableHardwareScaler(true)
-        }
+  val renderer = remember {
+    SurfaceViewRenderer(context).apply {
+      layoutParams = ViewGroup.LayoutParams(
+        ViewGroup.LayoutParams.MATCH_PARENT,
+        ViewGroup.LayoutParams.MATCH_PARENT
+      )
+      init(eglBase.eglBaseContext, null)
+      setMirror(false)
+      setEnableHardwareScaler(true)
+    }
+  }
+
+  DisposableEffect(streamUrl) {
+    val whepUrl = "$streamUrl/whep"
+
+    val rtcConfig = PeerConnection.RTCConfiguration(emptyList()).apply {
+      sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
+      continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_ONCE
     }
 
-    DisposableEffect(streamUrl) {
-        val whepUrl = "$streamUrl/whep"
+    var pc: PeerConnection? = null
 
-        val rtcConfig = PeerConnection.RTCConfiguration(emptyList()).apply {
-            sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
-            continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_ONCE
+    pc = factory.createPeerConnection(rtcConfig, object : PeerConnection.Observer {
+      override fun onIceGatheringChange(state: PeerConnection.IceGatheringState?) {
+        if (state != PeerConnection.IceGatheringState.COMPLETE) return
+        val localSdp = pc?.localDescription ?: return
+        scope.launch(Dispatchers.IO) {
+          runCatching {
+            val conn = URL(whepUrl).openConnection() as HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.setRequestProperty("Content-Type", "application/sdp")
+            conn.connectTimeout = 10_000
+            conn.readTimeout = 10_000
+            conn.doOutput = true
+            conn.outputStream.use { it.write(localSdp.description.toByteArray()) }
+            if (conn.responseCode == 201) {
+              val answerSdp = conn.inputStream.bufferedReader().readText()
+              pc?.setRemoteDescription(object : SdpObserver {
+                override fun onCreateSuccess(p0: SessionDescription?) {}
+                override fun onSetSuccess() {}
+                override fun onCreateFailure(p0: String?) {}
+                override fun onSetFailure(p0: String?) {}
+              }, SessionDescription(SessionDescription.Type.ANSWER, answerSdp))
+            }
+          }
         }
+      }
 
-        var pc: PeerConnection? = null
+      override fun onAddTrack(receiver: RtpReceiver?, streams: Array<out MediaStream>?) {
+        (receiver?.track() as? VideoTrack)?.addSink(renderer)
+      }
 
-        pc = factory.createPeerConnection(rtcConfig, object : PeerConnection.Observer {
-            override fun onIceGatheringChange(state: PeerConnection.IceGatheringState?) {
-                if (state != PeerConnection.IceGatheringState.COMPLETE) return
-                val localSdp = pc?.localDescription ?: return
-                scope.launch(Dispatchers.IO) {
-                    runCatching {
-                        val conn = URL(whepUrl).openConnection() as HttpURLConnection
-                        conn.requestMethod = "POST"
-                        conn.setRequestProperty("Content-Type", "application/sdp")
-                        conn.connectTimeout = 10_000
-                        conn.readTimeout = 10_000
-                        conn.doOutput = true
-                        conn.outputStream.use { it.write(localSdp.description.toByteArray()) }
-                        if (conn.responseCode == 201) {
-                            val answerSdp = conn.inputStream.bufferedReader().readText()
-                            pc?.setRemoteDescription(object : SdpObserver {
-                                override fun onCreateSuccess(p0: SessionDescription?) {}
-                                override fun onSetSuccess() {}
-                                override fun onCreateFailure(p0: String?) {}
-                                override fun onSetFailure(p0: String?) {}
-                            }, SessionDescription(SessionDescription.Type.ANSWER, answerSdp))
-                        }
-                    }
-                }
-            }
+      override fun onSignalingChange(state: PeerConnection.SignalingState?) {}
+      override fun onIceConnectionChange(state: PeerConnection.IceConnectionState?) {}
+      override fun onIceConnectionReceivingChange(receiving: Boolean) {}
+      override fun onIceCandidate(candidate: IceCandidate?) {}
+      override fun onIceCandidatesRemoved(candidates: Array<out IceCandidate>?) {}
+      override fun onAddStream(stream: MediaStream?) {}
+      override fun onRemoveStream(stream: MediaStream?) {}
+      override fun onDataChannel(channel: DataChannel?) {}
+      override fun onRenegotiationNeeded() {}
+    })
 
-            override fun onAddTrack(receiver: RtpReceiver?, streams: Array<out MediaStream>?) {
-                (receiver?.track() as? VideoTrack)?.addSink(renderer)
-            }
+    pc?.addTransceiver(
+      MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO,
+      RtpTransceiver.RtpTransceiverInit(RtpTransceiver.RtpTransceiverDirection.RECV_ONLY)
+    )
 
-            override fun onSignalingChange(state: PeerConnection.SignalingState?) {}
-            override fun onIceConnectionChange(state: PeerConnection.IceConnectionState?) {}
-            override fun onIceConnectionReceivingChange(receiving: Boolean) {}
-            override fun onIceCandidate(candidate: IceCandidate?) {}
-            override fun onIceCandidatesRemoved(candidates: Array<out IceCandidate>?) {}
-            override fun onAddStream(stream: MediaStream?) {}
-            override fun onRemoveStream(stream: MediaStream?) {}
-            override fun onDataChannel(channel: DataChannel?) {}
-            override fun onRenegotiationNeeded() {}
-        })
+    pc?.createOffer(object : SdpObserver {
+      override fun onCreateSuccess(sdp: SessionDescription?) {
+        sdp ?: return
+        pc.setLocalDescription(object : SdpObserver {
+          override fun onCreateSuccess(p0: SessionDescription?) {}
+          override fun onSetSuccess() {} // ICE gathering inicia aqui
+          override fun onCreateFailure(p0: String?) {}
+          override fun onSetFailure(p0: String?) {}
+        }, sdp)
+      }
+      override fun onSetSuccess() {}
+      override fun onCreateFailure(error: String?) {}
+      override fun onSetFailure(error: String?) {}
+    }, MediaConstraints())
 
-        pc?.addTransceiver(
-            MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO,
-            RtpTransceiver.RtpTransceiverInit(RtpTransceiver.RtpTransceiverDirection.RECV_ONLY)
-        )
+    onDispose { pc?.close() }
+  }
 
-        pc?.createOffer(object : SdpObserver {
-            override fun onCreateSuccess(sdp: SessionDescription?) {
-                sdp ?: return
-                pc.setLocalDescription(object : SdpObserver {
-                    override fun onCreateSuccess(p0: SessionDescription?) {}
-                    override fun onSetSuccess() {} // ICE gathering inicia aqui
-                    override fun onCreateFailure(p0: String?) {}
-                    override fun onSetFailure(p0: String?) {}
-                }, sdp)
-            }
-            override fun onSetSuccess() {}
-            override fun onCreateFailure(error: String?) {}
-            override fun onSetFailure(error: String?) {}
-        }, MediaConstraints())
-
-        onDispose { pc?.close() }
+  DisposableEffect(Unit) {
+    onDispose {
+      renderer.release()
     }
+  }
 
-    DisposableEffect(Unit) {
-        onDispose {
-            renderer.release()
-        }
-    }
-
-    AndroidView(factory = { renderer }, modifier = modifier)
+  AndroidView(factory = { renderer }, modifier = modifier)
 }
 
 @Composable
 fun HlsDashboardScreen(onBack: () -> Unit) {
-    val context = LocalContext.current
+  val context = LocalContext.current
 
-    val eglBase = remember { EglBase.create() }
-    val factory = remember {
-        PeerConnectionFactory.initialize(
-            PeerConnectionFactory.InitializationOptions.builder(context.applicationContext)
-                .setEnableInternalTracer(false)
-                .createInitializationOptions()
-        )
-        PeerConnectionFactory.builder()
-            .setVideoDecoderFactory(DefaultVideoDecoderFactory(eglBase.eglBaseContext))
-            .setVideoEncoderFactory(DefaultVideoEncoderFactory(eglBase.eglBaseContext, true, true))
-            .createPeerConnectionFactory()
+  val eglBase = remember { EglBase.create() }
+  val factory = remember {
+    PeerConnectionFactory.initialize(
+      PeerConnectionFactory.InitializationOptions.builder(context.applicationContext)
+        .setEnableInternalTracer(false)
+        .createInitializationOptions()
+    )
+    PeerConnectionFactory.builder()
+      .setVideoDecoderFactory(DefaultVideoDecoderFactory(eglBase.eglBaseContext))
+      .setVideoEncoderFactory(DefaultVideoEncoderFactory(eglBase.eglBaseContext, true, true))
+      .createPeerConnectionFactory()
+  }
+
+  DisposableEffect(Unit) {
+    onDispose {
+      factory.dispose()
+      eglBase.release()
     }
+  }
 
-    DisposableEffect(Unit) {
-        onDispose {
-            factory.dispose()
-            eglBase.release()
-        }
+  var streams by remember {
+    mutableStateOf(
+      listOf(
+        "http://[fd00:20::cafe]:8889/cam_160",
+        "http://[fd00:20::cafe]:8889/cam_161",
+        "http://[fd00:20::cafe]:8889/cam_162",
+        "http://[fd00:20::cafe]:8889/cam_163"
+      )
+    )
+  }
+
+  var focusedStream by remember { mutableStateOf<String?>(null) }
+
+  LaunchedEffect(focusedStream) {
+    val window = (context as? Activity)?.window
+    if (window != null) {
+      val controller = WindowCompat.getInsetsController(window, window.decorView)
+      if (focusedStream != null) {
+        controller.hide(WindowInsetsCompat.Type.statusBars())
+        controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+      } else {
+        controller.show(WindowInsetsCompat.Type.statusBars())
+      }
     }
+  }
 
-    var streams by remember {
-        mutableStateOf(
-            listOf(
-                "http://[fd00:20::cafe]:8889/cam_160",
-                "http://[fd00:20::cafe]:8889/cam_161",
-                "http://[fd00:20::cafe]:8889/cam_162",
-                "http://[fd00:20::cafe]:8889/cam_163"
-            )
-        )
-    }
+  BackHandler(enabled = focusedStream != null) {
+    focusedStream = null
+  }
 
-    var focusedStream by remember { mutableStateOf<String?>(null) }
-
-    LaunchedEffect(focusedStream) {
-        val window = (context as? Activity)?.window
-        if (window != null) {
-            val controller = WindowCompat.getInsetsController(window, window.decorView)
-            if (focusedStream != null) {
-                controller.hide(WindowInsetsCompat.Type.statusBars())
-                controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            } else {
-                controller.show(WindowInsetsCompat.Type.statusBars())
-            }
-        }
-    }
-
-    BackHandler(enabled = focusedStream != null) {
-        focusedStream = null
-    }
-
-    Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+  Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+    Box(
+      modifier = Modifier
+        .padding(innerPadding)
+        .fillMaxSize()
+        .background(Color.Black),
+      contentAlignment = Alignment.Center
+    ) {
+      if (focusedStream != null) {
         Box(
-            modifier = Modifier
-                .padding(innerPadding)
-                .fillMaxSize()
-                .background(Color.Black),
-            contentAlignment = Alignment.Center
+          modifier = Modifier
+            .aspectRatio(16f / 9f)
+            .clip(RoundedCornerShape(8.dp))
         ) {
-            if (focusedStream != null) {
-                Box(
-                    modifier = Modifier
-                        .aspectRatio(16f / 9f)
-                        .clip(RoundedCornerShape(8.dp))
-                ) {
-                    WebRtcVideoPlayer(
-                        streamUrl = focusedStream!!,
-                        factory = factory,
-                        eglBase = eglBase,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
-            } else {
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(1),
-                    contentPadding = PaddingValues(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.DarkGray)
-                ) {
-                    itemsIndexed(streams, key = { _, url -> url }) { index, url ->
-                        Box(
-                            modifier = Modifier
-                                .aspectRatio(16f / 9f)
-                                .clip(RoundedCornerShape(8.dp))
-                                .clickable { focusedStream = url }
-                        ) {
-                            WebRtcVideoPlayer(
-                                streamUrl = url,
-                                factory = factory,
-                                eglBase = eglBase,
-                                modifier = Modifier.fillMaxSize()
-                            )
-
-                            Row(
-                                modifier = Modifier
-                                    .align(Alignment.TopEnd)
-                                    .padding(8.dp)
-                                    .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(8.dp)),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                if (index > 0) {
-                                    IconButton(
-                                        onClick = {
-                                            val newList = streams.toMutableList()
-                                            val item = newList.removeAt(index)
-                                            newList.add(index - 1, item)
-                                            streams = newList
-                                        },
-                                        modifier = Modifier.size(32.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.KeyboardArrowUp,
-                                            contentDescription = "Mover para Cima",
-                                            tint = Color.White
-                                        )
-                                    }
-                                }
-                                if (index < streams.size - 1) {
-                                    IconButton(
-                                        onClick = {
-                                            val newList = streams.toMutableList()
-                                            val item = newList.removeAt(index)
-                                            newList.add(index + 1, item)
-                                            streams = newList
-                                        },
-                                        modifier = Modifier.size(32.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.KeyboardArrowDown,
-                                            contentDescription = "Mover para Baixo",
-                                            tint = Color.White
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+          WebRtcVideoPlayer(
+            streamUrl = focusedStream!!,
+            factory = factory,
+            eglBase = eglBase,
+            modifier = Modifier.fillMaxSize()
+          )
         }
+      } else {
+        LazyVerticalGrid(
+          columns = GridCells.Fixed(1),
+          contentPadding = PaddingValues(8.dp),
+          verticalArrangement = Arrangement.spacedBy(8.dp),
+          horizontalArrangement = Arrangement.spacedBy(8.dp),
+          modifier = Modifier
+            .fillMaxSize()
+            .background(Color.DarkGray)
+        ) {
+          itemsIndexed(streams, key = { _, url -> url }) { index, url ->
+            Box(
+              modifier = Modifier
+                .aspectRatio(16f / 9f)
+                .clip(RoundedCornerShape(8.dp))
+                .clickable { focusedStream = url }
+            ) {
+              WebRtcVideoPlayer(
+                streamUrl = url,
+                factory = factory,
+                eglBase = eglBase,
+                modifier = Modifier.fillMaxSize()
+              )
+
+              Row(
+                modifier = Modifier
+                  .align(Alignment.TopEnd)
+                  .padding(8.dp)
+                  .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(8.dp)),
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                if (index > 0) {
+                  IconButton(
+                    onClick = {
+                      val newList = streams.toMutableList()
+                      val item = newList.removeAt(index)
+                      newList.add(index - 1, item)
+                      streams = newList
+                    },
+                    modifier = Modifier.size(32.dp)
+                  ) {
+                    Icon(
+                      imageVector = Icons.Default.KeyboardArrowUp,
+                      contentDescription = "Mover para Cima",
+                      tint = Color.White
+                    )
+                  }
+                }
+                if (index < streams.size - 1) {
+                  IconButton(
+                    onClick = {
+                      val newList = streams.toMutableList()
+                      val item = newList.removeAt(index)
+                      newList.add(index + 1, item)
+                      streams = newList
+                    },
+                    modifier = Modifier.size(32.dp)
+                  ) {
+                    Icon(
+                      imageVector = Icons.Default.KeyboardArrowDown,
+                      contentDescription = "Mover para Baixo",
+                      tint = Color.White
+                    )
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
+  }
 }

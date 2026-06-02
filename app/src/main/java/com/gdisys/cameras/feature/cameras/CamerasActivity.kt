@@ -27,46 +27,46 @@ import dagger.hilt.android.AndroidEntryPoint
 @AndroidEntryPoint
 class CamerasActivity : ComponentActivity() {
 
-    private val viewModel: CamerasViewModel by viewModels()
+  private val viewModel: CamerasViewModel by viewModels()
 
-    private val processObserver = object : DefaultLifecycleObserver {
-        override fun onStart(owner: LifecycleOwner) {
-            // Conecta ao voltar para foreground
-            viewModel.connectVpn()
-        }
-
-        override fun onStop(owner: LifecycleOwner) {
-            // Desconecta ao ir para background
-            viewModel.disconnectVpn()
-        }
+  private val processObserver = object : DefaultLifecycleObserver {
+    override fun onStart(owner: LifecycleOwner) {
+      // Conecta ao voltar para foreground
+      viewModel.connectVpn()
     }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        ProcessLifecycleOwner.get().lifecycle.addObserver(processObserver)
+    override fun onStop(owner: LifecycleOwner) {
+      // Desconecta ao ir para background
+      viewModel.disconnectVpn()
+    }
+  }
 
-        setContent {
-            CamerasTheme {
-                val vpnState by viewModel.vpnState.collectAsState()
-                val isConnecting by viewModel.isConnecting.collectAsState()
-                val vpnReady = vpnState == Tunnel.State.UP && !isConnecting
+  override fun onCreate(savedInstanceState: Bundle?) {
+    super.onCreate(savedInstanceState)
+    ProcessLifecycleOwner.get().lifecycle.addObserver(processObserver)
 
-                if (vpnReady) {
-                    HlsDashboardScreen(onBack = { finish() })
-                } else {
-                    // Exibir tela de loading enquanto a VPN conecta
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = Color.White)
-                        Spacer(Modifier.height(16.dp))
-                        Text("Estabelecendo conexão segura...", color = Color.White, modifier = Modifier.padding(top = 16.dp))
-                    }
-                }
-            }
+    setContent {
+      CamerasTheme {
+        val vpnState by viewModel.vpnState.collectAsState()
+        val isConnecting by viewModel.isConnecting.collectAsState()
+        val vpnReady = vpnState == Tunnel.State.UP && !isConnecting
+
+        if (vpnReady) {
+          HlsDashboardScreen(onBack = { finish() })
+        } else {
+          // Exibir tela de loading enquanto a VPN conecta
+          Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(color = Color.White)
+            Spacer(Modifier.height(16.dp))
+            Text("Estabelecendo conexão segura...", color = Color.White, modifier = Modifier.padding(top = 16.dp))
+          }
         }
+      }
     }
+  }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        ProcessLifecycleOwner.get().lifecycle.removeObserver(processObserver)
-    }
+  override fun onDestroy() {
+    super.onDestroy()
+    ProcessLifecycleOwner.get().lifecycle.removeObserver(processObserver)
+  }
 }

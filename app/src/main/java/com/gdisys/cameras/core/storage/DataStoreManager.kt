@@ -7,13 +7,13 @@ import javax.inject.Singleton
 
 @Singleton
 class DataStoreManager @Inject constructor(
-    private val dataStore: DataStore<UserPreferences>
+  private val dataStore: DataStore<UserPreferences>
 ) {
-    val userPrefsState: Flow<UserPreferences> = dataStore.data
+  val userPrefsState: Flow<UserPreferences> = dataStore.data
 
-    suspend fun updateUserPreferences(userPreferences: UserPreferences) {
-        dataStore.updateData {
-            userPreferences
-        }
+  suspend fun updateUserPreferences(userPreferences: UserPreferences) {
+    dataStore.updateData {
+      userPreferences
     }
+  }
 }

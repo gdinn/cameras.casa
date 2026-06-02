@@ -27,111 +27,111 @@ import java.util.concurrent.Executors
 
 @Composable
 fun QrCodeScreen(
-    onCodeScanned: (String) -> Unit
+  onCodeScanned: (String) -> Unit
 ) {
-    val context = LocalContext.current
+  val context = LocalContext.current
 
-    // Estado que guarda se a permissão foi concedida
-    var hasCameraPermission by remember {
-        mutableStateOf(
-            ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.CAMERA
-            ) == PackageManager.PERMISSION_GRANTED
-        )
-    }
-
-    // Launcher para solicitar a permissão
-    val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission(),
-        onResult = { granted ->
-            hasCameraPermission = granted
-        }
+  // Estado que guarda se a permissão foi concedida
+  var hasCameraPermission by remember {
+    mutableStateOf(
+      ContextCompat.checkSelfPermission(
+        context,
+        Manifest.permission.CAMERA
+      ) == PackageManager.PERMISSION_GRANTED
     )
+  }
 
-    // Solicita a permissão assim que a tela abre, caso ainda não tenha
-    LaunchedEffect(key1 = true) {
-        if (!hasCameraPermission) {
-            permissionLauncher.launch(Manifest.permission.CAMERA)
-        }
+  // Launcher para solicitar a permissão
+  val permissionLauncher = rememberLauncherForActivityResult(
+    contract = ActivityResultContracts.RequestPermission(),
+    onResult = { granted ->
+      hasCameraPermission = granted
     }
+  )
 
-    // Renderiza a câmera se tem permissão, ou uma mensagem caso contrário
-    if (hasCameraPermission) {
-        QrCodeScreenPreview(onQrCodeScanned = onCodeScanned)
-    } else {
-        Column(
-            modifier = Modifier.fillMaxSize(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Text("A permissão da câmera é necessária para ler o QR Code.")
-            Spacer(modifier = Modifier.height(16.dp))
-            Button(onClick = { permissionLauncher.launch(Manifest.permission.CAMERA) }) {
-                Text("Conceder Permissão")
-            }
-        }
+  // Solicita a permissão assim que a tela abre, caso ainda não tenha
+  LaunchedEffect(key1 = true) {
+    if (!hasCameraPermission) {
+      permissionLauncher.launch(Manifest.permission.CAMERA)
     }
+  }
+
+  // Renderiza a câmera se tem permissão, ou uma mensagem caso contrário
+  if (hasCameraPermission) {
+    QrCodeScreenPreview(onQrCodeScanned = onCodeScanned)
+  } else {
+    Column(
+      modifier = Modifier.fillMaxSize(),
+      horizontalAlignment = Alignment.CenterHorizontally,
+      verticalArrangement = Arrangement.Center
+    ) {
+      Text("A permissão da câmera é necessária para ler o QR Code.")
+      Spacer(modifier = Modifier.height(16.dp))
+      Button(onClick = { permissionLauncher.launch(Manifest.permission.CAMERA) }) {
+        Text("Conceder Permissão")
+      }
+    }
+  }
 }
 
 @Composable
 private fun QrCodeScreenPreview(
-    modifier: Modifier = Modifier,
-    onQrCodeScanned: (String) -> Unit
+  modifier: Modifier = Modifier,
+  onQrCodeScanned: (String) -> Unit
 ) {
-    val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
-    val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(context) }
+  val context = LocalContext.current
+  val lifecycleOwner = LocalLifecycleOwner.current
+  val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(context) }
 
-    AndroidView(
-        factory = { ctx ->
-            val previewView = PreviewView(ctx).apply {
-                layoutParams = ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT
-                )
-            }
+  AndroidView(
+    factory = { ctx ->
+      val previewView = PreviewView(ctx).apply {
+        layoutParams = ViewGroup.LayoutParams(
+          ViewGroup.LayoutParams.MATCH_PARENT,
+          ViewGroup.LayoutParams.MATCH_PARENT
+        )
+      }
 
-            val executor = ContextCompat.getMainExecutor(ctx)
+      val executor = ContextCompat.getMainExecutor(ctx)
 
-            cameraProviderFuture.addListener({
-                val cameraProvider = cameraProviderFuture.get()
+      cameraProviderFuture.addListener({
+        val cameraProvider = cameraProviderFuture.get()
 
-                val preview = Preview.Builder().build().also {
-                    it.setSurfaceProvider(previewView.surfaceProvider)
-                }
+        val preview = Preview.Builder().build().also {
+          it.setSurfaceProvider(previewView.surfaceProvider)
+        }
 
-                val imageAnalysis = ImageAnalysis.Builder()
-                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                    .build()
+        val imageAnalysis = ImageAnalysis.Builder()
+          .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+          .build()
 
-                val analyzerExecutor = Executors.newSingleThreadExecutor()
+        val analyzerExecutor = Executors.newSingleThreadExecutor()
 
-                // Passamos o callback para a nossa classe Analyzer
-                imageAnalysis.setAnalyzer(
-                    analyzerExecutor,
-                    QrCodeAnalyzer(onQrCodeScanned = { result ->
-                        onQrCodeScanned(result)
-                    })
-                )
+        // Passamos o callback para a nossa classe Analyzer
+        imageAnalysis.setAnalyzer(
+          analyzerExecutor,
+          QrCodeAnalyzer(onQrCodeScanned = { result ->
+            onQrCodeScanned(result)
+          })
+        )
 
-                val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+        val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
 
-                try {
-                    cameraProvider.unbindAll()
-                    cameraProvider.bindToLifecycle(
-                        lifecycleOwner,
-                        cameraSelector,
-                        preview,
-                        imageAnalysis
-                    )
-                } catch (exc: Exception) {
-                    Log.e("QrCodeScanner", "Falha ao iniciar a câmera", exc)
-                }
-            }, executor)
+        try {
+          cameraProvider.unbindAll()
+          cameraProvider.bindToLifecycle(
+            lifecycleOwner,
+            cameraSelector,
+            preview,
+            imageAnalysis
+          )
+        } catch (exc: Exception) {
+          Log.e("QrCodeScanner", "Falha ao iniciar a câmera", exc)
+        }
+      }, executor)
 
-            previewView
-        },
-        modifier = modifier.fillMaxSize()
-    )
+      previewView
+    },
+    modifier = modifier.fillMaxSize()
+  )
 }

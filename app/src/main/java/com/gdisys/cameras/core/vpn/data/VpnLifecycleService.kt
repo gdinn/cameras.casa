@@ -14,29 +14,29 @@ import javax.inject.Inject
 @AndroidEntryPoint
 class VpnLifecycleService : Service() {
 
-    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+  private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    @Inject
-    lateinit var vpnRepository: VpnRepository
+  @Inject
+  lateinit var vpnRepository: VpnRepository
 
-    override fun onBind(intent: Intent?): IBinder? = null
+  override fun onBind(intent: Intent?): IBinder? = null
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        return START_STICKY
+  override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    return START_STICKY
+  }
+
+  override fun onTaskRemoved(rootIntent: Intent?) {
+    super.onTaskRemoved(rootIntent)
+
+    // Quando o app é removido da lista de recentes (swipe away)
+    serviceScope.launch {
+      vpnRepository.disconnect()
+      stopSelf()
     }
+  }
 
-    override fun onTaskRemoved(rootIntent: Intent?) {
-        super.onTaskRemoved(rootIntent)
-
-        // Quando o app é removido da lista de recentes (swipe away)
-        serviceScope.launch {
-            vpnRepository.disconnect()
-            stopSelf()
-        }
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        // Opcional: garantir que a VPN caia se o serviço for destruído por outros motivos
-    }
+  override fun onDestroy() {
+    super.onDestroy()
+    // Opcional: garantir que a VPN caia se o serviço for destruído por outros motivos
+  }
 }

@@ -44,98 +44,98 @@ import kotlinx.serialization.json.Json
 import javax.inject.Inject
 
 private val jsonConfig = Json {
-    ignoreUnknownKeys = true
-    coerceInputValues = true
-    isLenient = true
+  ignoreUnknownKeys = true
+  coerceInputValues = true
+  isLenient = true
 }
 
 @AndroidEntryPoint
 class ConfigActivity : ComponentActivity() {
 
-    @Inject
-    lateinit var vpnRepository: VpnRepository
+  @Inject
+  lateinit var vpnRepository: VpnRepository
 
-    @Inject
-    lateinit var dataStoreManager: DataStoreManager
+  @Inject
+  lateinit var dataStoreManager: DataStoreManager
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
-        setContent {
-            CamerasTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    val userPrefsState by dataStoreManager.userPrefsState.collectAsState(initial = null)
-                    var showScanner by remember { mutableStateOf(false) }
-                    val scope = rememberCoroutineScope()
+  override fun onCreate(savedInstanceState: Bundle?) {
+    super.onCreate(savedInstanceState)
+    enableEdgeToEdge()
+    setContent {
+      CamerasTheme {
+        Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+          val userPrefsState by dataStoreManager.userPrefsState.collectAsState(initial = null)
+          var showScanner by remember { mutableStateOf(false) }
+          val scope = rememberCoroutineScope()
 
-                    val vpnLauncher = rememberLauncherForActivityResult(
-                        ActivityResultContracts.StartActivityForResult()
-                    ) { result ->
-                        if (result.resultCode == RESULT_OK) {
-                            Toast.makeText(this, "Permissão VPN aceita", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(innerPadding),
-                        verticalArrangement = Arrangement.Center,
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        if (userPrefsState?.vpnConfigTokens?.pPsk?.isNotEmpty() == true && !showScanner) {
-                            Text(text = "Configurações carregadas!")
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Button(onClick = { showScanner = true }) {
-                                Text(text = "Recarregar Configurações")
-                            }
-                        } else if (showScanner) {
-                            QrCodeScreen(
-                                onCodeScanned = { result ->
-                                    try {
-                                        // Usando o jsonConfig que ignora campos desconhecidos
-                                        val decoded = jsonConfig.decodeFromString<UserPreferences>(result)
-
-                                        scope.launch {
-                                            dataStoreManager.updateUserPreferences(decoded)
-                                            showScanner = false
-                                        }
-                                    } catch (e: Exception) {
-                                        e.printStackTrace()
-                                        scope.launch {
-                                            Toast.makeText(
-                                                this@ConfigActivity,
-                                                "Erro no formato do QR Code: ${e.message}",
-                                                Toast.LENGTH_LONG
-                                            ).show()
-                                        }
-                                        // Se houver erro, fechamos o scanner para permitir tentar de novo (reseta o Analyzer)
-                                        showScanner = false
-                                    }
-                                }
-                            )
-                        } else {
-                            Button(onClick = { showScanner = true }) {
-                                Text(text = "Configurar App")
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        Button(onClick = {
-                            val intent = VpnService.prepare(this@ConfigActivity)
-                            if (intent != null) {
-                                vpnLauncher.launch(intent)
-                            } else {
-                                Toast.makeText(this@ConfigActivity, "Permissão já concedida", Toast.LENGTH_SHORT).show()
-                            }
-                        }) {
-                            Text(text = "Aceitar permissão vpn")
-                        }
-
-                    }
-                }
+          val vpnLauncher = rememberLauncherForActivityResult(
+            ActivityResultContracts.StartActivityForResult()
+          ) { result ->
+            if (result.resultCode == RESULT_OK) {
+              Toast.makeText(this, "Permissão VPN aceita", Toast.LENGTH_SHORT).show()
             }
+          }
+
+          Column(
+            modifier = Modifier
+              .fillMaxSize()
+              .padding(innerPadding),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+          ) {
+            if (userPrefsState?.vpnConfigTokens?.pPsk?.isNotEmpty() == true && !showScanner) {
+              Text(text = "Configurações carregadas!")
+              Spacer(modifier = Modifier.height(8.dp))
+              Button(onClick = { showScanner = true }) {
+                Text(text = "Recarregar Configurações")
+              }
+            } else if (showScanner) {
+              QrCodeScreen(
+                onCodeScanned = { result ->
+                  try {
+                    // Usando o jsonConfig que ignora campos desconhecidos
+                    val decoded = jsonConfig.decodeFromString<UserPreferences>(result)
+
+                    scope.launch {
+                      dataStoreManager.updateUserPreferences(decoded)
+                      showScanner = false
+                    }
+                  } catch (e: Exception) {
+                    e.printStackTrace()
+                    scope.launch {
+                      Toast.makeText(
+                        this@ConfigActivity,
+                        "Erro no formato do QR Code: ${e.message}",
+                        Toast.LENGTH_LONG
+                      ).show()
+                    }
+                    // Se houver erro, fechamos o scanner para permitir tentar de novo (reseta o Analyzer)
+                    showScanner = false
+                  }
+                }
+              )
+            } else {
+              Button(onClick = { showScanner = true }) {
+                Text(text = "Configurar App")
+              }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Button(onClick = {
+              val intent = VpnService.prepare(this@ConfigActivity)
+              if (intent != null) {
+                vpnLauncher.launch(intent)
+              } else {
+                Toast.makeText(this@ConfigActivity, "Permissão já concedida", Toast.LENGTH_SHORT).show()
+              }
+            }) {
+              Text(text = "Aceitar permissão vpn")
+            }
+
+          }
         }
+      }
     }
+  }
 }
