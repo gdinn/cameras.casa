@@ -47,19 +47,24 @@ class CamerasActivity : ComponentActivity() {
 
     setContent {
       CamerasTheme {
+        /*
+        Nota para o futuro:
+        DashboardScreen está OK
+        CamerasLoadingScreen está OK
+
+        Desafio: Ver como integrar vpnState, isConnecting e vpnReady para a navegação
+          -> Não tem viewModel, não tem activity e nem fragment
+          -> Como é o ciclo de vida no composable nesse caso?
+         */
+
         val vpnState by viewModel.vpnState.collectAsState()
         val isConnecting by viewModel.isConnecting.collectAsState()
         val vpnReady = vpnState == Tunnel.State.UP && !isConnecting
 
         if (vpnReady) {
-          HlsDashboardScreen(onBack = { finish() })
+          DashboardScreen()
         } else {
-          // Exibir tela de loading enquanto a VPN conecta
-          Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator(color = Color.White)
-            Spacer(Modifier.height(16.dp))
-            Text("Estabelecendo conexão segura...", color = Color.White, modifier = Modifier.padding(top = 16.dp))
-          }
+          CamerasLoadingScreen()
         }
       }
     }
