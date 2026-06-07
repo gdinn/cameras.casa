@@ -17,7 +17,7 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
-class CamerasViewModel @Inject constructor(
+class HomeViewModel @Inject constructor(
   private val vpnRepository: VpnRepository,
   private val connectVpnUseCase: ConnectVpnUseCase,
   private val disconnectVpnUseCase: DisconnectVpnUseCase,
