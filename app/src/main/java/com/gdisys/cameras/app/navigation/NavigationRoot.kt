@@ -13,10 +13,10 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import com.gdisys.cameras.core.storage.DataStoreManager
-import com.gdisys.cameras.feature.InitScreen
-import com.gdisys.cameras.feature.ConfigScreen
-import com.gdisys.cameras.feature.cameras.CamerasLoadingScreen
-import com.gdisys.cameras.feature.cameras.DashboardScreen
+import com.gdisys.cameras.feature.init.InitScreen
+import com.gdisys.cameras.feature.config.components.ConfigScreen
+import com.gdisys.cameras.feature.cameras.components.CamerasLoadingScreen
+import com.gdisys.cameras.feature.cameras.HomeRoute
 import com.gdisys.cameras.feature.cameras.HomeViewModel
 import com.wireguard.android.backend.Tunnel
 
@@ -63,7 +63,7 @@ fun NavigationRoot(
       val vpnReady = vpnState == Tunnel.State.UP && !isConnecting
 
       if (vpnReady) {
-        DashboardScreen()
+        HomeRoute(homeViewModel)
       } else {
         CamerasLoadingScreen()
       }

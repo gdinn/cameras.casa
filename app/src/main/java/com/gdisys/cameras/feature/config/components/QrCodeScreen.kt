@@ -1,4 +1,4 @@
-package com.gdisys.cameras.core.components
+package com.gdisys.cameras.feature.config.components
 
 import android.Manifest
 import android.content.pm.PackageManager
@@ -11,10 +11,19 @@ import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -22,7 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import com.gdisys.cameras.core.qrcode.QrCodeAnalyzer
+import com.gdisys.cameras.feature.config.QrCodeAnalyzer
 import java.util.concurrent.Executors
 
 @Composable
@@ -61,12 +70,12 @@ fun QrCodeScreen(
     QrCodeScreenPreview(onQrCodeScanned = onCodeScanned)
   } else {
     Column(
-      modifier = Modifier.fillMaxSize(),
-      horizontalAlignment = Alignment.CenterHorizontally,
+      modifier = Modifier.Companion.fillMaxSize(),
+      horizontalAlignment = Alignment.Companion.CenterHorizontally,
       verticalArrangement = Arrangement.Center
     ) {
       Text("A permissão da câmera é necessária para ler o QR Code.")
-      Spacer(modifier = Modifier.height(16.dp))
+      Spacer(modifier = Modifier.Companion.height(16.dp))
       Button(onClick = { permissionLauncher.launch(Manifest.permission.CAMERA) }) {
         Text("Conceder Permissão")
       }
@@ -76,12 +85,12 @@ fun QrCodeScreen(
 
 @Composable
 private fun QrCodeScreenPreview(
-  modifier: Modifier = Modifier,
+  modifier: Modifier = Modifier.Companion,
   onQrCodeScanned: (String) -> Unit
 ) {
   val context = LocalContext.current
   val lifecycleOwner = LocalLifecycleOwner.current
-  val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(context) }
+  val cameraProviderFuture = remember { ProcessCameraProvider.Companion.getInstance(context) }
 
   AndroidView(
     factory = { ctx ->

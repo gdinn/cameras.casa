@@ -1,4 +1,4 @@
-package com.gdisys.cameras.feature.cameras
+package com.gdisys.cameras.feature.cameras.components
 
 import android.app.Activity
 import androidx.activity.compose.BackHandler
@@ -44,7 +44,7 @@ import org.webrtc.EglBase
 import org.webrtc.PeerConnectionFactory
 
 @Composable
-fun DashboardScreen() {
+fun HomeScreen() {
   val context = LocalContext.current
 
   val eglBase = remember { EglBase.create() }

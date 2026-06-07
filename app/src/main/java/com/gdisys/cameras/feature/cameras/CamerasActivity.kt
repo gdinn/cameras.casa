@@ -9,6 +9,7 @@ import androidx.compose.runtime.getValue
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
+import com.gdisys.cameras.feature.cameras.components.CamerasLoadingScreen
 import com.gdisys.cameras.ui.theme.CamerasTheme
 import com.wireguard.android.backend.Tunnel
 import dagger.hilt.android.AndroidEntryPoint
@@ -18,6 +19,7 @@ class CamerasActivity : ComponentActivity() {
 
   private val viewModel: HomeViewModel by viewModels()
 
+  // Colocar isso aqui lá... MainActivity de repente
   private val processObserver = object : DefaultLifecycleObserver {
     override fun onStart(owner: LifecycleOwner) {
       // Conecta ao voltar para foreground
@@ -51,7 +53,7 @@ class CamerasActivity : ComponentActivity() {
         val vpnReady = vpnState == Tunnel.State.UP && !isConnecting
 
         if (vpnReady) {
-          DashboardScreen()
+          HomeRoute()
         } else {
           CamerasLoadingScreen()
         }

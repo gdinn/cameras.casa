@@ -1,6 +1,6 @@
-@file:kotlin.OptIn(ExperimentalMaterial3Api::class)
+@file:OptIn(ExperimentalMaterial3Api::class)
 
-package com.gdisys.cameras.feature.cameras
+package com.gdisys.cameras.feature.cameras.components
 
 import android.view.ViewGroup
 import androidx.compose.material3.ExperimentalMaterial3Api

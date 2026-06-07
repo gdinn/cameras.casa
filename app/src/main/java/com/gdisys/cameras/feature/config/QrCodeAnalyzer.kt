@@ -1,4 +1,4 @@
-package com.gdisys.cameras.core.qrcode
+package com.gdisys.cameras.feature.config
 
 import android.util.Log
 import androidx.annotation.OptIn

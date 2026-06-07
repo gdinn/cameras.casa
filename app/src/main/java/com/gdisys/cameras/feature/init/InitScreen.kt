@@ -1,4 +1,4 @@
-package com.gdisys.cameras.feature
+package com.gdisys.cameras.feature.init
 
 import android.app.Activity
 import android.widget.Toast
@@ -29,7 +29,7 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun InitScreen(
-  dataStoreManager: DataStoreManager,
+  dataStoreManager: DataStoreManager, // desacoplar
   onNavigateToConfig: () -> Unit,
   onNavigateToDashboard: () -> Unit
 ) {
