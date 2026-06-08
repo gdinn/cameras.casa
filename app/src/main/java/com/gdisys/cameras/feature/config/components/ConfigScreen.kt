@@ -18,8 +18,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.gdisys.cameras.core.components.LoadingStorageScreen
 import com.gdisys.cameras.core.storage.UserPreferences
-import com.gdisys.cameras.feature.config.ConfigUiState
+import com.gdisys.cameras.feature.config.VpnDataUiState
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 
@@ -31,7 +32,7 @@ private val jsonConfig = Json {
 
 @Composable
 fun ConfigScreen(
-  uiState: ConfigUiState,
+  uiState: VpnDataUiState,
   showToast: (String) -> Unit,
   updateUserPreferences: (UserPreferences) -> Unit,
   acceptVpnPermission: () -> Unit,
@@ -47,42 +48,50 @@ fun ConfigScreen(
       verticalArrangement = Arrangement.Center,
       horizontalAlignment = Alignment.CenterHorizontally
     ) {
-      if (!uiState.vpnConfigTokensEmpty && !showScanner) {
-        Text(text = "Configurações carregadas!")
-        Spacer(modifier = Modifier.height(8.dp))
-        Button(onClick = { showScanner = true }) {
-          Text(text = "Recarregar Configurações")
+
+      when (uiState) {
+        is VpnDataUiState.Loading -> {
+          LoadingStorageScreen()
         }
-      } else if (showScanner) {
-        QrCodeScreen(
-          onCodeScanned = { result ->
-            try {
-              // Usando o jsonConfig que ignora campos desconhecidos
-              val decoded = jsonConfig.decodeFromString<UserPreferences>(result)
-              updateUserPreferences(decoded)
-              showScanner = false
-            } catch (e: Exception) {
-              e.printStackTrace()
-              scope.launch {
-                showToast("QR_CODE_FORMAT_ERROR")
+
+        is VpnDataUiState.Success -> {
+          if (!uiState.vpnConfigTokensEmpty && !showScanner) {
+            Text(text = "Configurações carregadas!")
+            Spacer(modifier = Modifier.height(8.dp))
+            Button(onClick = { showScanner = true }) {
+              Text(text = "Recarregar Configurações")
+            }
+          } else if (showScanner) {
+            QrCodeScreen(
+              onCodeScanned = { result ->
+                try {
+                  // Usando o jsonConfig que ignora campos desconhecidos
+                  val decoded = jsonConfig.decodeFromString<UserPreferences>(result)
+                  updateUserPreferences(decoded)
+                  showScanner = false
+                } catch (e: Exception) {
+                  e.printStackTrace()
+                  scope.launch {
+                    showToast("QR_CODE_FORMAT_ERROR")
+                  }
+                  // Se houver erro, fechamos o scanner para permitir tentar de novo (reseta o Analyzer)
+                  showScanner = false
+                }
               }
-              // Se houver erro, fechamos o scanner para permitir tentar de novo (reseta o Analyzer)
-              showScanner = false
+            )
+          } else {
+            Button(onClick = { showScanner = true }) {
+              Text(text = "Configurar App")
             }
           }
-        )
-      } else {
-        Button(onClick = { showScanner = true }) {
-          Text(text = "Configurar App")
+
+          Spacer(modifier = Modifier.height(16.dp))
+
+          Button(onClick = acceptVpnPermission) {
+            Text(text = "Aceitar permissão vpn")
+          }
         }
       }
-
-      Spacer(modifier = Modifier.height(16.dp))
-
-      Button(onClick = acceptVpnPermission) {
-        Text(text = "Aceitar permissão vpn")
-      }
-
     }
   }
 }

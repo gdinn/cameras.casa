@@ -14,28 +14,4 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltAndroidApp
-class CamerasApp : Application() {
-
-  private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-  private var wasConnected = false
-
-  @Inject
-  lateinit var vpnRepository: VpnRepository
-
-  override fun onCreate() {
-    super.onCreate()
-
-    ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
-
-      override fun onStop(owner: LifecycleOwner) {
-        // App indo para o segundo plano
-        wasConnected = vpnRepository.getTunnelState() == Tunnel.State.UP
-        if (wasConnected) {
-          applicationScope.launch {
-            vpnRepository.disconnect()
-          }
-        }
-      }
-    })
-  }
-}
+class CamerasApp : Application()

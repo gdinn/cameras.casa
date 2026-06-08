@@ -46,16 +46,6 @@
             </intent-filter>
         </activity>
 
-        <activity
-            android:name=".feature.cameras.CamerasActivity"
-            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
-            android:exported="false"
-            android:theme="@style/Theme.Cameras" />
-
-        <activity
-            android:name=".feature.config.ConfigActivity"
-            android:exported="false"
-            android:theme="@style/Theme.Cameras" />
     </application>
 
 </manifest>

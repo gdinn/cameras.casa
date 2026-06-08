@@ -24,6 +24,7 @@ fun ConfigRoute(viewModel: ConfigViewModel) {
       viewModel.showToast("VPN_PERMISSION_ACCEPTED")
     }
   }
+
   fun acceptVpnPermission() {
     val intent = VpnService.prepare(context)
     if (intent != null) {

@@ -8,11 +8,11 @@ import androidx.navigation.compose.rememberNavController
 import com.gdisys.cameras.app.navigation.NavigationRoot
 import com.gdisys.cameras.core.storage.DataStoreManager
 import com.gdisys.cameras.ui.theme.CamerasTheme
+import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
+@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
-  @Inject
-  lateinit var dataStoreManager: DataStoreManager
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
@@ -20,9 +20,7 @@ class MainActivity : ComponentActivity() {
     setContent {
       CamerasTheme {
         NavigationRoot(
-          this,
-          navController = rememberNavController(),
-          dataStoreManager
+          navController = rememberNavController()
         )
       }
     }
