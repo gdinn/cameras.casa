@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.gdisys.cameras.core.components.LoadingStorageScreen
 import com.gdisys.cameras.core.storage.UserPreferences
+import com.gdisys.cameras.feature.config.ConfigToastMessage
 import com.gdisys.cameras.feature.config.VpnDataUiState
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
@@ -33,7 +34,7 @@ private val jsonConfig = Json {
 @Composable
 fun ConfigScreen(
   uiState: VpnDataUiState,
-  showToast: (String) -> Unit,
+  showToast: (ConfigToastMessage) -> Unit,
   updateUserPreferences: (UserPreferences) -> Unit,
   acceptVpnPermission: () -> Unit,
 ) {
@@ -72,7 +73,7 @@ fun ConfigScreen(
                 } catch (e: Exception) {
                   e.printStackTrace()
                   scope.launch {
-                    showToast("QR_CODE_FORMAT_ERROR")
+                    showToast(ConfigToastMessage.QR_CODE_FORMAT_ERROR)
                   }
                   // Se houver erro, fechamos o scanner para permitir tentar de novo (reseta o Analyzer)
                   showScanner = false

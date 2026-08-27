@@ -4,6 +4,9 @@ import kotlinx.serialization.Serializable
 
 sealed interface NavigationRoute {
   @Serializable
+  data object ConfigGraph
+
+  @Serializable
   data object Config
 
   @Serializable

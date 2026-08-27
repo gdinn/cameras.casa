@@ -7,6 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
@@ -15,6 +16,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.navigation
 import com.gdisys.cameras.feature.cameras.components.CamerasLoadingScreen
 import com.gdisys.cameras.feature.cameras.HomeViewModel
 import com.gdisys.cameras.feature.cameras.components.HomeScreen
@@ -29,35 +31,40 @@ fun NavigationRoot(
 ) {
   NavHost(
     navController = navController,
-    startDestination = NavigationRoute.Loading
+    startDestination = NavigationRoute.ConfigGraph
   ) {
-    composable<NavigationRoute.Loading> {
-      Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background
-      ) {
-        val configViewModel: ConfigViewModel = hiltViewModel()
-
-        InitRoute(
-          configViewModel,
-          onNavigateToConfig = {
-            navController.navigate(NavigationRoute.Config)
-          },
-          onNavigateToHome = {
-            navController.navigate(NavigationRoute.Home) {
-              popUpTo<NavigationRoute.Loading> {
-                inclusive = true
-              }
-              launchSingleTop = true
-            }
-          }
+    navigation<NavigationRoute.ConfigGraph>(startDestination = NavigationRoute.Loading) {
+      composable<NavigationRoute.Loading> { entry ->
+        val configViewModel: ConfigViewModel = hiltViewModel(
+          remember(entry) { navController.getBackStackEntry(NavigationRoute.ConfigGraph) }
         )
+        Surface(
+          modifier = Modifier.fillMaxSize(),
+          color = MaterialTheme.colorScheme.background
+        ) {
+          InitRoute(
+            configViewModel,
+            onNavigateToConfig = {
+              navController.navigate(NavigationRoute.Config)
+            },
+            onNavigateToHome = {
+              navController.navigate(NavigationRoute.Home) {
+                popUpTo<NavigationRoute.Loading> {
+                  inclusive = true
+                }
+                launchSingleTop = true
+              }
+            }
+          )
+        }
       }
-    }
 
-    composable<NavigationRoute.Config> {
-      val configViewModel: ConfigViewModel = hiltViewModel()
-      ConfigRoute(configViewModel)
+      composable<NavigationRoute.Config> { entry ->
+        val configViewModel: ConfigViewModel = hiltViewModel(
+          remember(entry) { navController.getBackStackEntry(NavigationRoute.ConfigGraph) }
+        )
+        ConfigRoute(configViewModel)
+      }
     }
 
     composable<NavigationRoute.Home> {

@@ -1,3 +1,21 @@
 <resources>
     <string name="app_name">Cameras</string>
+
+    <!-- Init Screen -->
+    <string name="init_screen_no_credentials">Credentials not found</string>
+
+    <!-- Config Route -->
+    <string name="config_route_vpn_accepted">VPN Permission Accepted</string>
+    <string name="config_route_vpn_already_granted">Permission already granted</string>
+
+    <!-- Config Screen -->
+    <string name="config_screen_settings_loaded">Settings loaded!</string>
+    <string name="config_screen_reload_settings">Reload settings</string>
+    <string name="config_screen_load_settings">Load settings</string>
+    <string name="config_screen_accept_vpn_permission">Accept VPN permission</string>
+    <string name="qr_code_format_error">Invalid QR Code</string>"
+
+    <!-- QR Code Screen -->
+    <string name="qrcode_screen_camera_permission_required">Camera access is required to scan QR Codes</string>
+    <string name="qrcode_screen_camera_grant_access">Grant access</string>
 </resources>

@@ -1,8 +1,10 @@
 package com.gdisys.cameras.feature.config
 
 import android.util.Log
+import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.gdisys.cameras.R
 import com.gdisys.cameras.core.storage.DataStoreManager
 import com.gdisys.cameras.core.storage.UserPreferences
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -30,9 +32,9 @@ class ConfigViewModel @Inject constructor(
   private val _uiEvent = Channel<ConfigUiEvent>()
   val uiEvent = _uiEvent.receiveAsFlow()
 
-  fun showToast(message: String) {
+  fun showToast(configToastMessage: ConfigToastMessage) {
     viewModelScope.launch {
-      _uiEvent.send(ConfigUiEvent.ShowToast(message))
+      _uiEvent.send(ConfigUiEvent.ShowToast(configToastMessage))
     }
   }
 
@@ -49,5 +51,5 @@ sealed interface VpnDataUiState {
 }
 
 sealed interface ConfigUiEvent {
-  data class ShowToast(val message: String) : ConfigUiEvent
+  data class ShowToast(val configToastMessage: ConfigToastMessage): ConfigUiEvent
 }
