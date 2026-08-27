@@ -1,10 +1,7 @@
 package com.gdisys.cameras.feature.config
 
-import android.util.Log
-import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.gdisys.cameras.R
 import com.gdisys.cameras.core.storage.DataStoreManager
 import com.gdisys.cameras.core.storage.UserPreferences
 import com.gdisys.cameras.core.storage.isInvalid

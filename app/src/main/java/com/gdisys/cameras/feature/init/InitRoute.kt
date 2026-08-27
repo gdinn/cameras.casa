@@ -1,14 +1,11 @@
 package com.gdisys.cameras.feature.init
 
-import android.widget.Toast
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gdisys.cameras.core.components.ToastDisplayer
-import com.gdisys.cameras.feature.config.ConfigUiEvent
 import com.gdisys.cameras.feature.config.ConfigViewModel
 
 @Composable

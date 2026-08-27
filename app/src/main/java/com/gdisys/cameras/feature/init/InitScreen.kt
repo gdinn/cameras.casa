@@ -1,8 +1,6 @@
 package com.gdisys.cameras.feature.init
 
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.res.stringResource
-import com.gdisys.cameras.R
 import com.gdisys.cameras.core.components.LoadingStorageScreen
 import com.gdisys.cameras.feature.config.ConfigToastMessage
 import com.gdisys.cameras.feature.config.VpnDataUiState

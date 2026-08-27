@@ -30,7 +30,6 @@ import org.webrtc.VideoTrack
 import java.net.HttpURLConnection
 import java.net.URL
 
-
 @Composable
 fun WebRtcVideoPlayer(
   streamUrl: String,
