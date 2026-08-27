@@ -95,7 +95,11 @@ fun NavigationRoot(
       val isConnecting by homeViewModel.isConnecting.collectAsState()
       val vpnReady = vpnState == Tunnel.State.UP && !isConnecting
       if (vpnReady) {
-        HomeScreen()
+        HomeScreen(
+          onNavigateToConfig = {
+            navController.navigate(NavigationRoute.Config)
+          }
+        )
       } else {
         CamerasLoadingScreen()
       }
