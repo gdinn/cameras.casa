@@ -18,7 +18,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.gdisys.cameras.R
 import com.gdisys.cameras.core.components.LoadingStorageScreen
 import com.gdisys.cameras.core.storage.UserPreferences
 import com.gdisys.cameras.core.storage.isValid
@@ -36,7 +38,6 @@ fun ConfigScreen(
 ) {
   Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
     var showScanner by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
 
     Column(
       modifier = Modifier
@@ -53,10 +54,10 @@ fun ConfigScreen(
 
         is VpnDataUiState.Success -> {
           if (!uiState.vpnConfigTokensEmpty && !showScanner) {
-            Text(text = "Configurações carregadas!")
+            Text(text = stringResource(R.string.config_screen_settings_loaded))
             Spacer(modifier = Modifier.height(8.dp))
             Button(onClick = { showScanner = true }) {
-              Text(text = "Recarregar Configurações")
+              Text(text = stringResource(R.string.config_screen_reload_settings))
             }
           } else if (showScanner) {
             QrCodeScreen(
@@ -84,14 +85,14 @@ fun ConfigScreen(
             )
           } else {
             Button(onClick = { showScanner = true }) {
-              Text(text = "Configurar App")
+              Text(text = stringResource(R.string.config_screen_load_settings))
             }
           }
 
           Spacer(modifier = Modifier.height(16.dp))
 
           Button(onClick = acceptVpnPermission) {
-            Text(text = "Aceitar permissão vpn")
+            Text(text = stringResource(R.string.config_screen_accept_vpn_permission))
           }
         }
       }

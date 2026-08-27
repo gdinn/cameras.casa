@@ -27,10 +27,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.gdisys.cameras.R
 import com.gdisys.cameras.feature.config.QrCodeAnalyzer
 import java.util.concurrent.Executors
 
@@ -74,10 +76,10 @@ fun QrCodeScreen(
       horizontalAlignment = Alignment.Companion.CenterHorizontally,
       verticalArrangement = Arrangement.Center
     ) {
-      Text("A permissão da câmera é necessária para ler o QR Code.")
+      Text(stringResource(R.string.qrcode_screen_camera_permission_required))
       Spacer(modifier = Modifier.Companion.height(16.dp))
       Button(onClick = { permissionLauncher.launch(Manifest.permission.CAMERA) }) {
-        Text("Conceder Permissão")
+        Text(stringResource(R.string.qrcode_screen_camera_grant_access))
       }
     }
   }
@@ -85,7 +87,7 @@ fun QrCodeScreen(
 
 @Composable
 private fun QrCodeScreenPreview(
-  modifier: Modifier = Modifier.Companion,
+  modifier: Modifier = Modifier,
   onQrCodeScanned: (String) -> Unit
 ) {
   val context = LocalContext.current
@@ -107,7 +109,7 @@ private fun QrCodeScreenPreview(
         val cameraProvider = cameraProviderFuture.get()
 
         val preview = Preview.Builder().build().also {
-          it.setSurfaceProvider(previewView.surfaceProvider)
+          it.surfaceProvider = previewView.surfaceProvider
         }
 
         val imageAnalysis = ImageAnalysis.Builder()

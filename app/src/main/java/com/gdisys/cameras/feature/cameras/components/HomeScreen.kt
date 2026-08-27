@@ -34,10 +34,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import com.gdisys.cameras.R
 import org.webrtc.DefaultVideoDecoderFactory
 import org.webrtc.DefaultVideoEncoderFactory
 import org.webrtc.EglBase
@@ -70,6 +72,7 @@ fun HomeScreen() {
   var streams by remember {
     mutableStateOf(
       listOf(
+        // TODO: Pegar via storage os endpoints finais -> http://[fd00:20::cafe] é padrão por conta do network_security_config
         "http://[fd00:20::cafe]:8889/cam_160",
         "http://[fd00:20::cafe]:8889/cam_161",
         "http://[fd00:20::cafe]:8889/cam_162",
@@ -161,7 +164,7 @@ fun HomeScreen() {
                   ) {
                     Icon(
                       imageVector = Icons.Default.KeyboardArrowUp,
-                      contentDescription = "Mover para Cima",
+                      contentDescription = stringResource(R.string.home_screen_move_up),
                       tint = Color.White
                     )
                   }
@@ -178,7 +181,7 @@ fun HomeScreen() {
                   ) {
                     Icon(
                       imageVector = Icons.Default.KeyboardArrowDown,
-                      contentDescription = "Mover para Baixo",
+                      contentDescription = stringResource(R.string.home_screen_move_down),
                       tint = Color.White
                     )
                   }
