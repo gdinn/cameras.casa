@@ -32,6 +32,7 @@ fun ConfigScreen(
   showToast: (ConfigToastMessage) -> Unit,
   updateUserPreferences: (UserPreferences) -> Unit,
   acceptVpnPermission: () -> Unit,
+  onNavigateToHome: () -> Unit
 ) {
   Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
     var showScanner by remember { mutableStateOf(false) }
@@ -90,6 +91,12 @@ fun ConfigScreen(
 
           Button(onClick = acceptVpnPermission) {
             Text(text = stringResource(R.string.config_screen_accept_vpn_permission))
+          }
+          if (!uiState.vpnConfigTokensEmpty && !showScanner) {
+            Spacer(modifier = Modifier.height(32.dp))
+            Button(onClick = { onNavigateToHome() }) {
+              Text(text = stringResource(R.string.config_screen_navigate_to_home))
+            }
           }
         }
       }

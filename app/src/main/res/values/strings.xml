@@ -16,6 +16,7 @@
     <string name="config_screen_reload_settings">Reload settings</string>
     <string name="config_screen_load_settings">Load settings</string>
     <string name="config_screen_accept_vpn_permission">Accept VPN permission</string>
+    <string name="config_screen_navigate_to_home">Navigate to Home</string>
 
     <!-- QR Code validations -->
     <string name="qr_code_format_error">Invalid QR Code</string>

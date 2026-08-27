@@ -48,12 +48,7 @@ fun NavigationRoot(
               navController.navigate(NavigationRoute.Config)
             },
             onNavigateToHome = {
-              navController.navigate(NavigationRoute.Home) {
-                popUpTo<NavigationRoute.Loading> {
-                  inclusive = true
-                }
-                launchSingleTop = true
-              }
+              navigateToHome(navController)
             }
           )
         }
@@ -63,7 +58,12 @@ fun NavigationRoot(
         val configViewModel: ConfigViewModel = hiltViewModel(
           remember(entry) { navController.getBackStackEntry(NavigationRoute.ConfigGraph) }
         )
-        ConfigRoute(configViewModel)
+        ConfigRoute(
+          viewModel = configViewModel,
+          onNavigateToHome = {
+            navigateToHome(navController)
+          }
+        )
       }
     }
 
@@ -101,4 +101,13 @@ fun NavigationRoot(
       }
     }
   }
+}
+
+private fun navigateToHome(navController: NavHostController) {
+    navController.navigate(NavigationRoute.Home) {
+      popUpTo<NavigationRoute.Loading> {
+        inclusive = true
+      }
+      launchSingleTop = true
+    }
 }

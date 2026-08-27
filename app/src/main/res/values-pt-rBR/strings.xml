@@ -9,6 +9,7 @@
     <string name="config_screen_reload_settings">Recarregar configurações</string>
     <string name="config_screen_load_settings">Carregar configurações</string>
     <string name="config_screen_accept_vpn_permission">Aceitar permissão da VPN</string>
+    <string name="config_screen_navigate_to_home">Navegar para a Home</string>
     <string name="qr_code_format_error">QR Code inválido</string>
     <string name="qr_code_invalid_data_error">Dados inválidos</string>
     <string name="qrcode_screen_camera_permission_required">Acesso a câmera é necessário para escanear QR codes</string>

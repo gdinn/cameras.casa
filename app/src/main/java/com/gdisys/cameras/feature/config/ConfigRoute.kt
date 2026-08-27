@@ -13,7 +13,10 @@ import com.gdisys.cameras.core.components.ToastDisplayer
 import com.gdisys.cameras.feature.config.components.ConfigScreen
 
 @Composable
-fun ConfigRoute(viewModel: ConfigViewModel) {
+fun ConfigRoute(
+  viewModel: ConfigViewModel,
+  onNavigateToHome: () -> Unit
+) {
   val context = LocalContext.current
   val resources = LocalResources.current
   val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -50,6 +53,7 @@ fun ConfigRoute(viewModel: ConfigViewModel) {
     },
     acceptVpnPermission = {
       acceptVpnPermission()
-    }
+    },
+    onNavigateToHome = onNavigateToHome
   )
 }
