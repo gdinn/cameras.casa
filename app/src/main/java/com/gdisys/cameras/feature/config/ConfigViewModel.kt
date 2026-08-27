@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.gdisys.cameras.R
 import com.gdisys.cameras.core.storage.DataStoreManager
 import com.gdisys.cameras.core.storage.UserPreferences
+import com.gdisys.cameras.core.storage.isInvalid
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.SharingStarted
@@ -22,7 +23,11 @@ class ConfigViewModel @Inject constructor(
   private val dataStoreManager: DataStoreManager
 ): ViewModel() {
   val uiState: StateFlow<VpnDataUiState> = dataStoreManager.userPrefsState.map { prefs ->
-    VpnDataUiState.Success(prefs.vpnConfigTokens?.pPsk?.isEmpty() ?: true)
+    VpnDataUiState.Success(
+      vpnConfigTokensEmpty =
+        prefs.vpnConfigTokens?.isInvalid() ?: true ||
+        prefs.vpnConfigDefaults?.isInvalid() ?: true
+    )
   }.stateIn(
     scope = viewModelScope,
     started = SharingStarted.WhileSubscribed(5000),

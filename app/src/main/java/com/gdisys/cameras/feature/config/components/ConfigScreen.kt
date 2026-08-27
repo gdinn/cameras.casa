@@ -1,5 +1,6 @@
 package com.gdisys.cameras.feature.config.components
 
+import android.util.Log
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -20,16 +21,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.gdisys.cameras.core.components.LoadingStorageScreen
 import com.gdisys.cameras.core.storage.UserPreferences
+import com.gdisys.cameras.core.storage.isValid
 import com.gdisys.cameras.feature.config.ConfigToastMessage
 import com.gdisys.cameras.feature.config.VpnDataUiState
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
-
-private val jsonConfig = Json {
-  ignoreUnknownKeys = true
-  coerceInputValues = true
-  isLenient = true
-}
 
 @Composable
 fun ConfigScreen(
@@ -64,17 +60,23 @@ fun ConfigScreen(
             }
           } else if (showScanner) {
             QrCodeScreen(
-              onCodeScanned = { result ->
+              onCodeScanned = { rawJson ->
                 try {
-                  // Usando o jsonConfig que ignora campos desconhecidos
-                  val decoded = jsonConfig.decodeFromString<UserPreferences>(result)
-                  updateUserPreferences(decoded)
+                  val sanitizedJson = rawJson
+                    .trim()
+                    .replace("\uFEFF", "")
+                  val decoded = Json.decodeFromString<UserPreferences>(sanitizedJson)
+                  if(decoded.vpnConfigDefaults?.isValid() == true && decoded.vpnConfigTokens?.isValid() == true) {
+                    updateUserPreferences(decoded)
+                  } else {
+                    updateUserPreferences(UserPreferences())
+                    showToast(ConfigToastMessage.QR_CODE_INVALID_DATA_ERROR)
+                  }
                   showScanner = false
                 } catch (e: Exception) {
                   e.printStackTrace()
-                  scope.launch {
-                    showToast(ConfigToastMessage.QR_CODE_FORMAT_ERROR)
-                  }
+                  updateUserPreferences(UserPreferences())
+                  showToast(ConfigToastMessage.QR_CODE_FORMAT_ERROR)
                   // Se houver erro, fechamos o scanner para permitir tentar de novo (reseta o Analyzer)
                   showScanner = false
                 }

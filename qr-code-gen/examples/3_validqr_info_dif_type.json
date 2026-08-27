@@ -1,0 +1,15 @@
+{
+  "vpnConfigDefaults": {
+    "iDns": "fd00:10::1",
+    "iMtu": "1420",
+    "pAllowedips": "::/0, 0.0.0.0/0",
+    "pEndpoint": "example.com:4567",
+    "pPersistentKeepAlive": 25,
+    "pPuk": "EPLh6pVel06dND8cE4Prix9GP4hGLYNhQhn5mSN2yzM="
+  },
+  "vpnConfigTokens": {
+    "iAddr": "fd00:10::20/128",
+    "iPrk": "WGpL3/ejM5L9ngLoAtXkSP1QTNp4eSD34Zh6/Jfni1Q=",
+    "pPsk": "6vqAaV2V5EnpNi5AqfZ57EKbQq8+OXRa5gAh+yOcRw="
+  }
+}

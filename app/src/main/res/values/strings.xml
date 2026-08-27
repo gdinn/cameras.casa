@@ -13,7 +13,9 @@
     <string name="config_screen_reload_settings">Reload settings</string>
     <string name="config_screen_load_settings">Load settings</string>
     <string name="config_screen_accept_vpn_permission">Accept VPN permission</string>
-    <string name="qr_code_format_error">Invalid QR Code</string>"
+    <string name="qr_code_format_error">Invalid QR Code</string>
+    <string name="qr_code_invalid_data_error">Invalid Data</string>
+
 
     <!-- QR Code Screen -->
     <string name="qrcode_screen_camera_permission_required">Camera access is required to scan QR Codes</string>

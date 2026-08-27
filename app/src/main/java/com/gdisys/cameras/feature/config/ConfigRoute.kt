@@ -13,6 +13,7 @@ import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gdisys.cameras.core.components.ToastDisplayer
+import com.gdisys.cameras.core.storage.UserPreferences
 import com.gdisys.cameras.feature.config.components.ConfigScreen
 
 @Composable
