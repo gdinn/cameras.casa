@@ -1,6 +1,5 @@
 package com.gdisys.cameras.feature.cameras.components
 
-import android.app.Activity
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -21,7 +20,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -30,17 +28,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
 import com.gdisys.cameras.R
 
 @Composable
 fun HomeScreen(onNavigateToConfig: () -> Unit) {
-  val context = LocalContext.current
   val peerConnectionFactory = rememberPeerConnectionFactory()
 
   var streams by remember {
@@ -60,18 +53,7 @@ fun HomeScreen(onNavigateToConfig: () -> Unit) {
   val gridState = rememberLazyGridState()
   val overscrollReconfigure = rememberOverscrollReconfigure(gridState)
 
-  LaunchedEffect(focusedStream) {
-    val window = (context as? Activity)?.window
-    if (window != null) {
-      val controller = WindowCompat.getInsetsController(window, window.decorView)
-      if (focusedStream != null) {
-        controller.hide(WindowInsetsCompat.Type.statusBars())
-        controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-      } else {
-        controller.show(WindowInsetsCompat.Type.statusBars())
-      }
-    }
-  }
+  rememberSystemBarsController(focusedStream)
 
   BackHandler(enabled = focusedStream != null) {
     focusedStream = null
