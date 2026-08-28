@@ -1,4 +1,4 @@
-package com.gdisys.cameras.feature.config
+package com.gdisys.cameras.core.utils
 
 import android.util.Log
 import androidx.annotation.OptIn

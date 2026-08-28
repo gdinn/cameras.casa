@@ -20,6 +20,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.gdisys.cameras.R
 import com.gdisys.cameras.core.components.LoadingStorageScreen
+import com.gdisys.cameras.core.components.QrCodeScreen
 import com.gdisys.cameras.core.storage.UserPreferences
 import com.gdisys.cameras.core.storage.isValid
 import com.gdisys.cameras.feature.config.ConfigToastMessage
@@ -65,7 +66,7 @@ fun ConfigScreen(
                     .trim()
                     .replace("\uFEFF", "")
                   val decoded = Json.decodeFromString<UserPreferences>(sanitizedJson)
-                  if(decoded.vpnConfigDefaults?.isValid() == true && decoded.vpnConfigTokens?.isValid() == true) {
+                  if (decoded.vpnConfigDefaults?.isValid() == true && decoded.vpnConfigTokens?.isValid() == true) {
                     updateUserPreferences(decoded)
                   } else {
                     updateUserPreferences(UserPreferences())
