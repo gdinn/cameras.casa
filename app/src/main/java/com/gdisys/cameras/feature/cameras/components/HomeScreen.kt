@@ -20,10 +20,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -33,22 +29,16 @@ import androidx.compose.ui.unit.dp
 import com.gdisys.cameras.R
 
 @Composable
-fun HomeScreen(onNavigateToConfig: () -> Unit) {
+fun HomeScreen(
+  streams: List<String>,
+  focusedStream: String?,
+  onFocusStream: (String) -> Unit,
+  onClearFocusedStream: () -> Unit,
+  onMoveStreamUp: (Int) -> Unit,
+  onMoveStreamDown: (Int) -> Unit,
+  onNavigateToConfig: () -> Unit
+) {
   val peerConnectionFactory = rememberPeerConnectionFactory()
-
-  var streams by remember {
-    mutableStateOf(
-      listOf(
-        // TODO: Pegar via storage os endpoints finais -> http://[fd00:20::cafe] é padrão por conta do network_security_config
-        "http://[fd00:20::cafe]:8889/cam_160",
-        "http://[fd00:20::cafe]:8889/cam_161",
-        "http://[fd00:20::cafe]:8889/cam_162",
-        "http://[fd00:20::cafe]:8889/cam_163"
-      )
-    )
-  }
-
-  var focusedStream by remember { mutableStateOf<String?>(null) }
 
   val gridState = rememberLazyGridState()
   val overscrollReconfigure = rememberOverscrollReconfigure(gridState)
@@ -56,7 +46,7 @@ fun HomeScreen(onNavigateToConfig: () -> Unit) {
   rememberSystemBarsController(focusedStream)
 
   BackHandler(enabled = focusedStream != null) {
-    focusedStream = null
+    onClearFocusedStream()
   }
 
   Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
@@ -91,19 +81,9 @@ fun HomeScreen(onNavigateToConfig: () -> Unit) {
                 canMoveUp = index > 0,
                 canMoveDown = index < streams.size - 1,
                 peerConnectionFactory = peerConnectionFactory,
-                onFocusedStreamChange = { focusedStream = it },
-                onMoveUp = {
-                  val newList = streams.toMutableList()
-                  val item = newList.removeAt(index)
-                  newList.add(index - 1, item)
-                  streams = newList
-                },
-                onMoveDown = {
-                  val newList = streams.toMutableList()
-                  val item = newList.removeAt(index)
-                  newList.add(index + 1, item)
-                  streams = newList
-                }
+                onFocusedStreamChange = onFocusStream,
+                onMoveUp = { onMoveStreamUp(index) },
+                onMoveDown = { onMoveStreamDown(index) }
               )
             }
           }

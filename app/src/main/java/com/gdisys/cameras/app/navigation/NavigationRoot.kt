@@ -90,7 +90,15 @@ fun NavigationRoot(
       val isConnecting by homeViewModel.isConnecting.collectAsState()
       val vpnReady = vpnState == Tunnel.State.UP && !isConnecting
       if (vpnReady) {
+        val streams by homeViewModel.streams.collectAsState()
+        val focusedStream by homeViewModel.focusedStream.collectAsState()
         HomeScreen(
+          streams = streams,
+          focusedStream = focusedStream,
+          onFocusStream = homeViewModel::focusStream,
+          onClearFocusedStream = homeViewModel::clearFocusedStream,
+          onMoveStreamUp = homeViewModel::moveStreamUp,
+          onMoveStreamDown = homeViewModel::moveStreamDown,
           onNavigateToConfig = {
             navController.navigate(NavigationRoute.Config)
           }
