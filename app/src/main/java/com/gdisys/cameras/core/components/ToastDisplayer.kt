@@ -5,26 +5,31 @@ import android.content.res.Resources
 import android.widget.Toast
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import com.gdisys.cameras.feature.config.ConfigUiEvent
-import com.gdisys.cameras.feature.config.ConfigViewModel
+import androidx.lifecycle.ViewModel
+import kotlinx.coroutines.flow.Flow
 
 @Composable
 fun ToastDisplayer(
-  viewModel: ConfigViewModel,
+  viewModel: ViewModel,
+  toastUiEvent: Flow<ToastUiEvent>,
   context: Context,
   resources: Resources
 ) {
   LaunchedEffect(viewModel) {
-    viewModel.uiEvent.collect { event ->
+    toastUiEvent.collect { event ->
       when (event) {
-        is ConfigUiEvent.ShowToast -> {
+        is ToastUiEvent.Show -> {
           Toast.makeText(
             context,
-            resources.getString(event.configToastMessage.resId),
+            resources.getString(event.resId),
             Toast.LENGTH_SHORT
           ).show()
         }
       }
     }
   }
+}
+
+sealed interface ToastUiEvent {
+  data class Show(val resId: Int): ToastUiEvent
 }

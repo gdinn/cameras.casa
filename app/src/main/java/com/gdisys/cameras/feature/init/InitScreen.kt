@@ -2,13 +2,12 @@ package com.gdisys.cameras.feature.init
 
 import androidx.compose.runtime.Composable
 import com.gdisys.cameras.core.components.LoadingStorageScreen
-import com.gdisys.cameras.feature.config.ConfigToastMessage
-import com.gdisys.cameras.feature.config.VpnDataUiState
+import com.gdisys.cameras.core.vpn.domain.VpnDataUiState
 
 @Composable
 fun InitScreen(
   uiState: VpnDataUiState,
-  showToast: (ConfigToastMessage) -> Unit,
+  showToast: (InitToastMessage) -> Unit,
   onNavigateToConfig: () -> Unit,
   onNavigateToHome: () -> Unit
 ) {
@@ -20,7 +19,7 @@ fun InitScreen(
 
     is VpnDataUiState.Success -> {
       if (uiState.vpnConfigTokensEmpty) {
-        showToast(ConfigToastMessage.CREDENTIALS_NOT_FOUND)
+        showToast(InitToastMessage.CREDENTIALS_NOT_FOUND)
         onNavigateToConfig()
       } else {
         onNavigateToHome()

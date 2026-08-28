@@ -39,8 +39,9 @@ fun ConfigRoute(
   }
   ToastDisplayer(
     viewModel,
-    context,
-    resources
+    toastUiEvent = viewModel.uiEvent,
+    context = context,
+    resources = resources
   )
 
   ConfigScreen(

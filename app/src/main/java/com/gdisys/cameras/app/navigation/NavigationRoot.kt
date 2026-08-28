@@ -23,6 +23,7 @@ import com.gdisys.cameras.feature.cameras.components.HomeScreen
 import com.gdisys.cameras.feature.config.ConfigRoute
 import com.gdisys.cameras.feature.config.ConfigViewModel
 import com.gdisys.cameras.feature.init.InitRoute
+import com.gdisys.cameras.feature.init.InitViewModel
 import com.wireguard.android.backend.Tunnel
 
 @Composable
@@ -31,40 +32,34 @@ fun NavigationRoot(
 ) {
   NavHost(
     navController = navController,
-    startDestination = NavigationRoute.ConfigGraph
+    startDestination = NavigationRoute.Loading
   ) {
-    navigation<NavigationRoute.ConfigGraph>(startDestination = NavigationRoute.Loading) {
-      composable<NavigationRoute.Loading> { entry ->
-        val configViewModel: ConfigViewModel = hiltViewModel(
-          remember(entry) { navController.getBackStackEntry(NavigationRoute.ConfigGraph) }
-        )
-        Surface(
-          modifier = Modifier.fillMaxSize(),
-          color = MaterialTheme.colorScheme.background
-        ) {
-          InitRoute(
-            configViewModel,
-            onNavigateToConfig = {
-              navController.navigate(NavigationRoute.Config)
-            },
-            onNavigateToHome = {
-              navigateToHome(navController)
-            }
-          )
-        }
-      }
-
-      composable<NavigationRoute.Config> { entry ->
-        val configViewModel: ConfigViewModel = hiltViewModel(
-          remember(entry) { navController.getBackStackEntry(NavigationRoute.ConfigGraph) }
-        )
-        ConfigRoute(
-          viewModel = configViewModel,
+    composable<NavigationRoute.Loading> {
+      val initViewModel: InitViewModel = hiltViewModel()
+      Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background
+      ) {
+        InitRoute(
+          initViewModel,
+          onNavigateToConfig = {
+            navController.navigate(NavigationRoute.Config)
+          },
           onNavigateToHome = {
             navigateToHome(navController)
           }
         )
       }
+    }
+
+    composable<NavigationRoute.Config> {
+      val configViewModel: ConfigViewModel = hiltViewModel()
+      ConfigRoute(
+        viewModel = configViewModel,
+        onNavigateToHome = {
+          navigateToHome(navController)
+        }
+      )
     }
 
     composable<NavigationRoute.Home> {

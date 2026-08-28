@@ -6,11 +6,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gdisys.cameras.core.components.ToastDisplayer
-import com.gdisys.cameras.feature.config.ConfigViewModel
 
 @Composable
 fun InitRoute(
-  viewModel: ConfigViewModel,
+  viewModel: InitViewModel,
   onNavigateToConfig: () -> Unit,
   onNavigateToHome: () -> Unit,
 ) {
@@ -20,14 +19,15 @@ fun InitRoute(
 
   ToastDisplayer(
     viewModel,
-    context,
-    resources
+    context = context,
+    toastUiEvent = viewModel.uiEvent,
+    resources = resources
   )
 
   InitScreen(
     uiState,
-    showToast = { configToastMessage ->
-      viewModel.showToast(configToastMessage)
+    showToast = { initToastMessage ->
+      viewModel.showToast(initToastMessage)
     },
     onNavigateToConfig = onNavigateToConfig,
     onNavigateToHome = onNavigateToHome

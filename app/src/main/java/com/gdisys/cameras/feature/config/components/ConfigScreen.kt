@@ -23,8 +23,8 @@ import com.gdisys.cameras.core.components.LoadingStorageScreen
 import com.gdisys.cameras.core.components.QrCodeScreen
 import com.gdisys.cameras.core.storage.UserPreferences
 import com.gdisys.cameras.core.storage.isValid
+import com.gdisys.cameras.core.vpn.domain.VpnDataUiState
 import com.gdisys.cameras.feature.config.ConfigToastMessage
-import com.gdisys.cameras.feature.config.VpnDataUiState
 import kotlinx.serialization.json.Json
 
 @Composable
