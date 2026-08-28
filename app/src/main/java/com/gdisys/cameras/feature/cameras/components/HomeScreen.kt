@@ -31,58 +31,28 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.gdisys.cameras.R
-import org.webrtc.DefaultVideoDecoderFactory
-import org.webrtc.DefaultVideoEncoderFactory
-import org.webrtc.EglBase
-import org.webrtc.PeerConnectionFactory
 
 @Composable
 fun HomeScreen(onNavigateToConfig: () -> Unit) {
   val context = LocalContext.current
-
-  val eglBase = remember { EglBase.create() }
-  val factory = remember {
-    PeerConnectionFactory.initialize(
-      PeerConnectionFactory.InitializationOptions.builder(context.applicationContext)
-        .setEnableInternalTracer(false)
-        .createInitializationOptions()
-    )
-    PeerConnectionFactory.builder()
-      .setVideoDecoderFactory(DefaultVideoDecoderFactory(eglBase.eglBaseContext))
-      .setVideoEncoderFactory(DefaultVideoEncoderFactory(eglBase.eglBaseContext, true, true))
-      .createPeerConnectionFactory()
-  }
-
-  DisposableEffect(Unit) {
-    onDispose {
-      factory.dispose()
-      eglBase.release()
-    }
-  }
+  val peerConnectionFactory = rememberPeerConnectionFactory()
 
   var streams by remember {
     mutableStateOf(
@@ -99,38 +69,7 @@ fun HomeScreen(onNavigateToConfig: () -> Unit) {
   var focusedStream by remember { mutableStateOf<String?>(null) }
 
   val gridState = rememberLazyGridState()
-  val density = LocalDensity.current
-  val configuration = LocalConfiguration.current
-  val overscrollThresholdPx = remember(configuration, density) {
-    with(density) { (configuration.screenHeightDp.dp).toPx() }
-  }
-  var overscrollPx by remember { mutableFloatStateOf(0f) }
-  var isReconfigureButtonVisible by remember { mutableStateOf(false) }
-
-  val overscrollNestedScrollConnection = remember(gridState, overscrollThresholdPx) {
-    object : NestedScrollConnection {
-      override fun onPostScroll(
-        consumed: Offset,
-        available: Offset,
-        source: NestedScrollSource
-      ): Offset {
-        if (source != NestedScrollSource.Drag) return Offset.Zero
-
-        // Só reconhece overscroll quando o usuário já está no fim da lista.
-        if (gridState.canScrollForward) {
-          overscrollPx = 0f
-          isReconfigureButtonVisible = false
-          return Offset.Zero
-        }
-
-        overscrollPx = (overscrollPx - available.y).coerceAtLeast(0f)
-        if (overscrollPx >= overscrollThresholdPx) {
-          isReconfigureButtonVisible = true
-        }
-        return Offset.Zero
-      }
-    }
-  }
+  val overscrollReconfigure = rememberOverscrollReconfigure(gridState)
 
   LaunchedEffect(focusedStream) {
     val window = (context as? Activity)?.window
@@ -165,8 +104,8 @@ fun HomeScreen(onNavigateToConfig: () -> Unit) {
         ) {
           WebRtcVideoPlayer(
             streamUrl = focusedStream!!,
-            factory = factory,
-            eglBase = eglBase,
+            factory = peerConnectionFactory.factory,
+            eglBase = peerConnectionFactory.eglBase,
             modifier = Modifier.fillMaxSize()
           )
         }
@@ -181,7 +120,7 @@ fun HomeScreen(onNavigateToConfig: () -> Unit) {
             modifier = Modifier
               .fillMaxSize()
               .background(Color.DarkGray)
-              .nestedScroll(overscrollNestedScrollConnection)
+              .nestedScroll(overscrollReconfigure.nestedScrollConnection)
           ) {
             itemsIndexed(streams, key = { _, url -> url }) { index, url ->
               Box(
@@ -192,8 +131,8 @@ fun HomeScreen(onNavigateToConfig: () -> Unit) {
               ) {
                 WebRtcVideoPlayer(
                   streamUrl = url,
-                  factory = factory,
-                  eglBase = eglBase,
+                  factory = peerConnectionFactory.factory,
+                  eglBase = peerConnectionFactory.eglBase,
                   modifier = Modifier.fillMaxSize()
                 )
 
@@ -244,7 +183,7 @@ fun HomeScreen(onNavigateToConfig: () -> Unit) {
           }
 
           AnimatedVisibility(
-            visible = isReconfigureButtonVisible,
+            visible = overscrollReconfigure.isReconfigureButtonVisible,
             modifier = Modifier
               .align(Alignment.BottomCenter)
               .padding(16.dp),
