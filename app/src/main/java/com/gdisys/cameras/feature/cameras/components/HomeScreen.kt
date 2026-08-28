@@ -8,26 +8,18 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.Button
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -123,62 +115,25 @@ fun HomeScreen(onNavigateToConfig: () -> Unit) {
               .nestedScroll(overscrollReconfigure.nestedScrollConnection)
           ) {
             itemsIndexed(streams, key = { _, url -> url }) { index, url ->
-              Box(
-                modifier = Modifier
-                  .aspectRatio(16f / 9f)
-                  .clip(RoundedCornerShape(8.dp))
-                  .clickable { focusedStream = url }
-              ) {
-                WebRtcVideoPlayer(
-                  streamUrl = url,
-                  factory = peerConnectionFactory.factory,
-                  eglBase = peerConnectionFactory.eglBase,
-                  modifier = Modifier.fillMaxSize()
-                )
-
-                Row(
-                  modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(8.dp)
-                    .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(8.dp)),
-                  verticalAlignment = Alignment.CenterVertically
-                ) {
-                  if (index > 0) {
-                    IconButton(
-                      onClick = {
-                        val newList = streams.toMutableList()
-                        val item = newList.removeAt(index)
-                        newList.add(index - 1, item)
-                        streams = newList
-                      },
-                      modifier = Modifier.size(32.dp)
-                    ) {
-                      Icon(
-                        imageVector = Icons.Default.KeyboardArrowUp,
-                        contentDescription = stringResource(R.string.home_screen_move_up),
-                        tint = Color.White
-                      )
-                    }
-                  }
-                  if (index < streams.size - 1) {
-                    IconButton(
-                      onClick = {
-                        val newList = streams.toMutableList()
-                        val item = newList.removeAt(index)
-                        newList.add(index + 1, item)
-                        streams = newList
-                      },
-                      modifier = Modifier.size(32.dp)
-                    ) {
-                      Icon(
-                        imageVector = Icons.Default.KeyboardArrowDown,
-                        contentDescription = stringResource(R.string.home_screen_move_down),
-                        tint = Color.White
-                      )
-                    }
-                  }
+              CameraGridItem(
+                url = url,
+                canMoveUp = index > 0,
+                canMoveDown = index < streams.size - 1,
+                peerConnectionFactory = peerConnectionFactory,
+                onFocusedStreamChange = { focusedStream = it },
+                onMoveUp = {
+                  val newList = streams.toMutableList()
+                  val item = newList.removeAt(index)
+                  newList.add(index - 1, item)
+                  streams = newList
+                },
+                onMoveDown = {
+                  val newList = streams.toMutableList()
+                  val item = newList.removeAt(index)
+                  newList.add(index + 1, item)
+                  streams = newList
                 }
-              }
+              )
             }
           }
 
