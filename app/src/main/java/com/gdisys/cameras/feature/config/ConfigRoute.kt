@@ -15,7 +15,8 @@ import com.gdisys.cameras.feature.config.components.ConfigScreen
 @Composable
 fun ConfigRoute(
   viewModel: ConfigViewModel,
-  onNavigateToHome: () -> Unit
+  onNavigateToHome: () -> Unit,
+  onQrCodeScanned: (String) -> Unit
 ) {
   val context = LocalContext.current
   val resources = LocalResources.current
@@ -46,15 +47,10 @@ fun ConfigRoute(
 
   ConfigScreen(
     uiState = uiState,
-    showToast = { configToastMessage ->
-      viewModel.showToast(configToastMessage)
-    },
-    updateUserPreferences = { userPreferences ->
-      viewModel.updateUserPreferences(userPreferences)
-    },
     acceptVpnPermission = {
       acceptVpnPermission()
     },
-    onNavigateToHome = onNavigateToHome
+    onNavigateToHome = onNavigateToHome,
+    onQrCodeScanned = onQrCodeScanned
   )
 }

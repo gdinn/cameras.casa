@@ -21,19 +21,14 @@ import androidx.compose.ui.unit.dp
 import com.gdisys.cameras.R
 import com.gdisys.cameras.core.components.LoadingStorageScreen
 import com.gdisys.cameras.core.components.QrCodeScreen
-import com.gdisys.cameras.core.storage.UserPreferences
-import com.gdisys.cameras.core.storage.isValid
 import com.gdisys.cameras.core.vpn.domain.VpnDataUiState
-import com.gdisys.cameras.feature.config.ConfigToastMessage
-import kotlinx.serialization.json.Json
 
 @Composable
 fun ConfigScreen(
   uiState: VpnDataUiState,
-  showToast: (ConfigToastMessage) -> Unit,
-  updateUserPreferences: (UserPreferences) -> Unit,
   acceptVpnPermission: () -> Unit,
-  onNavigateToHome: () -> Unit
+  onNavigateToHome: () -> Unit,
+  onQrCodeScanned: (String) -> Unit
 ) {
   Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
     var showScanner by remember { mutableStateOf(false) }
@@ -61,25 +56,8 @@ fun ConfigScreen(
           } else if (showScanner) {
             QrCodeScreen(
               onCodeScanned = { rawJson ->
-                try {
-                  val sanitizedJson = rawJson
-                    .trim()
-                    .replace("\uFEFF", "")
-                  val decoded = Json.decodeFromString<UserPreferences>(sanitizedJson)
-                  if (decoded.vpnConfigDefaults?.isValid() == true && decoded.vpnConfigTokens?.isValid() == true) {
-                    updateUserPreferences(decoded)
-                  } else {
-                    updateUserPreferences(UserPreferences())
-                    showToast(ConfigToastMessage.QR_CODE_INVALID_DATA_ERROR)
-                  }
-                  showScanner = false
-                } catch (e: Exception) {
-                  e.printStackTrace()
-                  updateUserPreferences(UserPreferences())
-                  showToast(ConfigToastMessage.QR_CODE_FORMAT_ERROR)
-                  // Se houver erro, fechamos o scanner para permitir tentar de novo (reseta o Analyzer)
-                  showScanner = false
-                }
+                onQrCodeScanned(rawJson)
+                showScanner = false
               }
             )
           } else {

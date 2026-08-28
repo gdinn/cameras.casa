@@ -7,7 +7,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
@@ -16,7 +15,6 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
-import androidx.navigation.compose.navigation
 import com.gdisys.cameras.feature.cameras.components.CamerasLoadingScreen
 import com.gdisys.cameras.feature.cameras.HomeViewModel
 import com.gdisys.cameras.feature.cameras.components.HomeScreen
@@ -58,6 +56,9 @@ fun NavigationRoot(
         viewModel = configViewModel,
         onNavigateToHome = {
           navigateToHome(navController)
+        },
+        onQrCodeScanned = {
+          configViewModel.onQrCodeScanned(it)
         }
       )
     }
