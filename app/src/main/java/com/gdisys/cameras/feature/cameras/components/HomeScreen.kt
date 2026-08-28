@@ -11,14 +11,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -30,7 +28,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
@@ -89,18 +86,10 @@ fun HomeScreen(onNavigateToConfig: () -> Unit) {
       contentAlignment = Alignment.Center
     ) {
       if (focusedStream != null) {
-        Box(
-          modifier = Modifier
-            .aspectRatio(16f / 9f)
-            .clip(RoundedCornerShape(8.dp))
-        ) {
-          WebRtcVideoPlayer(
-            streamUrl = focusedStream!!,
-            factory = peerConnectionFactory.factory,
-            eglBase = peerConnectionFactory.eglBase,
-            modifier = Modifier.fillMaxSize()
-          )
-        }
+        FocusedStreamView(
+          streamUrl = focusedStream!!,
+          peerConnectionFactory = peerConnectionFactory
+        )
       } else {
         Box(modifier = Modifier.fillMaxSize()) {
           LazyVerticalGrid(
