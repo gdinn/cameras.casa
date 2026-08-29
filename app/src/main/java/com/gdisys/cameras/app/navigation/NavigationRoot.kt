@@ -15,14 +15,12 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
-import com.gdisys.cameras.feature.cameras.components.CamerasLoadingScreen
+import com.gdisys.cameras.feature.cameras.HomeRoute
 import com.gdisys.cameras.feature.cameras.HomeViewModel
-import com.gdisys.cameras.feature.cameras.components.HomeScreen
 import com.gdisys.cameras.feature.config.ConfigRoute
 import com.gdisys.cameras.feature.config.ConfigViewModel
 import com.gdisys.cameras.feature.init.InitRoute
 import com.gdisys.cameras.feature.init.InitViewModel
-import com.wireguard.android.backend.Tunnel
 
 @Composable
 fun NavigationRoot(
@@ -65,48 +63,12 @@ fun NavigationRoot(
 
     composable<NavigationRoute.Home> {
       val homeViewModel: HomeViewModel = hiltViewModel()
-      val lifecycleOwner = LocalLifecycleOwner.current
-
-      // Observador de ciclo de vida exclusivo para a Home
-      DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-          when (event) {
-            Lifecycle.Event.ON_RESUME -> {
-              homeViewModel.connectVpn()
-            }
-            Lifecycle.Event.ON_PAUSE -> {
-              homeViewModel.disconnectVpn()
-            }
-            else -> { /* Ignorar */
-            }
-          }
+      HomeRoute(
+        viewModel = homeViewModel,
+        onNavigateToConfig = {
+          navController.navigate(NavigationRoute.Config)
         }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-          lifecycleOwner.lifecycle.removeObserver(observer)
-        }
-      }
-
-      val vpnState by homeViewModel.vpnState.collectAsState()
-      val isConnecting by homeViewModel.isConnecting.collectAsState()
-      val vpnReady = vpnState == Tunnel.State.UP && !isConnecting
-      if (vpnReady) {
-        val streams by homeViewModel.streams.collectAsState()
-        val focusedStream by homeViewModel.focusedStream.collectAsState()
-        HomeScreen(
-          streams = streams,
-          focusedStream = focusedStream,
-          onFocusStream = homeViewModel::focusStream,
-          onClearFocusedStream = homeViewModel::clearFocusedStream,
-          onMoveStreamUp = homeViewModel::moveStreamUp,
-          onMoveStreamDown = homeViewModel::moveStreamDown,
-          onNavigateToConfig = {
-            navController.navigate(NavigationRoute.Config)
-          }
-        )
-      } else {
-        CamerasLoadingScreen()
-      }
+      )
     }
   }
 }
