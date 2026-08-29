@@ -5,8 +5,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gdisys.cameras.core.DEBUG_TAG
 import com.gdisys.cameras.core.components.ToastUiEvent
-import com.gdisys.cameras.core.storage.DataStoreManager
 import com.gdisys.cameras.core.storage.UserPreferences
+import com.gdisys.cameras.core.storage.domain.usecase.SaveUserPreferencesUseCase
 import com.gdisys.cameras.core.storage.isValid
 import com.gdisys.cameras.core.vpn.domain.VpnConfigStatusProvider
 import com.gdisys.cameras.core.vpn.domain.VpnDataUiState
@@ -20,7 +20,7 @@ import javax.inject.Inject
 
 @HiltViewModel
 class ConfigViewModel @Inject constructor(
-  private val dataStoreManager: DataStoreManager,
+  private val saveUserPreferencesUseCase: SaveUserPreferencesUseCase,
   vpnConfigStatusProvider: VpnConfigStatusProvider
 ): ViewModel() {
   val uiState: StateFlow<VpnDataUiState> = vpnConfigStatusProvider.observe(viewModelScope)
@@ -64,7 +64,7 @@ class ConfigViewModel @Inject constructor(
 
   fun updateUserPreferences(userPreferences: UserPreferences) {
     viewModelScope.launch {
-      dataStoreManager.updateUserPreferences(userPreferences)
+      saveUserPreferencesUseCase(userPreferences)
     }
   }
 }

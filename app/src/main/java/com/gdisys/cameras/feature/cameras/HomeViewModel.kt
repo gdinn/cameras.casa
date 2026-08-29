@@ -2,7 +2,7 @@ package com.gdisys.cameras.feature.cameras
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.gdisys.cameras.core.storage.DataStoreManager
+import com.gdisys.cameras.core.storage.domain.usecase.GetUserPreferencesUseCase
 import com.gdisys.cameras.core.storage.toVpnConfigOrNull
 import com.gdisys.cameras.core.vpn.domain.VpnRepository
 import com.gdisys.cameras.core.vpn.domain.usecase.ConnectVpnUseCase
@@ -30,7 +30,7 @@ class HomeViewModel @Inject constructor(
   vpnRepository: VpnRepository,
   private val connectVpnUseCase: ConnectVpnUseCase,
   private val disconnectVpnUseCase: DisconnectVpnUseCase,
-  private val dataStoreManager: DataStoreManager
+  private val getUserPreferencesUseCase: GetUserPreferencesUseCase
 ) : ViewModel() {
   val vpnState: StateFlow<Tunnel.State> = vpnRepository.vpnState
 
@@ -70,7 +70,7 @@ class HomeViewModel @Inject constructor(
     viewModelScope.launch {
       _isConnecting.value = true
       try {
-        dataStoreManager.userPrefsState.first().toVpnConfigOrNull()?.let { config ->
+        getUserPreferencesUseCase().first().toVpnConfigOrNull()?.let { config ->
           connectVpnUseCase(config)
         }
       } finally {
