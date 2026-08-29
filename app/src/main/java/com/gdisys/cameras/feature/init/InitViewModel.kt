@@ -16,15 +16,34 @@ import javax.inject.Inject
 class InitViewModel  @Inject constructor(
   vpnConfigStatusProvider: VpnConfigStatusProvider
 ) : ViewModel(){
-  val uiState: StateFlow<VpnDataUiState> = vpnConfigStatusProvider.observe(viewModelScope)
-
   private val _toastUiEvent = Channel<ToastUiEvent>()
   val uiEvent = _toastUiEvent.receiveAsFlow()
+
+  private val _navigateUiEvent = Channel<NavigateUiEvent>()
+  val navigateUiEvent = _navigateUiEvent.receiveAsFlow()
+
+  init {
+    viewModelScope.launch {
+      vpnConfigStatusProvider.observe(viewModelScope).collect { state ->
+        if (state !is VpnDataUiState.Success) return@collect
+        if (state.vpnConfigTokensEmpty) {
+          showToast(InitToastMessage.CREDENTIALS_NOT_FOUND)
+          _navigateUiEvent.send(NavigateUiEvent.ToConfig)
+        } else {
+          _navigateUiEvent.send(NavigateUiEvent.ToHome)
+        }
+      }
+    }
+  }
 
   fun showToast(initToastMessage: InitToastMessage) {
     viewModelScope.launch {
       _toastUiEvent.send(ToastUiEvent.Show(initToastMessage.resId))
     }
   }
+}
 
+sealed interface NavigateUiEvent {
+  data object ToConfig: NavigateUiEvent
+  data object ToHome: NavigateUiEvent
 }

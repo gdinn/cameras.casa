@@ -1,6 +1,7 @@
 package com.gdisys.cameras.feature.init
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
@@ -15,7 +16,15 @@ fun InitRoute(
 ) {
   val context = LocalContext.current
   val resources = LocalResources.current
-  val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
+  LaunchedEffect(viewModel) {
+    viewModel.navigateUiEvent.collect { state ->
+      when(state) {
+        NavigateUiEvent.ToConfig -> onNavigateToConfig()
+        NavigateUiEvent.ToHome -> onNavigateToHome()
+      }
+    }
+  }
 
   ToastDisplayer(
     viewModel,
@@ -24,12 +33,5 @@ fun InitRoute(
     resources = resources
   )
 
-  InitScreen(
-    uiState,
-    showToast = { initToastMessage ->
-      viewModel.showToast(initToastMessage)
-    },
-    onNavigateToConfig = onNavigateToConfig,
-    onNavigateToHome = onNavigateToHome
-  )
+  InitScreen()
 }
