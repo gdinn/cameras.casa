@@ -1,19 +1,18 @@
 package com.gdisys.cameras.feature.config
 
 import android.util.Log
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gdisys.cameras.core.DEBUG_TAG
-import com.gdisys.cameras.core.components.ToastUiEvent
+import com.gdisys.cameras.core.components.ToastEventViewModel
 import com.gdisys.cameras.core.storage.UserPreferences
 import com.gdisys.cameras.core.storage.domain.usecase.SaveUserPreferencesUseCase
 import com.gdisys.cameras.core.storage.isValid
 import com.gdisys.cameras.core.vpn.domain.VpnConfigStatusProvider
 import com.gdisys.cameras.core.vpn.domain.VpnDataUiState
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import javax.inject.Inject
@@ -22,11 +21,12 @@ import javax.inject.Inject
 class ConfigViewModel @Inject constructor(
   private val saveUserPreferencesUseCase: SaveUserPreferencesUseCase,
   vpnConfigStatusProvider: VpnConfigStatusProvider
-): ViewModel() {
-  val uiState: StateFlow<VpnDataUiState> = vpnConfigStatusProvider.observe(viewModelScope)
-
-  private val _toastUiEvent = Channel<ToastUiEvent>()
-  val uiEvent = _toastUiEvent.receiveAsFlow()
+) : ToastEventViewModel() {
+  val uiState: StateFlow<VpnDataUiState> = vpnConfigStatusProvider.uiState.stateIn(
+    viewModelScope,
+    SharingStarted.WhileSubscribed(5000),
+    VpnDataUiState.Loading
+  )
 
   fun onQrCodeScanned(rawJson: String) {
       try {
@@ -56,11 +56,7 @@ class ConfigViewModel @Inject constructor(
     }
   }
 
-  fun showToast(configToastMessage: ConfigToastMessage) {
-    viewModelScope.launch {
-      _toastUiEvent.send(ToastUiEvent.Show(configToastMessage.resId))
-    }
-  }
+  fun showToast(configToastMessage: ConfigToastMessage) = showToast(configToastMessage.resId)
 
   fun updateUserPreferences(userPreferences: UserPreferences) {
     viewModelScope.launch {
