@@ -6,8 +6,8 @@ import android.view.ViewGroup
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gdisys.cameras.core.DEBUG_TAG
+import com.gdisys.cameras.core.storage.domain.toVpnConfigOrNull
 import com.gdisys.cameras.core.storage.domain.usecase.GetUserPreferencesUseCase
-import com.gdisys.cameras.core.storage.toVpnConfigOrNull
 import com.gdisys.cameras.core.vpn.domain.VpnRepository
 import com.gdisys.cameras.core.vpn.domain.VpnTunnelState
 import com.gdisys.cameras.core.vpn.domain.usecase.ConnectVpnUseCase

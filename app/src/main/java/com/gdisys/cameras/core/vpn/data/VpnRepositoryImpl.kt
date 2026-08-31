@@ -73,7 +73,6 @@ class VpnRepositoryImpl @Inject constructor(
       .parsePrivateKey(config.privateKey)
       .parseAddresses(config.address)
       .parseDnsServers(config.dns)
-      .addDnsSearchDomain(config.dnsSearchDomain)
       .parseMtu(config.mtu)
 
     // 2. Configuração do Peer (Servidor)

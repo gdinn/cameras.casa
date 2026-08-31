@@ -17,55 +17,6 @@ data class UserPreferences(
 
 )
 
-fun VpnConfigDefaults.isValid(): Boolean {
-  return  pPuk != null &&
-          iDns != null &&
-          pPersistentKeepAlive != null &&
-          iMtu != null &&
-          pEndpoint != null &&
-          pAllowedips != null
-}
-
-fun VpnConfigDefaults.isInvalid(): Boolean {
-  return !isValid()
-}
-
-fun VpnConfigTokens.isValid(): Boolean {
-  return iAddr != null &&
-          iPrk != null &&
-          pPsk != null
-}
-
-fun VpnConfigTokens.isInvalid(): Boolean {
-  return !isValid()
-}
-
-fun UserPreferences.toVpnConfigOrNull(): VpnConfig? {
-  // Validação de dados críticos. Se algum for nulo, a função aborta e retorna null.
-  val prk = vpnConfigTokens?.iPrk ?: return null
-  val puk = vpnConfigDefaults?.pPuk ?: return null
-  val addr = vpnConfigTokens.iAddr ?: return null
-  val dns = vpnConfigDefaults.iDns ?: return null
-  val pPsk = vpnConfigTokens.pPsk ?: return null
-  val keepAlive = vpnConfigDefaults.pPersistentKeepAlive ?: return null
-  val mtu = vpnConfigDefaults.iMtu ?: return null
-  val endpoint = vpnConfigDefaults.pEndpoint ?: return null
-  val allowedIps = vpnConfigDefaults.pAllowedips ?: return null
-
-  return VpnConfig(
-    privateKey = prk,
-    publicKey = puk,
-    address = addr,
-    endpoint = endpoint,
-    allowedIps = allowedIps,
-    dns = dns,
-    preSharedKey = pPsk,
-    keepAlive = keepAlive,
-    mtu = mtu,
-    dnsSearchDomain = "casa"
-  )
-}
-
 object UserPreferencesSerializer: Serializer<UserPreferences> {
   override val defaultValue: UserPreferences
     get() = UserPreferences()

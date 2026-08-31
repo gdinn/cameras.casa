@@ -6,9 +6,9 @@ import com.gdisys.cameras.core.DEBUG_TAG
 import com.gdisys.cameras.core.components.ToastEventViewModel
 import com.gdisys.cameras.core.storage.UserPreferences
 import com.gdisys.cameras.core.storage.domain.usecase.SaveUserPreferencesUseCase
-import com.gdisys.cameras.core.storage.isValid
 import com.gdisys.cameras.core.storage.domain.VpnConfigStatusProvider
 import com.gdisys.cameras.core.storage.domain.VpnDataUiState
+import com.gdisys.cameras.core.storage.domain.isValid
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
