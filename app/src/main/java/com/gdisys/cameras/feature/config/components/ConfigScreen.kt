@@ -21,7 +21,7 @@ import androidx.compose.ui.unit.dp
 import com.gdisys.cameras.R
 import com.gdisys.cameras.core.components.LoadingStorageScreen
 import com.gdisys.cameras.core.components.QrCodeScreen
-import com.gdisys.cameras.core.vpn.domain.VpnDataUiState
+import com.gdisys.cameras.core.storage.domain.VpnDataUiState
 
 @Composable
 fun ConfigScreen(

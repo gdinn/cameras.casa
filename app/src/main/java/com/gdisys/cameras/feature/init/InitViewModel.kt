@@ -2,8 +2,8 @@ package com.gdisys.cameras.feature.init
 
 import androidx.lifecycle.viewModelScope
 import com.gdisys.cameras.core.components.ToastEventViewModel
-import com.gdisys.cameras.core.vpn.domain.VpnConfigStatusProvider
-import com.gdisys.cameras.core.vpn.domain.VpnDataUiState
+import com.gdisys.cameras.core.storage.domain.VpnConfigStatusProvider
+import com.gdisys.cameras.core.storage.domain.VpnDataUiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.receiveAsFlow
