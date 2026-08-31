@@ -1,17 +1,20 @@
 package com.gdisys.cameras.feature.cameras
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.gdisys.cameras.core.DEBUG_TAG
 import com.gdisys.cameras.core.storage.domain.usecase.GetUserPreferencesUseCase
 import com.gdisys.cameras.core.storage.toVpnConfigOrNull
 import com.gdisys.cameras.core.vpn.domain.VpnRepository
+import com.gdisys.cameras.core.vpn.domain.VpnTunnelState
 import com.gdisys.cameras.core.vpn.domain.usecase.ConnectVpnUseCase
 import com.gdisys.cameras.core.vpn.domain.usecase.DisconnectVpnUseCase
-import com.wireguard.android.backend.Tunnel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -32,16 +35,32 @@ class HomeViewModel @Inject constructor(
   private val disconnectVpnUseCase: DisconnectVpnUseCase,
   private val getUserPreferencesUseCase: GetUserPreferencesUseCase
 ) : ViewModel() {
-  val vpnState: StateFlow<Tunnel.State> = vpnRepository.vpnState
-
-  private val _isConnecting = MutableStateFlow(false)
-  val isConnecting: StateFlow<Boolean> = _isConnecting.asStateFlow()
+  private val _uiState: MutableStateFlow<HomeUiState> = MutableStateFlow(HomeUiState.Loading)
+  val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
   private val _streams = MutableStateFlow(DEFAULT_CAMERA_STREAMS)
-  val streams: StateFlow<List<String>> = _streams.asStateFlow()
-
   private val _focusedStream = MutableStateFlow<String?>(null)
-  val focusedStream: StateFlow<String?> = _focusedStream.asStateFlow()
+
+  init {
+    viewModelScope.launch {
+      combine(
+        _streams,
+        _focusedStream,
+        vpnRepository.vpnState
+      ) { streams, focusedStream, vpn ->
+        if (vpn != VpnTunnelState.CONNECTED) {
+          return@combine HomeUiState.Loading
+        } else {
+          return@combine HomeUiState.Ready(
+            streams = streams,
+            focusedStream = focusedStream
+          )
+        }
+      }.collect {
+        _uiState.value = it
+      }
+    }
+  }
 
   fun focusStream(url: String) {
     _focusedStream.value = url
@@ -68,13 +87,12 @@ class HomeViewModel @Inject constructor(
 
   fun connectVpn() {
     viewModelScope.launch {
-      _isConnecting.value = true
       try {
         getUserPreferencesUseCase().first().toVpnConfigOrNull()?.let { config ->
           connectVpnUseCase(config)
         }
-      } finally {
-        _isConnecting.value = false
+      } catch (e: Exception) {
+        Log.d(DEBUG_TAG, e.message.toString())
       }
     }
   }
