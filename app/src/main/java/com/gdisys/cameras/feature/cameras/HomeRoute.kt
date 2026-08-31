@@ -19,14 +19,18 @@ fun HomeRoute(
   val uiState by viewModel.uiState.collectAsStateWithLifecycle()
   when (val state = uiState) {
     HomeUiState.Loading -> CamerasLoadingScreen()
-    is HomeUiState.Ready -> HomeScreen(
-      streams = state.streams,
-      focusedStream = state.focusedStream,
-      onFocusStream = viewModel::focusStream,
-      onClearFocusedStream = viewModel::clearFocusedStream,
-      onMoveStreamUp = viewModel::moveStreamUp,
-      onMoveStreamDown = viewModel::moveStreamDown,
-      onNavigateToConfig = onNavigateToConfig
-    )
+    is HomeUiState.Ready -> {
+      HomeScreen(
+        streams = state.streams,
+        focusedStream = state.focusedStream,
+        onStartWhepConnection = viewModel::startWhepConnection,
+        onCreateRenderer = viewModel::onCreateRenderer,
+        onFocusStream = viewModel::focusStream,
+        onClearFocusedStream = viewModel::clearFocusedStream,
+        onMoveStreamUp = viewModel::moveStreamUp,
+        onMoveStreamDown = viewModel::moveStreamDown,
+        onNavigateToConfig = onNavigateToConfig
+      )
+    }
   }
 }

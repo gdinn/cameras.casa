@@ -1,5 +1,6 @@
 package com.gdisys.cameras.feature.cameras.components
 
+import android.content.Context
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -27,18 +28,21 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.gdisys.cameras.R
+import com.gdisys.cameras.core.webrtc.domain.WhepClient
+import org.webrtc.SurfaceViewRenderer
 
 @Composable
 fun HomeScreen(
   streams: List<String>,
   focusedStream: String?,
+  onStartWhepConnection: suspend (streamUrl: String, renderer: SurfaceViewRenderer) -> WhepClient?,
+  onCreateRenderer: (context: Context) -> SurfaceViewRenderer,
   onFocusStream: (String) -> Unit,
   onClearFocusedStream: () -> Unit,
   onMoveStreamUp: (Int) -> Unit,
   onMoveStreamDown: (Int) -> Unit,
   onNavigateToConfig: () -> Unit
 ) {
-  val peerConnectionFactory = rememberPeerConnectionFactory()
 
   val gridState = rememberLazyGridState()
   val overscrollReconfigure = rememberOverscrollReconfigure(gridState)
@@ -59,8 +63,9 @@ fun HomeScreen(
     ) {
       if (focusedStream != null) {
         FocusedStreamView(
-          streamUrl = focusedStream!!,
-          peerConnectionFactory = peerConnectionFactory
+          streamUrl = focusedStream,
+          onCreateRenderer = onCreateRenderer,
+          onStartWhepConnection = onStartWhepConnection
         )
       } else {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -80,7 +85,8 @@ fun HomeScreen(
                 url = url,
                 canMoveUp = index > 0,
                 canMoveDown = index < streams.size - 1,
-                peerConnectionFactory = peerConnectionFactory,
+                onStartWhepConnection = onStartWhepConnection,
+                onCreateRenderer = onCreateRenderer,
                 onFocusedStreamChange = onFocusStream,
                 onMoveUp = { onMoveStreamUp(index) },
                 onMoveDown = { onMoveStreamDown(index) }
