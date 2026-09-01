@@ -1,10 +1,7 @@
 package com.gdisys.cameras.core.components
 
-import android.Manifest
 import android.util.Log
 import android.view.ViewGroup
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
@@ -18,9 +15,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -29,7 +23,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.gdisys.cameras.R
 import com.gdisys.cameras.core.utils.QrCodeAnalyzer
@@ -37,35 +30,16 @@ import java.util.concurrent.ExecutorService
 
 @Composable
 fun QrCodeScreen(
-  onCodeScanned: (String) -> Unit,
-  viewModel: QrCodeViewModel = hiltViewModel()
+  hasCameraPermission: Boolean,
+  analyzerExecutor: ExecutorService,
+  onRequestCameraPermission: () -> Unit,
+  onQrCodeScanned: (String) -> Unit
 ) {
-  val hasCameraPermission by viewModel.hasCameraPermission.collectAsState()
-
-  // Launcher para solicitar a permissão
-  val permissionLauncher = rememberLauncherForActivityResult(
-    contract = ActivityResultContracts.RequestPermission(),
-    onResult = viewModel::onPermissionResult
-  )
-
-  // Solicita a permissão assim que a tela abre, caso ainda não tenha
-  LaunchedEffect(Unit) {
-    if (!hasCameraPermission) {
-      permissionLauncher.launch(Manifest.permission.CAMERA)
-    }
-  }
-
-  LaunchedEffect(viewModel) {
-    viewModel.qrCodeScannedEvent.collect { rawValue ->
-      onCodeScanned(rawValue)
-    }
-  }
-
   // Renderiza a câmera se tem permissão, ou uma mensagem caso contrário
   if (hasCameraPermission) {
-    QrCodeScreenPreview(
-      analyzerExecutor = viewModel.analyzerExecutor,
-      onQrCodeScanned = viewModel::onQrCodeScanned
+    QrCodeCameraPreview(
+      analyzerExecutor = analyzerExecutor,
+      onQrCodeScanned = onQrCodeScanned
     )
   } else {
     Column(
@@ -75,7 +49,7 @@ fun QrCodeScreen(
     ) {
       Text(stringResource(R.string.qrcode_screen_camera_permission_required))
       Spacer(modifier = Modifier.height(16.dp))
-      Button(onClick = { permissionLauncher.launch(Manifest.permission.CAMERA) }) {
+      Button(onClick = onRequestCameraPermission) {
         Text(stringResource(R.string.qrcode_screen_camera_grant_access))
       }
     }
@@ -83,7 +57,7 @@ fun QrCodeScreen(
 }
 
 @Composable
-private fun QrCodeScreenPreview(
+private fun QrCodeCameraPreview(
   modifier: Modifier = Modifier,
   analyzerExecutor: ExecutorService,
   onQrCodeScanned: (String) -> Unit

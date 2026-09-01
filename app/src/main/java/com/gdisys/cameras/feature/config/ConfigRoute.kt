@@ -6,7 +6,11 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.gdisys.cameras.core.components.QrCodeRoute
 import com.gdisys.cameras.core.components.ToastDisplayer
 import com.gdisys.cameras.feature.config.components.ConfigScreen
 
@@ -17,6 +21,7 @@ fun ConfigRoute(
   onQrCodeScanned: (String) -> Unit
 ) {
   val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+  var showScanner by rememberSaveable { mutableStateOf(false) }
 
   val vpnLauncher = rememberLauncherForActivityResult(
     ActivityResultContracts.StartActivityForResult()
@@ -42,10 +47,19 @@ fun ConfigRoute(
 
   ConfigScreen(
     uiState = uiState,
+    showScanner = showScanner,
+    onShowScanner = { showScanner = true },
     acceptVpnPermission = {
       viewModel.acceptVpnPermission()
     },
     onNavigateToHome = onNavigateToHome,
-    onQrCodeScanned = onQrCodeScanned
+    qrCodeScanner = {
+      QrCodeRoute(
+        onCodeScanned = { rawJson ->
+          onQrCodeScanned(rawJson)
+          showScanner = false
+        }
+      )
+    }
   )
 }
