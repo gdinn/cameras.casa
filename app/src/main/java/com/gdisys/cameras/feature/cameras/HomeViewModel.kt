@@ -12,6 +12,7 @@ import com.gdisys.cameras.core.vpn.domain.usecase.ConnectVpnUseCase
 import com.gdisys.cameras.core.vpn.domain.usecase.DisconnectVpnUseCase
 import com.gdisys.cameras.core.webrtc.domain.WhepClient
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -47,6 +48,9 @@ class HomeViewModel @Inject constructor(
   private val _streams = MutableStateFlow(DEFAULT_CAMERA_STREAMS)
   private val _focusedStream = MutableStateFlow<String?>(null)
 
+  private val whepConnectionJobs = mutableMapOf<String, Job>()
+  private val whepClients = mutableMapOf<String, WhepClient>()
+
   init {
     viewModelScope.launch {
       combine(
@@ -68,15 +72,21 @@ class HomeViewModel @Inject constructor(
     }
   }
 
-  suspend fun startWhepConnection(streamUrl: String, renderer: SurfaceViewRenderer): WhepClient? {
-    try {
-      val whepClient = whepClientProvider.get()
-      whepClient.connect(streamUrl, renderer)
-      return whepClient
-    } catch (e: Exception) {
-      Log.d(DEBUG_TAG, e.message.toString())
+  fun connectStream(streamUrl: String, renderer: SurfaceViewRenderer) {
+    whepConnectionJobs[streamUrl] = viewModelScope.launch {
+      try {
+        val whepClient = whepClientProvider.get()
+        whepClient.connect(streamUrl, renderer)
+        whepClients[streamUrl] = whepClient
+      } catch (e: Exception) {
+        Log.d(DEBUG_TAG, e.message.toString())
+      }
     }
-    return null
+  }
+
+  fun disconnectStream(streamUrl: String) {
+    whepConnectionJobs.remove(streamUrl)?.cancel()
+    whepClients.remove(streamUrl)?.close()
   }
 
   fun focusStream(url: String) {

@@ -29,7 +29,6 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.gdisys.cameras.R
-import com.gdisys.cameras.core.webrtc.domain.WhepClient
 import org.webrtc.EglBase
 import org.webrtc.SurfaceViewRenderer
 
@@ -38,7 +37,8 @@ fun HomeScreen(
   streams: List<String>,
   focusedStream: String?,
   eglBase: EglBase,
-  onStartWhepConnection: suspend (streamUrl: String, renderer: SurfaceViewRenderer) -> WhepClient?,
+  onConnectStream: (streamUrl: String, renderer: SurfaceViewRenderer) -> Unit,
+  onDisconnectStream: (streamUrl: String) -> Unit,
   onFocusStream: (String) -> Unit,
   onClearFocusedStream: () -> Unit,
   onMoveStreamUp: (Int) -> Unit,
@@ -55,8 +55,8 @@ fun HomeScreen(
     onClearFocusedStream()
   }
 
-  val webRtcConnection = remember(eglBase, onStartWhepConnection) {
-    WebRtcConnection(eglBase = eglBase, startConnection = onStartWhepConnection)
+  val webRtcConnection = remember(eglBase, onConnectStream, onDisconnectStream) {
+    WebRtcConnection(eglBase = eglBase, connect = onConnectStream, disconnect = onDisconnectStream)
   }
 
   CompositionLocalProvider(LocalWebRtcConnection provides webRtcConnection) {

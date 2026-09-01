@@ -4,12 +4,9 @@ import android.view.ViewGroup
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
-import com.gdisys.cameras.core.webrtc.domain.WhepClient
-import kotlinx.coroutines.launch
 import org.webrtc.SurfaceViewRenderer
 
 @Composable
@@ -19,7 +16,6 @@ fun WebRtcVideoPlayer(
 ) {
   val context = LocalContext.current
   val connection = LocalWebRtcConnection.current
-  val scope = rememberCoroutineScope()
   val renderer = remember(connection.eglBase) {
     SurfaceViewRenderer(context).apply {
       layoutParams = ViewGroup.LayoutParams(
@@ -31,16 +27,11 @@ fun WebRtcVideoPlayer(
       setEnableHardwareScaler(true)
     }
   }
-  var whepClient : WhepClient? = null
   DisposableEffect(streamUrl) {
-    val job = scope.launch {
-      whepClient = connection.startConnection(streamUrl, renderer)
-    }
+    connection.connect(streamUrl, renderer)
     onDispose {
-      job.cancel()
-      whepClient?.close()
+      connection.disconnect(streamUrl)
     }
-
   }
   AndroidView(factory = { renderer }, modifier = modifier)
 }
