@@ -16,12 +16,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.gdisys.cameras.R
 import com.gdisys.cameras.core.components.LoadingStorageScreen
-import com.gdisys.cameras.core.storage.domain.VpnDataUiState
+import com.gdisys.cameras.feature.config.ConfigUiState
 
 @Composable
 fun ConfigScreen(
-  uiState: VpnDataUiState,
-  showScanner: Boolean,
+  uiState: ConfigUiState,
   onShowScanner: () -> Unit,
   acceptVpnPermission: () -> Unit,
   onNavigateToHome: () -> Unit,
@@ -37,23 +36,23 @@ fun ConfigScreen(
     ) {
 
       when (uiState) {
-        is VpnDataUiState.Loading -> {
+        is ConfigUiState.Loading -> {
           LoadingStorageScreen()
         }
 
-        is VpnDataUiState.Success -> {
-          if (!uiState.vpnConfigTokensEmpty && !showScanner) {
-            Text(text = stringResource(R.string.config_screen_settings_loaded))
-            Spacer(modifier = Modifier.height(8.dp))
-            Button(onClick = onShowScanner) {
-              Text(text = stringResource(R.string.config_screen_reload_settings))
-            }
-          } else if (showScanner) {
-            qrCodeScanner()
-          } else {
-            Button(onClick = onShowScanner) {
-              Text(text = stringResource(R.string.config_screen_load_settings))
-            }
+        is ConfigUiState.Scanning -> {
+          qrCodeScanner()
+
+          Spacer(modifier = Modifier.height(16.dp))
+
+          Button(onClick = acceptVpnPermission) {
+            Text(text = stringResource(R.string.config_screen_accept_vpn_permission))
+          }
+        }
+
+        is ConfigUiState.NeedsConfiguration -> {
+          Button(onClick = onShowScanner) {
+            Text(text = stringResource(R.string.config_screen_load_settings))
           }
 
           Spacer(modifier = Modifier.height(16.dp))
@@ -61,11 +60,24 @@ fun ConfigScreen(
           Button(onClick = acceptVpnPermission) {
             Text(text = stringResource(R.string.config_screen_accept_vpn_permission))
           }
-          if (!uiState.vpnConfigTokensEmpty && !showScanner) {
-            Spacer(modifier = Modifier.height(32.dp))
-            Button(onClick = { onNavigateToHome() }) {
-              Text(text = stringResource(R.string.config_screen_navigate_to_home))
-            }
+        }
+
+        is ConfigUiState.ConfigurationLoaded -> {
+          Text(text = stringResource(R.string.config_screen_settings_loaded))
+          Spacer(modifier = Modifier.height(8.dp))
+          Button(onClick = onShowScanner) {
+            Text(text = stringResource(R.string.config_screen_reload_settings))
+          }
+
+          Spacer(modifier = Modifier.height(16.dp))
+
+          Button(onClick = acceptVpnPermission) {
+            Text(text = stringResource(R.string.config_screen_accept_vpn_permission))
+          }
+
+          Spacer(modifier = Modifier.height(32.dp))
+          Button(onClick = { onNavigateToHome() }) {
+            Text(text = stringResource(R.string.config_screen_navigate_to_home))
           }
         }
       }

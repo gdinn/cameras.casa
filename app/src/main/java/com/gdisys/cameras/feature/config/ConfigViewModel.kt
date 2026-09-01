@@ -7,17 +7,19 @@ import android.util.Log
 import androidx.lifecycle.viewModelScope
 import com.gdisys.cameras.core.DEBUG_TAG
 import com.gdisys.cameras.core.ToastEventViewModel
+import com.gdisys.cameras.core.storage.domain.VpnCredentialsStatus
 import com.gdisys.cameras.core.storage.domain.model.UserPreferences
 import com.gdisys.cameras.core.storage.domain.usecase.GetVpnConfigStatusUseCase
 import com.gdisys.cameras.core.storage.domain.usecase.ParseUserPreferencesFromQrCodeUseCase
 import com.gdisys.cameras.core.storage.domain.usecase.SaveUserPreferencesUseCase
-import com.gdisys.cameras.core.storage.domain.VpnDataUiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -34,15 +36,32 @@ class ConfigViewModel @Inject constructor(
   getVpnConfigStatusUseCase: GetVpnConfigStatusUseCase,
   @ApplicationContext private val context: Context
 ) : ToastEventViewModel() {
-  val uiState: StateFlow<VpnDataUiState> = getVpnConfigStatusUseCase().stateIn(
+  private val _showScanner = MutableStateFlow(false)
+
+  val uiState: StateFlow<ConfigUiState> = combine(
+    getVpnConfigStatusUseCase(),
+    _showScanner
+  ) { status, showScanner ->
+    when {
+      status is VpnCredentialsStatus.Loading -> ConfigUiState.Loading
+      showScanner -> ConfigUiState.Scanning
+      status is VpnCredentialsStatus.Loaded && status.hasValidCredentials -> ConfigUiState.ConfigurationLoaded
+      else -> ConfigUiState.NeedsConfiguration
+    }
+  }.stateIn(
     viewModelScope,
     SharingStarted.WhileSubscribed(5000),
-    VpnDataUiState.Loading
+    ConfigUiState.Loading
   )
   private val _vpnPermissionUiEvent = Channel<VpnPermissionUiEvent>()
   val vpnPermissionUiEvent: Flow<VpnPermissionUiEvent> = _vpnPermissionUiEvent.receiveAsFlow()
 
+  fun onShowScanner() {
+    _showScanner.value = true
+  }
+
   fun onQrCodeScanned(rawJson: String) {
+      _showScanner.value = false
       try {
         val userPreferences = parseUserPreferencesFromQrCodeUseCase(rawJson)
         if(userPreferences == null) {
