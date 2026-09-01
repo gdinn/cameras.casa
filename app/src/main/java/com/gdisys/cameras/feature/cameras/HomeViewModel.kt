@@ -1,8 +1,6 @@
 package com.gdisys.cameras.feature.cameras
 
-import android.content.Context
 import android.util.Log
-import android.view.ViewGroup
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gdisys.cameras.core.DEBUG_TAG
@@ -79,18 +77,6 @@ class HomeViewModel @Inject constructor(
       Log.d(DEBUG_TAG, e.message.toString())
     }
     return null
-  }
-
-  fun onCreateRenderer(context: Context): SurfaceViewRenderer {
-    return SurfaceViewRenderer(context).apply {
-      layoutParams = ViewGroup.LayoutParams(
-        ViewGroup.LayoutParams.MATCH_PARENT,
-        ViewGroup.LayoutParams.MATCH_PARENT
-      )
-      init(eglBase.eglBaseContext, null)
-      setMirror(false)
-      setEnableHardwareScaler(true)
-    }
   }
 
   fun focusStream(url: String) {

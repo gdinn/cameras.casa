@@ -1,6 +1,5 @@
 package com.gdisys.cameras.feature.cameras.components
 
-import android.content.Context
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -10,13 +9,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import com.gdisys.cameras.core.webrtc.domain.WhepClient
+import org.webrtc.EglBase
 import org.webrtc.SurfaceViewRenderer
 
 @Composable
 fun FocusedStreamView(
   streamUrl: String,
+  eglBase: EglBase,
   onStartWhepConnection: suspend (streamUrl: String, renderer: SurfaceViewRenderer) -> WhepClient?,
-  onCreateRenderer: (context: Context) -> SurfaceViewRenderer,
   modifier: Modifier = Modifier
 ) {
   Box(
@@ -26,8 +26,8 @@ fun FocusedStreamView(
   ) {
     WebRtcVideoPlayer(
       streamUrl = streamUrl,
+      eglBase = eglBase,
       onStartWhepConnection = onStartWhepConnection,
-      onCreateRenderer = onCreateRenderer,
       modifier = Modifier.fillMaxSize()
     )
   }

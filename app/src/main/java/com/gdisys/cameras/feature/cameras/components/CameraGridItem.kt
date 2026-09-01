@@ -1,6 +1,5 @@
 package com.gdisys.cameras.feature.cameras.components
 
-import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -24,6 +23,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.gdisys.cameras.R
 import com.gdisys.cameras.core.webrtc.domain.WhepClient
+import org.webrtc.EglBase
 import org.webrtc.SurfaceViewRenderer
 
 @Composable
@@ -31,8 +31,8 @@ fun CameraGridItem(
   url: String,
   canMoveUp: Boolean,
   canMoveDown: Boolean,
+  eglBase: EglBase,
   onStartWhepConnection: suspend (streamUrl: String, renderer: SurfaceViewRenderer) -> WhepClient?,
-  onCreateRenderer: (context: Context) -> SurfaceViewRenderer,
   onFocusedStreamChange: (String) -> Unit,
   onMoveUp: () -> Unit,
   onMoveDown: () -> Unit
@@ -45,8 +45,8 @@ fun CameraGridItem(
   ) {
     WebRtcVideoPlayer(
       streamUrl = url,
+      eglBase = eglBase,
       onStartWhepConnection = onStartWhepConnection,
-      onCreateRenderer = onCreateRenderer,
       modifier = Modifier.fillMaxSize()
     )
 

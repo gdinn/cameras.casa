@@ -1,6 +1,5 @@
 package com.gdisys.cameras.feature.cameras.components
 
-import android.content.Context
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -29,14 +28,15 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.gdisys.cameras.R
 import com.gdisys.cameras.core.webrtc.domain.WhepClient
+import org.webrtc.EglBase
 import org.webrtc.SurfaceViewRenderer
 
 @Composable
 fun HomeScreen(
   streams: List<String>,
   focusedStream: String?,
+  eglBase: EglBase,
   onStartWhepConnection: suspend (streamUrl: String, renderer: SurfaceViewRenderer) -> WhepClient?,
-  onCreateRenderer: (context: Context) -> SurfaceViewRenderer,
   onFocusStream: (String) -> Unit,
   onClearFocusedStream: () -> Unit,
   onMoveStreamUp: (Int) -> Unit,
@@ -64,7 +64,7 @@ fun HomeScreen(
       if (focusedStream != null) {
         FocusedStreamView(
           streamUrl = focusedStream,
-          onCreateRenderer = onCreateRenderer,
+          eglBase = eglBase,
           onStartWhepConnection = onStartWhepConnection
         )
       } else {
@@ -85,8 +85,8 @@ fun HomeScreen(
                 url = url,
                 canMoveUp = index > 0,
                 canMoveDown = index < streams.size - 1,
+                eglBase = eglBase,
                 onStartWhepConnection = onStartWhepConnection,
-                onCreateRenderer = onCreateRenderer,
                 onFocusedStreamChange = onFocusStream,
                 onMoveUp = { onMoveStreamUp(index) },
                 onMoveDown = { onMoveStreamDown(index) }

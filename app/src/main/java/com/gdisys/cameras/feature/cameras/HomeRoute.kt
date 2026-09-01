@@ -23,8 +23,8 @@ fun HomeRoute(
       HomeScreen(
         streams = state.streams,
         focusedStream = state.focusedStream,
+        eglBase = viewModel.eglBase,
         onStartWhepConnection = viewModel::startWhepConnection,
-        onCreateRenderer = viewModel::onCreateRenderer,
         onFocusStream = viewModel::focusStream,
         onClearFocusedStream = viewModel::clearFocusedStream,
         onMoveStreamUp = viewModel::moveStreamUp,
