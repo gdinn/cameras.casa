@@ -1,6 +1,8 @@
 package com.gdisys.cameras.core.vpn.data
 
 import android.content.Context
+import android.content.Intent
+import android.net.VpnService
 import android.util.Log
 import com.gdisys.cameras.core.DEBUG_TAG
 import com.gdisys.cameras.core.vpn.domain.model.VpnConfig
@@ -107,4 +109,6 @@ class VpnRepositoryImpl @Inject constructor(
   override fun getTunnelState(): VpnTunnelState {
     return backend.getState(tunnel).toVpnTunnelState()
   }
+
+  override fun getVpnPermissionIntent(): Intent? = VpnService.prepare(context)
 }

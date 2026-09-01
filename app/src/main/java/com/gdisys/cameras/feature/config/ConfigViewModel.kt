@@ -1,8 +1,6 @@
 package com.gdisys.cameras.feature.config
 
-import android.content.Context
 import android.content.Intent
-import android.net.VpnService
 import android.util.Log
 import androidx.lifecycle.viewModelScope
 import com.gdisys.cameras.core.DEBUG_TAG
@@ -12,8 +10,8 @@ import com.gdisys.cameras.core.storage.domain.model.UserPreferences
 import com.gdisys.cameras.core.storage.domain.usecase.GetVpnConfigStatusUseCase
 import com.gdisys.cameras.core.storage.domain.usecase.ParseUserPreferencesFromQrCodeUseCase
 import com.gdisys.cameras.core.storage.domain.usecase.SaveUserPreferencesUseCase
+import com.gdisys.cameras.core.vpn.domain.usecase.RequestVpnPermissionUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,7 +32,7 @@ class ConfigViewModel @Inject constructor(
   private val saveUserPreferencesUseCase: SaveUserPreferencesUseCase,
   private val parseUserPreferencesFromQrCodeUseCase: ParseUserPreferencesFromQrCodeUseCase,
   getVpnConfigStatusUseCase: GetVpnConfigStatusUseCase,
-  @ApplicationContext private val context: Context
+  private val requestVpnPermissionUseCase: RequestVpnPermissionUseCase
 ) : ToastEventViewModel() {
   private val _showScanner = MutableStateFlow(false)
 
@@ -89,10 +87,10 @@ class ConfigViewModel @Inject constructor(
   }
 
   fun acceptVpnPermission() {
-    requestVpnPermission(VpnService.prepare(context))
+    handleVpnPermissionIntent(requestVpnPermissionUseCase())
   }
 
-  private fun requestVpnPermission(intent: Intent?) {
+  private fun handleVpnPermissionIntent(intent: Intent?) {
     if(intent != null) {
       viewModelScope.launch {
         _vpnPermissionUiEvent.send(VpnPermissionUiEvent.RequestPermission(intent))
