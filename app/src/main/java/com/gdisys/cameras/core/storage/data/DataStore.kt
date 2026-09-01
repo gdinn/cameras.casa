@@ -1,4 +1,4 @@
-package com.gdisys.cameras.core.storage
+package com.gdisys.cameras.core.storage.data
 
 import android.content.Context
 import androidx.datastore.dataStore

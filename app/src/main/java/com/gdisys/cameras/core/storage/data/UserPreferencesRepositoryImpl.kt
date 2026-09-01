@@ -1,7 +1,7 @@
 package com.gdisys.cameras.core.storage.data
 
-import com.gdisys.cameras.core.storage.DataStoreManager
-import com.gdisys.cameras.core.storage.UserPreferences
+import com.gdisys.cameras.core.storage.data.DataStoreManager
+import com.gdisys.cameras.core.storage.domain.model.UserPreferences
 import com.gdisys.cameras.core.storage.domain.UserPreferencesRepository
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject

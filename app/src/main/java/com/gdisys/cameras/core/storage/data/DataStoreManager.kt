@@ -1,6 +1,7 @@
-package com.gdisys.cameras.core.storage
+package com.gdisys.cameras.core.storage.data
 
 import androidx.datastore.core.DataStore
+import com.gdisys.cameras.core.storage.domain.model.UserPreferences
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
 import javax.inject.Singleton

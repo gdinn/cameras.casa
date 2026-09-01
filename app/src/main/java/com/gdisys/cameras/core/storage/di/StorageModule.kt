@@ -2,8 +2,8 @@ package com.gdisys.cameras.core.storage.di
 
 import android.content.Context
 import androidx.datastore.core.DataStore
-import com.gdisys.cameras.core.storage.UserPreferences
-import com.gdisys.cameras.core.storage.dataStore
+import com.gdisys.cameras.core.storage.domain.model.UserPreferences
+import com.gdisys.cameras.core.storage.data.dataStore
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn

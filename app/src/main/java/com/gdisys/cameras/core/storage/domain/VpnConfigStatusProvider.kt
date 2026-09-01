@@ -1,5 +1,6 @@
 package com.gdisys.cameras.core.storage.domain
 
+import com.gdisys.cameras.core.storage.domain.model.isInvalid
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject

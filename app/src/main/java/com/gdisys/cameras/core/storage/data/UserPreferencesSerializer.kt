@@ -1,21 +1,13 @@
-package com.gdisys.cameras.core.storage
+package com.gdisys.cameras.core.storage.data
 
 import androidx.datastore.core.Serializer
-import com.gdisys.cameras.core.vpn.domain.model.VpnConfig
+import com.gdisys.cameras.core.storage.domain.model.UserPreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.io.InputStream
 import java.io.OutputStream
 import java.util.Base64
-
-@Serializable
-data class UserPreferences(
-  val vpnConfigDefaults: VpnConfigDefaults? = null,
-  val vpnConfigTokens: VpnConfigTokens? = null
-
-)
 
 object UserPreferencesSerializer: Serializer<UserPreferences> {
   override val defaultValue: UserPreferences

@@ -1,6 +1,6 @@
 package com.gdisys.cameras.core.storage.domain
 
-import com.gdisys.cameras.core.storage.UserPreferences
+import com.gdisys.cameras.core.storage.domain.model.UserPreferences
 import com.gdisys.cameras.core.vpn.domain.model.VpnConfig
 
 fun UserPreferences.toVpnConfigOrNull(): VpnConfig? {

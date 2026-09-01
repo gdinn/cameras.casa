@@ -1,7 +1,4 @@
-package com.gdisys.cameras.core.storage.domain
-
-import com.gdisys.cameras.core.storage.VpnConfigDefaults
-import com.gdisys.cameras.core.storage.VpnConfigTokens
+package com.gdisys.cameras.core.storage.domain.model
 
 fun VpnConfigTokens.isValid(): Boolean {
   return iAddr != null &&

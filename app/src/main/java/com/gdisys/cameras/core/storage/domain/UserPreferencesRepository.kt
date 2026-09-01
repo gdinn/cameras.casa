@@ -1,6 +1,6 @@
 package com.gdisys.cameras.core.storage.domain
 
-import com.gdisys.cameras.core.storage.UserPreferences
+import com.gdisys.cameras.core.storage.domain.model.UserPreferences
 import kotlinx.coroutines.flow.Flow
 
 interface UserPreferencesRepository {

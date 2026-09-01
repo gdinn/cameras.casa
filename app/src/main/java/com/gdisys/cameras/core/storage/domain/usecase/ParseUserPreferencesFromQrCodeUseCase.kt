@@ -1,7 +1,7 @@
 package com.gdisys.cameras.core.storage.domain.usecase
 
-import com.gdisys.cameras.core.storage.UserPreferences
-import com.gdisys.cameras.core.storage.domain.isValid
+import com.gdisys.cameras.core.storage.domain.model.UserPreferences
+import com.gdisys.cameras.core.storage.domain.model.isValid
 import kotlinx.serialization.json.Json
 import javax.inject.Inject
 

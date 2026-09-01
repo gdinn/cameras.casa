@@ -7,7 +7,7 @@ import android.util.Log
 import androidx.lifecycle.viewModelScope
 import com.gdisys.cameras.core.DEBUG_TAG
 import com.gdisys.cameras.core.components.ToastEventViewModel
-import com.gdisys.cameras.core.storage.UserPreferences
+import com.gdisys.cameras.core.storage.domain.model.UserPreferences
 import com.gdisys.cameras.core.storage.domain.usecase.ParseUserPreferencesFromQrCodeUseCase
 import com.gdisys.cameras.core.storage.domain.usecase.SaveUserPreferencesUseCase
 import com.gdisys.cameras.core.storage.domain.VpnConfigStatusProvider

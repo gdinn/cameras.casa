@@ -1,4 +1,4 @@
-package com.gdisys.cameras.core.storage
+package com.gdisys.cameras.core.storage.domain.model
 
 import kotlinx.serialization.Serializable
 
