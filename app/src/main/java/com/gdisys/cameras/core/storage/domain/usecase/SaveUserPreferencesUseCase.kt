@@ -7,7 +7,10 @@ import javax.inject.Inject
 class SaveUserPreferencesUseCase @Inject constructor(
   private val userPreferencesRepository: UserPreferencesRepository
 ) {
-  suspend operator fun invoke(userPreferences: UserPreferences) {
+  suspend operator fun invoke(userPreferences: UserPreferences): Result<Unit> = try {
     userPreferencesRepository.updateUserPreferences(userPreferences)
+    Result.success(Unit)
+  } catch (e: Exception) {
+    Result.failure(e)
   }
 }

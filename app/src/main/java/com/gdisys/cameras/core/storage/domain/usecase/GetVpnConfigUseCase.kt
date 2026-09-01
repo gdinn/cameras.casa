@@ -9,6 +9,9 @@ import javax.inject.Inject
 class GetVpnConfigUseCase @Inject constructor(
   private val userPreferencesRepository: UserPreferencesRepository
 ) {
-  suspend operator fun invoke(): VpnConfig? =
-    userPreferencesRepository.userPreferences.first().toVpnConfigOrNull()
+  suspend operator fun invoke(): Result<VpnConfig?> = try {
+    Result.success(userPreferencesRepository.userPreferences.first().toVpnConfigOrNull())
+  } catch (e: Exception) {
+    Result.failure(e)
+  }
 }

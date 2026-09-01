@@ -9,5 +9,6 @@ enum class ConfigToastMessage(@StringRes override val resId: Int) : ToastMessage
   PERMISSION_ALREADY_GRANTED(R.string.config_route_vpn_already_granted),
   QR_CODE_FORMAT_ERROR(R.string.qr_code_format_error),
   QR_CODE_INVALID_DATA_ERROR(R.string.qr_code_invalid_data_error),
+  SAVE_PREFERENCES_ERROR(R.string.config_route_save_preferences_error),
 }
 

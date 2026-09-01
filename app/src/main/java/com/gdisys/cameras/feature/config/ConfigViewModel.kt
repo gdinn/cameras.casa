@@ -81,7 +81,10 @@ class ConfigViewModel @Inject constructor(
 
   fun updateUserPreferences(userPreferences: UserPreferences) {
     viewModelScope.launch {
-      saveUserPreferencesUseCase(userPreferences)
+      saveUserPreferencesUseCase(userPreferences).onFailure { e ->
+        Log.e(DEBUG_TAG, "Failed to save user preferences", e)
+        showToast(ConfigToastMessage.SAVE_PREFERENCES_ERROR)
+      }
     }
   }
 

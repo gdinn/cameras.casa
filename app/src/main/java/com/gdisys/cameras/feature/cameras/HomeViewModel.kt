@@ -11,7 +11,6 @@ import com.gdisys.cameras.core.vpn.domain.usecase.DisconnectVpnUseCase
 import com.gdisys.cameras.core.vpn.domain.usecase.ObserveVpnStateUseCase
 import com.gdisys.cameras.core.webrtc.data.WhepConnectionManager
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -99,18 +98,18 @@ class HomeViewModel @Inject constructor(
 
   fun connectVpn() {
     viewModelScope.launch {
-      try {
-        val config = getVpnConfigUseCase()
-        connectVpnUseCase(config).onFailure { e ->
+      getVpnConfigUseCase().fold(
+        onSuccess = { config ->
+          connectVpnUseCase(config).onFailure { e ->
+            Log.d(DEBUG_TAG, e.message.toString())
+            showToast(HomeToastMessage.VPN_CONNECTION_ERROR)
+          }
+        },
+        onFailure = { e ->
           Log.d(DEBUG_TAG, e.message.toString())
           showToast(HomeToastMessage.VPN_CONNECTION_ERROR)
         }
-      } catch (e: CancellationException) {
-        throw e
-      } catch (e: Exception) {
-        Log.d(DEBUG_TAG, e.message.toString())
-        showToast(HomeToastMessage.VPN_CONNECTION_ERROR)
-      }
+      )
     }
   }
 

@@ -10,6 +10,7 @@
     <!-- Config Route -->
     <string name="config_route_vpn_accepted">VPN Permission Accepted</string>
     <string name="config_route_vpn_already_granted">Permission already granted</string>
+    <string name="config_route_save_preferences_error">Failed to save settings</string>
 
     <!-- Config Screen -->
     <string name="config_screen_settings_loaded">Settings loaded!</string>
