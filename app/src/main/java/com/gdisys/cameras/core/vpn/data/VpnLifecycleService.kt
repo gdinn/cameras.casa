@@ -37,6 +37,11 @@ class VpnLifecycleService : Service() {
 
   override fun onDestroy() {
     super.onDestroy()
-    // Opcional: garantir que a VPN caia se o serviço for destruído por outros motivos
+
+    // Garante que a VPN caia se o serviço for destruído por outros motivos
+    // (ex.: sistema encerrando o serviço), não só via onTaskRemoved.
+    serviceScope.launch {
+      vpnRepository.disconnect()
+    }
   }
 }

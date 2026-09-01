@@ -9,8 +9,7 @@ data class VpnConfig(
   val endpoint: String,
   val allowedIps: String,
   val keepAlive: String,
-  val mtu: String,
-  val dnsSearchDomain: String
+  val mtu: String
 )
 
 fun VpnConfig.isValid(): Boolean {
@@ -23,8 +22,7 @@ fun VpnConfig.isValid(): Boolean {
     endpoint,
     allowedIps,
     keepAlive,
-    mtu,
-    dnsSearchDomain
+    mtu
   )
   return properties.all { it.isNotBlank() }
 }

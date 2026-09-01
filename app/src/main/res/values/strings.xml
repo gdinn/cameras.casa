@@ -1,3 +1,43 @@
 <resources>
     <string name="app_name">Cameras</string>
+
+    <!-- Init Screen -->
+    <string name="init_screen_no_credentials">Credentials not found</string>
+
+    <!-- Loading Screen -->
+    <string name="loading_screen_verifying_credentials">Verifying credentials…</string>">
+
+    <!-- Config Route -->
+    <string name="config_route_vpn_accepted">VPN Permission Accepted</string>
+    <string name="config_route_vpn_already_granted">Permission already granted</string>
+    <string name="config_route_save_preferences_error">Failed to save settings</string>
+
+    <!-- Config Screen -->
+    <string name="config_screen_settings_loaded">Settings loaded!</string>
+    <string name="config_screen_reload_settings">Reload settings</string>
+    <string name="config_screen_load_settings">Load settings</string>
+    <string name="config_screen_accept_vpn_permission">Accept VPN permission</string>
+    <string name="config_screen_navigate_to_home">Navigate to Home</string>
+
+    <!-- QR Code validations -->
+    <string name="qr_code_format_error">Invalid QR Code</string>
+    <string name="qr_code_invalid_data_error">Invalid Data</string>
+
+
+    <!-- QR Code Screen -->
+    <string name="qrcode_screen_camera_permission_required">Camera access is required to scan QR Codes</string>
+    <string name="qrcode_screen_camera_grant_access">Grant access</string>
+
+    <!-- QR Code Route -->
+    <string name="qrcode_route_camera_init_error">Failed to start camera</string>
+
+    <!-- Home Screen -->
+    <string name="home_screen_move_up">Move up</string>
+    <string name="home_screen_move_down">Move down</string>
+    <string name="home_screen_establishing_secure_connection">Establishing secure connection…</string>
+    <string name="home_screen_reconfigure">Reconfigure</string>
+
+    <!-- Home Route -->
+    <string name="home_route_vpn_connection_error">Failed to connect to VPN</string>
+    <string name="home_route_stream_connection_error">Failed to connect to camera stream</string>
 </resources>
