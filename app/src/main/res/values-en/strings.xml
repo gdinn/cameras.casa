@@ -19,4 +19,5 @@
     <string name="home_screen_establishing_secure_connection">Establishing secure connection…</string>
     <string name="home_screen_reconfigure">Reconfigure</string>
     <string name="home_route_vpn_connection_error">Failed to connect to VPN</string>
+    <string name="home_route_stream_connection_error">Failed to connect to camera stream</string>
 </resources>

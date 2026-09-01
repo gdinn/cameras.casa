@@ -11,6 +11,7 @@ import com.gdisys.cameras.core.vpn.domain.usecase.DisconnectVpnUseCase
 import com.gdisys.cameras.core.vpn.domain.usecase.ObserveVpnStateUseCase
 import com.gdisys.cameras.core.webrtc.data.WhepConnectionManager
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -64,7 +65,9 @@ class HomeViewModel @Inject constructor(
   }
 
   fun connectStream(streamUrl: String, videoSink: VideoSink) {
-    whepConnectionManager.connect(streamUrl, videoSink)
+    whepConnectionManager.connect(streamUrl, videoSink) {
+      showToast(HomeToastMessage.STREAM_CONNECTION_ERROR)
+    }
   }
 
   fun disconnectStream(streamUrl: String) {
@@ -102,6 +105,8 @@ class HomeViewModel @Inject constructor(
           Log.d(DEBUG_TAG, e.message.toString())
           showToast(HomeToastMessage.VPN_CONNECTION_ERROR)
         }
+      } catch (e: CancellationException) {
+        throw e
       } catch (e: Exception) {
         Log.d(DEBUG_TAG, e.message.toString())
         showToast(HomeToastMessage.VPN_CONNECTION_ERROR)

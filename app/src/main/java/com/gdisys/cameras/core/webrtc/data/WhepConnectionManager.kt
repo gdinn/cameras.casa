@@ -3,6 +3,7 @@ package com.gdisys.cameras.core.webrtc.data
 import android.util.Log
 import com.gdisys.cameras.core.DEBUG_TAG
 import com.gdisys.cameras.core.webrtc.WhepClient
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -27,14 +28,17 @@ class WhepConnectionManager @Inject constructor(
   private val connectionJobs = mutableMapOf<String, Job>()
   private val clients = mutableMapOf<String, WhepClient>()
 
-  fun connect(streamUrl: String, videoSink: VideoSink) {
+  fun connect(streamUrl: String, videoSink: VideoSink, onError: (Throwable) -> Unit = {}) {
     val job = scope.launch {
       try {
         val whepClient = whepClientProvider.get()
         whepClient.connect(streamUrl, videoSink)
         synchronized(lock) { clients[streamUrl] = whepClient }
+      } catch (e: CancellationException) {
+        throw e
       } catch (e: Exception) {
         Log.d(DEBUG_TAG, e.message.toString())
+        onError(e)
       }
     }
     synchronized(lock) { connectionJobs[streamUrl] = job }
