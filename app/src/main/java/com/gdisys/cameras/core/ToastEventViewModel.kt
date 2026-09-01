@@ -18,4 +18,6 @@ abstract class ToastEventViewModel : ViewModel() {
       _toastUiEvent.send(ToastUiEvent.Show(resId))
     }
   }
+
+  fun showToast(toastMessage: ToastMessage) = showToast(toastMessage.resId)
 }

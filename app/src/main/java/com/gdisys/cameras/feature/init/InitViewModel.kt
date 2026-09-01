@@ -30,8 +30,6 @@ class InitViewModel  @Inject constructor(
       }
     }
   }
-
-  fun showToast(initToastMessage: InitToastMessage) = showToast(initToastMessage.resId)
 }
 
 sealed interface NavigateUiEvent {

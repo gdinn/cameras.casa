@@ -58,8 +58,6 @@ class ConfigViewModel @Inject constructor(
       }
   }
 
-  fun showToast(configToastMessage: ConfigToastMessage) = showToast(configToastMessage.resId)
-
   fun updateUserPreferences(userPreferences: UserPreferences) {
     viewModelScope.launch {
       saveUserPreferencesUseCase(userPreferences)
