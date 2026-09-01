@@ -10,25 +10,23 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import com.gdisys.cameras.core.webrtc.domain.WhepClient
 import kotlinx.coroutines.launch
-import org.webrtc.EglBase
 import org.webrtc.SurfaceViewRenderer
 
 @Composable
 fun WebRtcVideoPlayer(
   streamUrl: String,
-  eglBase: EglBase,
-  onStartWhepConnection: suspend (streamUrl: String, renderer: SurfaceViewRenderer) -> WhepClient?,
   modifier: Modifier = Modifier,
 ) {
   val context = LocalContext.current
+  val connection = LocalWebRtcConnection.current
   val scope = rememberCoroutineScope()
-  val renderer = remember(eglBase) {
+  val renderer = remember(connection.eglBase) {
     SurfaceViewRenderer(context).apply {
       layoutParams = ViewGroup.LayoutParams(
         ViewGroup.LayoutParams.MATCH_PARENT,
         ViewGroup.LayoutParams.MATCH_PARENT
       )
-      init(eglBase.eglBaseContext, null)
+      init(connection.eglBase.eglBaseContext, null)
       setMirror(false)
       setEnableHardwareScaler(true)
     }
@@ -36,7 +34,7 @@ fun WebRtcVideoPlayer(
   var whepClient : WhepClient? = null
   DisposableEffect(streamUrl) {
     val job = scope.launch {
-      whepClient = onStartWhepConnection(streamUrl, renderer)
+      whepClient = connection.startConnection(streamUrl, renderer)
     }
     onDispose {
       job.cancel()

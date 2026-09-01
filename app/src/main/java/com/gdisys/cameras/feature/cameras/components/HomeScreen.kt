@@ -20,6 +20,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -53,57 +55,57 @@ fun HomeScreen(
     onClearFocusedStream()
   }
 
-  Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-    Box(
-      modifier = Modifier
-        .padding(innerPadding)
-        .fillMaxSize()
-        .background(Color.Black),
-      contentAlignment = Alignment.Center
-    ) {
-      if (focusedStream != null) {
-        FocusedStreamView(
-          streamUrl = focusedStream,
-          eglBase = eglBase,
-          onStartWhepConnection = onStartWhepConnection
-        )
-      } else {
-        Box(modifier = Modifier.fillMaxSize()) {
-          LazyVerticalGrid(
-            state = gridState,
-            columns = GridCells.Fixed(1),
-            contentPadding = PaddingValues(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier
-              .fillMaxSize()
-              .background(Color.DarkGray)
-              .nestedScroll(overscrollReconfigure.nestedScrollConnection)
-          ) {
-            itemsIndexed(streams, key = { _, url -> url }) { index, url ->
-              CameraGridItem(
-                url = url,
-                canMoveUp = index > 0,
-                canMoveDown = index < streams.size - 1,
-                eglBase = eglBase,
-                onStartWhepConnection = onStartWhepConnection,
-                onFocusedStreamChange = onFocusStream,
-                onMoveUp = { onMoveStreamUp(index) },
-                onMoveDown = { onMoveStreamDown(index) }
-              )
-            }
-          }
+  val webRtcConnection = remember(eglBase, onStartWhepConnection) {
+    WebRtcConnection(eglBase = eglBase, startConnection = onStartWhepConnection)
+  }
 
-          AnimatedVisibility(
-            visible = overscrollReconfigure.isReconfigureButtonVisible,
-            modifier = Modifier
-              .align(Alignment.BottomCenter)
-              .padding(16.dp),
-            enter = fadeIn() + slideInVertically(initialOffsetY = { it }),
-            exit = fadeOut() + slideOutVertically(targetOffsetY = { it })
-          ) {
-            Button(onClick = onNavigateToConfig) {
-              Text(text = stringResource(R.string.home_screen_reconfigure))
+  CompositionLocalProvider(LocalWebRtcConnection provides webRtcConnection) {
+    Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+      Box(
+        modifier = Modifier
+          .padding(innerPadding)
+          .fillMaxSize()
+          .background(Color.Black),
+        contentAlignment = Alignment.Center
+      ) {
+        if (focusedStream != null) {
+          FocusedStreamView(streamUrl = focusedStream)
+        } else {
+          Box(modifier = Modifier.fillMaxSize()) {
+            LazyVerticalGrid(
+              state = gridState,
+              columns = GridCells.Fixed(1),
+              contentPadding = PaddingValues(8.dp),
+              verticalArrangement = Arrangement.spacedBy(8.dp),
+              horizontalArrangement = Arrangement.spacedBy(8.dp),
+              modifier = Modifier
+                .fillMaxSize()
+                .background(Color.DarkGray)
+                .nestedScroll(overscrollReconfigure.nestedScrollConnection)
+            ) {
+              itemsIndexed(streams, key = { _, url -> url }) { index, url ->
+                CameraGridItem(
+                  url = url,
+                  canMoveUp = index > 0,
+                  canMoveDown = index < streams.size - 1,
+                  onFocusedStreamChange = onFocusStream,
+                  onMoveUp = { onMoveStreamUp(index) },
+                  onMoveDown = { onMoveStreamDown(index) }
+                )
+              }
+            }
+
+            AnimatedVisibility(
+              visible = overscrollReconfigure.isReconfigureButtonVisible,
+              modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(16.dp),
+              enter = fadeIn() + slideInVertically(initialOffsetY = { it }),
+              exit = fadeOut() + slideOutVertically(targetOffsetY = { it })
+            ) {
+              Button(onClick = onNavigateToConfig) {
+                Text(text = stringResource(R.string.home_screen_reconfigure))
+              }
             }
           }
         }

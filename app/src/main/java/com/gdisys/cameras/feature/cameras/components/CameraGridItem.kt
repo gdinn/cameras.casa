@@ -22,17 +22,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.gdisys.cameras.R
-import com.gdisys.cameras.core.webrtc.domain.WhepClient
-import org.webrtc.EglBase
-import org.webrtc.SurfaceViewRenderer
 
 @Composable
 fun CameraGridItem(
   url: String,
   canMoveUp: Boolean,
   canMoveDown: Boolean,
-  eglBase: EglBase,
-  onStartWhepConnection: suspend (streamUrl: String, renderer: SurfaceViewRenderer) -> WhepClient?,
   onFocusedStreamChange: (String) -> Unit,
   onMoveUp: () -> Unit,
   onMoveDown: () -> Unit
@@ -45,8 +40,6 @@ fun CameraGridItem(
   ) {
     WebRtcVideoPlayer(
       streamUrl = url,
-      eglBase = eglBase,
-      onStartWhepConnection = onStartWhepConnection,
       modifier = Modifier.fillMaxSize()
     )
 
