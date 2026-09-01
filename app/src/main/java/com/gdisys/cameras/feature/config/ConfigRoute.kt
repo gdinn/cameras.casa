@@ -5,6 +5,7 @@ import android.net.VpnService
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
@@ -30,14 +31,16 @@ fun ConfigRoute(
     }
   }
 
-  fun acceptVpnPermission() {
-    val intent = VpnService.prepare(context)
-    if (intent != null) {
-      vpnLauncher.launch(intent)
-    } else {
-      viewModel.showToast(ConfigToastMessage.PERMISSION_ALREADY_GRANTED)
+  LaunchedEffect(viewModel) {
+    viewModel.vpnPermissionUiEvent.collect { event ->
+      when(event) {
+        is VpnPermissionUiEvent.RequestPermission -> {
+          vpnLauncher.launch(event.intent)
+        }
+      }
     }
   }
+
   ToastDisplayer(
     viewModel,
     toastUiEvent = viewModel.uiEvent,
@@ -48,7 +51,7 @@ fun ConfigRoute(
   ConfigScreen(
     uiState = uiState,
     acceptVpnPermission = {
-      acceptVpnPermission()
+      viewModel.requestVpnPermission(VpnService.prepare(context))
     },
     onNavigateToHome = onNavigateToHome,
     onQrCodeScanned = onQrCodeScanned
