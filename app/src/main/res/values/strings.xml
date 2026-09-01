@@ -32,4 +32,7 @@
     <string name="home_screen_move_down">Move down</string>
     <string name="home_screen_establishing_secure_connection">Establishing secure connection…</string>
     <string name="home_screen_reconfigure">Reconfigure</string>
+
+    <!-- Home Route -->
+    <string name="home_route_vpn_connection_error">Failed to connect to VPN</string>
 </resources>

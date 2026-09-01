@@ -1,9 +1,9 @@
 package com.gdisys.cameras.feature.cameras
 
 import android.util.Log
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gdisys.cameras.core.DEBUG_TAG
+import com.gdisys.cameras.core.ToastEventViewModel
 import com.gdisys.cameras.core.storage.domain.usecase.GetVpnConfigUseCase
 import com.gdisys.cameras.core.vpn.domain.VpnTunnelState
 import com.gdisys.cameras.core.vpn.domain.usecase.ConnectVpnUseCase
@@ -37,7 +37,7 @@ class HomeViewModel @Inject constructor(
   private val disconnectVpnUseCase: DisconnectVpnUseCase,
   private val getVpnConfigUseCase: GetVpnConfigUseCase,
   private val whepClientProvider: Provider<WhepClient>
-) : ViewModel() {
+) : ToastEventViewModel() {
   private val _uiState: MutableStateFlow<HomeUiState> = MutableStateFlow(HomeUiState.Loading)
   val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
@@ -111,11 +111,14 @@ class HomeViewModel @Inject constructor(
   fun connectVpn() {
     viewModelScope.launch {
       try {
-        getVpnConfigUseCase()?.let { config ->
-          connectVpnUseCase(config)
+        val config = getVpnConfigUseCase()
+        connectVpnUseCase(config).onFailure { e ->
+          Log.d(DEBUG_TAG, e.message.toString())
+          showToast(HomeToastMessage.VPN_CONNECTION_ERROR)
         }
       } catch (e: Exception) {
         Log.d(DEBUG_TAG, e.message.toString())
+        showToast(HomeToastMessage.VPN_CONNECTION_ERROR)
       }
     }
   }

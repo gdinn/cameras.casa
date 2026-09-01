@@ -5,6 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.gdisys.cameras.core.components.ToastDisplayer
 import com.gdisys.cameras.feature.cameras.components.CamerasLoadingScreen
 import com.gdisys.cameras.feature.cameras.components.HomeScreen
 import org.webrtc.EglBase
@@ -17,6 +18,8 @@ fun HomeRoute(
 ) {
   LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.connectVpn() }
   LifecycleEventEffect(Lifecycle.Event.ON_PAUSE) { viewModel.disconnectVpn() }
+
+  ToastDisplayer(toastUiEvent = viewModel.uiEvent)
 
   val uiState by viewModel.uiState.collectAsStateWithLifecycle()
   when (val state = uiState) {
