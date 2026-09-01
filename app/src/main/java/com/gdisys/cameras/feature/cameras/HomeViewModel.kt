@@ -9,9 +9,8 @@ import com.gdisys.cameras.core.vpn.domain.VpnTunnelState
 import com.gdisys.cameras.core.vpn.domain.usecase.ConnectVpnUseCase
 import com.gdisys.cameras.core.vpn.domain.usecase.DisconnectVpnUseCase
 import com.gdisys.cameras.core.vpn.domain.usecase.ObserveVpnStateUseCase
-import com.gdisys.cameras.core.webrtc.WhepClient
+import com.gdisys.cameras.core.webrtc.data.WhepConnectionManager
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -20,7 +19,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.webrtc.VideoSink
 import javax.inject.Inject
-import javax.inject.Provider
 
 // TODO: Pegar via storage os endpoints finais -> http://[fd00:20::cafe] é padrão por conta do network_security_config
 private val DEFAULT_CAMERA_STREAMS = listOf(
@@ -36,16 +34,13 @@ class HomeViewModel @Inject constructor(
   private val connectVpnUseCase: ConnectVpnUseCase,
   private val disconnectVpnUseCase: DisconnectVpnUseCase,
   private val getVpnConfigUseCase: GetVpnConfigUseCase,
-  private val whepClientProvider: Provider<WhepClient>
+  private val whepConnectionManager: WhepConnectionManager
 ) : ToastEventViewModel() {
   private val _uiState: MutableStateFlow<HomeUiState> = MutableStateFlow(HomeUiState.Loading)
   val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
   private val _streams = MutableStateFlow(DEFAULT_CAMERA_STREAMS)
   private val _focusedStream = MutableStateFlow<String?>(null)
-
-  private val whepConnectionJobs = mutableMapOf<String, Job>()
-  private val whepClients = mutableMapOf<String, WhepClient>()
 
   init {
     viewModelScope.launch {
@@ -69,20 +64,11 @@ class HomeViewModel @Inject constructor(
   }
 
   fun connectStream(streamUrl: String, videoSink: VideoSink) {
-    whepConnectionJobs[streamUrl] = viewModelScope.launch {
-      try {
-        val whepClient = whepClientProvider.get()
-        whepClient.connect(streamUrl, videoSink)
-        whepClients[streamUrl] = whepClient
-      } catch (e: Exception) {
-        Log.d(DEBUG_TAG, e.message.toString())
-      }
-    }
+    whepConnectionManager.connect(streamUrl, videoSink)
   }
 
   fun disconnectStream(streamUrl: String) {
-    whepConnectionJobs.remove(streamUrl)?.cancel()
-    whepClients.remove(streamUrl)?.close()
+    whepConnectionManager.disconnect(streamUrl)
   }
 
   fun focusStream(url: String) {
@@ -127,5 +113,10 @@ class HomeViewModel @Inject constructor(
     viewModelScope.launch {
       disconnectVpnUseCase()
     }
+  }
+
+  override fun onCleared() {
+    whepConnectionManager.closeAll()
+    super.onCleared()
   }
 }
