@@ -6,15 +6,20 @@ import kotlinx.serialization.json.Json
 import javax.inject.Inject
 
 class ParseUserPreferencesFromQrCodeUseCase @Inject constructor() {
-  operator fun invoke(rawJson: String): UserPreferences? {
+  operator fun invoke(rawJson: String): Result<UserPreferences?> {
     val sanitizedJson = rawJson
       .trim()
       .replace("﻿", "")
-    val decoded = Json.decodeFromString<UserPreferences>(sanitizedJson)
-    return if (decoded.vpnConfigDefaults?.isValid() == true && decoded.vpnConfigTokens?.isValid() == true) {
-      decoded
-    } else {
-      null
+    return try {
+      val decoded = Json.decodeFromString<UserPreferences>(sanitizedJson)
+      val userPreferences = if (decoded.vpnConfigDefaults?.isValid() == true && decoded.vpnConfigTokens?.isValid() == true) {
+        decoded
+      } else {
+        null
+      }
+      Result.success(userPreferences)
+    } catch (e: Exception) {
+      Result.failure(e)
     }
   }
 }

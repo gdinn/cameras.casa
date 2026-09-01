@@ -62,19 +62,21 @@ class ConfigViewModel @Inject constructor(
 
   fun onQrCodeScanned(rawJson: String) {
       _showScanner.value = false
-      try {
-        val userPreferences = parseUserPreferencesFromQrCodeUseCase(rawJson)
-        if(userPreferences == null) {
+      parseUserPreferencesFromQrCodeUseCase(rawJson).fold(
+        onSuccess = { userPreferences ->
+          if (userPreferences == null) {
+            updateUserPreferences(UserPreferences())
+            showToast(ConfigToastMessage.QR_CODE_INVALID_DATA_ERROR)
+          } else {
+            updateUserPreferences(userPreferences)
+          }
+        },
+        onFailure = { e ->
+          Log.e(DEBUG_TAG, "QR Code scan error", e)
           updateUserPreferences(UserPreferences())
-          showToast(ConfigToastMessage.QR_CODE_INVALID_DATA_ERROR)
-        } else {
-          updateUserPreferences(userPreferences)
+          showToast(ConfigToastMessage.QR_CODE_FORMAT_ERROR)
         }
-      } catch (e: Exception) {
-        Log.e(DEBUG_TAG, "QR Code scan error", e)
-        updateUserPreferences(UserPreferences())
-        showToast(ConfigToastMessage.QR_CODE_FORMAT_ERROR)
-      }
+      )
   }
 
   fun updateUserPreferences(userPreferences: UserPreferences) {
