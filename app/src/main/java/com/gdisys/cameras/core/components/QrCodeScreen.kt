@@ -1,7 +1,6 @@
 package com.gdisys.cameras.core.components
 
 import android.Manifest
-import android.content.pm.PackageManager
 import android.util.Log
 import android.view.ViewGroup
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -20,10 +19,9 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -31,53 +29,52 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.gdisys.cameras.R
 import com.gdisys.cameras.core.utils.QrCodeAnalyzer
-import java.util.concurrent.Executors
+import java.util.concurrent.ExecutorService
 
 @Composable
 fun QrCodeScreen(
-  onCodeScanned: (String) -> Unit
+  onCodeScanned: (String) -> Unit,
+  viewModel: QrCodeViewModel = hiltViewModel()
 ) {
-  val context = LocalContext.current
-
-  // Estado que guarda se a permissão foi concedida
-  var hasCameraPermission by remember {
-    mutableStateOf(
-      ContextCompat.checkSelfPermission(
-        context,
-        Manifest.permission.CAMERA
-      ) == PackageManager.PERMISSION_GRANTED
-    )
-  }
+  val hasCameraPermission by viewModel.hasCameraPermission.collectAsState()
 
   // Launcher para solicitar a permissão
   val permissionLauncher = rememberLauncherForActivityResult(
     contract = ActivityResultContracts.RequestPermission(),
-    onResult = { granted ->
-      hasCameraPermission = granted
-    }
+    onResult = viewModel::onPermissionResult
   )
 
   // Solicita a permissão assim que a tela abre, caso ainda não tenha
-  LaunchedEffect(key1 = true) {
+  LaunchedEffect(Unit) {
     if (!hasCameraPermission) {
       permissionLauncher.launch(Manifest.permission.CAMERA)
     }
   }
 
+  LaunchedEffect(viewModel) {
+    viewModel.qrCodeScannedEvent.collect { rawValue ->
+      onCodeScanned(rawValue)
+    }
+  }
+
   // Renderiza a câmera se tem permissão, ou uma mensagem caso contrário
   if (hasCameraPermission) {
-    QrCodeScreenPreview(onQrCodeScanned = onCodeScanned)
+    QrCodeScreenPreview(
+      analyzerExecutor = viewModel.analyzerExecutor,
+      onQrCodeScanned = viewModel::onQrCodeScanned
+    )
   } else {
     Column(
-      modifier = Modifier.Companion.fillMaxSize(),
-      horizontalAlignment = Alignment.Companion.CenterHorizontally,
+      modifier = Modifier.fillMaxSize(),
+      horizontalAlignment = Alignment.CenterHorizontally,
       verticalArrangement = Arrangement.Center
     ) {
       Text(stringResource(R.string.qrcode_screen_camera_permission_required))
-      Spacer(modifier = Modifier.Companion.height(16.dp))
+      Spacer(modifier = Modifier.height(16.dp))
       Button(onClick = { permissionLauncher.launch(Manifest.permission.CAMERA) }) {
         Text(stringResource(R.string.qrcode_screen_camera_grant_access))
       }
@@ -88,11 +85,12 @@ fun QrCodeScreen(
 @Composable
 private fun QrCodeScreenPreview(
   modifier: Modifier = Modifier,
+  analyzerExecutor: ExecutorService,
   onQrCodeScanned: (String) -> Unit
 ) {
   val context = LocalContext.current
   val lifecycleOwner = LocalLifecycleOwner.current
-  val cameraProviderFuture = remember { ProcessCameraProvider.Companion.getInstance(context) }
+  val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(context) }
 
   AndroidView(
     factory = { ctx ->
@@ -116,14 +114,10 @@ private fun QrCodeScreenPreview(
           .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
           .build()
 
-        val analyzerExecutor = Executors.newSingleThreadExecutor()
-
-        // Passamos o callback para a nossa classe Analyzer
+        // O executor é gerenciado pelo QrCodeViewModel (ver onCleared)
         imageAnalysis.setAnalyzer(
           analyzerExecutor,
-          QrCodeAnalyzer(onQrCodeScanned = { result ->
-            onQrCodeScanned(result)
-          })
+          QrCodeAnalyzer(onQrCodeScanned = onQrCodeScanned)
         )
 
         val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
