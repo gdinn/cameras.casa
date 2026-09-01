@@ -14,7 +14,7 @@ import javax.inject.Singleton
 
 @Module
 @InstallIn(SingletonComponent::class)
-object WebRtcModule {
+object WhepRtcModule {
 
   /**
    * Provê uma instância única (Singleton) do EglBase para toda a aplicação.
