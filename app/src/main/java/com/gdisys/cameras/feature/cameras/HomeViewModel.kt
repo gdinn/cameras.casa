@@ -6,10 +6,10 @@ import androidx.lifecycle.viewModelScope
 import com.gdisys.cameras.core.DEBUG_TAG
 import com.gdisys.cameras.core.storage.domain.toVpnConfigOrNull
 import com.gdisys.cameras.core.storage.domain.usecase.GetUserPreferencesUseCase
-import com.gdisys.cameras.core.vpn.domain.VpnRepository
 import com.gdisys.cameras.core.vpn.domain.VpnTunnelState
 import com.gdisys.cameras.core.vpn.domain.usecase.ConnectVpnUseCase
 import com.gdisys.cameras.core.vpn.domain.usecase.DisconnectVpnUseCase
+import com.gdisys.cameras.core.vpn.domain.usecase.ObserveVpnStateUseCase
 import com.gdisys.cameras.core.webrtc.WhepClient
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -34,7 +34,7 @@ private val DEFAULT_CAMERA_STREAMS = listOf(
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
-  vpnRepository: VpnRepository,
+  observeVpnStateUseCase: ObserveVpnStateUseCase,
   private val connectVpnUseCase: ConnectVpnUseCase,
   private val disconnectVpnUseCase: DisconnectVpnUseCase,
   private val getUserPreferencesUseCase: GetUserPreferencesUseCase,
@@ -54,7 +54,7 @@ class HomeViewModel @Inject constructor(
       combine(
         _streams,
         _focusedStream,
-        vpnRepository.vpnState
+        observeVpnStateUseCase()
       ) { streams, focusedStream, vpn ->
         if (vpn != VpnTunnelState.CONNECTED) {
           return@combine HomeUiState.Loading
