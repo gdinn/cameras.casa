@@ -1,13 +1,11 @@
 package com.gdisys.cameras.feature.config
 
 import android.app.Activity.RESULT_OK
-import android.net.VpnService
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gdisys.cameras.core.components.ToastDisplayer
 import com.gdisys.cameras.feature.config.components.ConfigScreen
@@ -18,7 +16,6 @@ fun ConfigRoute(
   onNavigateToHome: () -> Unit,
   onQrCodeScanned: (String) -> Unit
 ) {
-  val context = LocalContext.current
   val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
   val vpnLauncher = rememberLauncherForActivityResult(
@@ -46,7 +43,7 @@ fun ConfigRoute(
   ConfigScreen(
     uiState = uiState,
     acceptVpnPermission = {
-      viewModel.requestVpnPermission(VpnService.prepare(context))
+      viewModel.acceptVpnPermission()
     },
     onNavigateToHome = onNavigateToHome,
     onQrCodeScanned = onQrCodeScanned
