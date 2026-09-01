@@ -1,6 +1,8 @@
 package com.gdisys.cameras.core.vpn.data
 
 import android.content.Context
+import android.util.Log
+import com.gdisys.cameras.core.DEBUG_TAG
 import com.gdisys.cameras.core.vpn.domain.model.VpnConfig
 import com.gdisys.cameras.core.vpn.domain.VpnRepository
 import com.gdisys.cameras.core.vpn.domain.VpnTunnelState
@@ -27,7 +29,7 @@ private class AppTunnel(
 
   override fun onStateChange(newState: Tunnel.State) {
     onStateChanged(newState)
-    println("Status do Túnel alterado para: $newState")
+    Log.d(DEBUG_TAG, "Status do Túnel alterado para: $newState")
   }
 }
 
