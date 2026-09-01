@@ -1,7 +1,6 @@
 package com.gdisys.cameras.core.vpn.data
 
 import android.content.Context
-import android.content.Intent
 import com.gdisys.cameras.core.vpn.domain.model.VpnConfig
 import com.gdisys.cameras.core.vpn.domain.VpnRepository
 import com.gdisys.cameras.core.vpn.domain.VpnTunnelState
@@ -91,10 +90,6 @@ class VpnRepositoryImpl @Inject constructor(
 
     // 4. Ligar o VPN
     backend.setState(tunnel, Tunnel.State.UP, vpnConfig)
-
-    // Inicia o serviço de ciclo de vida para monitorar se o app é fechado
-    context.startService(Intent(context, VpnLifecycleService::class.java))
-
   }
 
   /**
@@ -102,7 +97,6 @@ class VpnRepositoryImpl @Inject constructor(
    */
   override suspend fun disconnect() = withContext<Unit>(Dispatchers.IO) {
     backend.setState(tunnel, Tunnel.State.DOWN, null)
-    context.stopService(Intent(context, VpnLifecycleService::class.java))
   }
 
   /**

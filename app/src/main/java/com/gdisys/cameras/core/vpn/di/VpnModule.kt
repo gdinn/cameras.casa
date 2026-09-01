@@ -1,6 +1,8 @@
 package com.gdisys.cameras.core.vpn.di
 
+import com.gdisys.cameras.core.vpn.data.VpnLifecycleControllerImpl
 import com.gdisys.cameras.core.vpn.data.VpnRepositoryImpl
+import com.gdisys.cameras.core.vpn.domain.VpnLifecycleController
 import com.gdisys.cameras.core.vpn.domain.VpnRepository
 import dagger.Binds
 import dagger.Module
@@ -17,4 +19,10 @@ abstract class VpnModule {
   abstract fun bindVpnRepository(
     vpnRepositoryImpl: VpnRepositoryImpl
   ): VpnRepository
+
+  @Binds
+  @Singleton
+  abstract fun bindVpnLifecycleController(
+    vpnLifecycleControllerImpl: VpnLifecycleControllerImpl
+  ): VpnLifecycleController
 }
