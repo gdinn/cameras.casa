@@ -3,6 +3,7 @@ package com.gdisys.cameras.feature.init
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import com.gdisys.cameras.core.components.ToastDisplayer
+import com.gdisys.cameras.feature.init.components.InitScreen
 
 @Composable
 fun InitRoute(

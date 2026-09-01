@@ -1,4 +1,4 @@
-package com.gdisys.cameras.feature.init
+package com.gdisys.cameras.feature.init.components
 
 import androidx.compose.runtime.Composable
 import com.gdisys.cameras.core.components.LoadingStorageScreen
