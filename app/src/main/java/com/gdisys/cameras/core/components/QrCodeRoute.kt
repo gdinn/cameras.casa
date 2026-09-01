@@ -39,7 +39,6 @@ fun QrCodeRoute(
 
   QrCodeScreen(
     hasCameraPermission = hasCameraPermission,
-    analyzerExecutor = viewModel.analyzerExecutor,
     onRequestCameraPermission = { permissionLauncher.launch(Manifest.permission.CAMERA) },
     onQrCodeScanned = viewModel::onQrCodeScanned,
     onCameraInitError = viewModel::onCameraInitError

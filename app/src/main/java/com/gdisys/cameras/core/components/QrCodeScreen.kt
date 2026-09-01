@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -25,12 +26,11 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.gdisys.cameras.R
 import com.gdisys.cameras.core.utils.QrCodeAnalyzer
-import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
 @Composable
 fun QrCodeScreen(
   hasCameraPermission: Boolean,
-  analyzerExecutor: ExecutorService,
   onRequestCameraPermission: () -> Unit,
   onQrCodeScanned: (String) -> Unit,
   onCameraInitError: (Throwable) -> Unit
@@ -38,7 +38,6 @@ fun QrCodeScreen(
   // Renderiza a câmera se tem permissão, ou uma mensagem caso contrário
   if (hasCameraPermission) {
     QrCodeCameraPreview(
-      analyzerExecutor = analyzerExecutor,
       onQrCodeScanned = onQrCodeScanned,
       onCameraInitError = onCameraInitError
     )
@@ -60,13 +59,19 @@ fun QrCodeScreen(
 @Composable
 private fun QrCodeCameraPreview(
   modifier: Modifier = Modifier,
-  analyzerExecutor: ExecutorService,
   onQrCodeScanned: (String) -> Unit,
   onCameraInitError: (Throwable) -> Unit
 ) {
   val context = LocalContext.current
   val lifecycleOwner = LocalLifecycleOwner.current
   val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(context) }
+
+  // O executor pertence à câmera renderizada aqui, então seu ciclo de vida
+  // é gerenciado nesta Composable, não no ViewModel.
+  val analyzerExecutor = remember { Executors.newSingleThreadExecutor() }
+  DisposableEffect(Unit) {
+    onDispose { analyzerExecutor.shutdown() }
+  }
 
   AndroidView(
     factory = { ctx ->
@@ -90,7 +95,6 @@ private fun QrCodeCameraPreview(
           .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
           .build()
 
-        // O executor é gerenciado pelo QrCodeViewModel (ver onCleared)
         imageAnalysis.setAnalyzer(
           analyzerExecutor,
           QrCodeAnalyzer(onQrCodeScanned = onQrCodeScanned)
