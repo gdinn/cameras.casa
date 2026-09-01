@@ -35,10 +35,13 @@ fun QrCodeRoute(
     }
   }
 
+  ToastDisplayer(toastUiEvent = viewModel.uiEvent)
+
   QrCodeScreen(
     hasCameraPermission = hasCameraPermission,
     analyzerExecutor = viewModel.analyzerExecutor,
     onRequestCameraPermission = { permissionLauncher.launch(Manifest.permission.CAMERA) },
-    onQrCodeScanned = viewModel::onQrCodeScanned
+    onQrCodeScanned = viewModel::onQrCodeScanned,
+    onCameraInitError = viewModel::onCameraInitError
   )
 }

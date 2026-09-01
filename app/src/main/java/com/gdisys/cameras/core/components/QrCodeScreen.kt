@@ -1,6 +1,5 @@
 package com.gdisys.cameras.core.components
 
-import android.util.Log
 import android.view.ViewGroup
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
@@ -33,13 +32,15 @@ fun QrCodeScreen(
   hasCameraPermission: Boolean,
   analyzerExecutor: ExecutorService,
   onRequestCameraPermission: () -> Unit,
-  onQrCodeScanned: (String) -> Unit
+  onQrCodeScanned: (String) -> Unit,
+  onCameraInitError: (Throwable) -> Unit
 ) {
   // Renderiza a câmera se tem permissão, ou uma mensagem caso contrário
   if (hasCameraPermission) {
     QrCodeCameraPreview(
       analyzerExecutor = analyzerExecutor,
-      onQrCodeScanned = onQrCodeScanned
+      onQrCodeScanned = onQrCodeScanned,
+      onCameraInitError = onCameraInitError
     )
   } else {
     Column(
@@ -60,7 +61,8 @@ fun QrCodeScreen(
 private fun QrCodeCameraPreview(
   modifier: Modifier = Modifier,
   analyzerExecutor: ExecutorService,
-  onQrCodeScanned: (String) -> Unit
+  onQrCodeScanned: (String) -> Unit,
+  onCameraInitError: (Throwable) -> Unit
 ) {
   val context = LocalContext.current
   val lifecycleOwner = LocalLifecycleOwner.current
@@ -105,7 +107,7 @@ private fun QrCodeCameraPreview(
             imageAnalysis
           )
         } catch (exc: Exception) {
-          Log.e("QrCodeScanner", "Falha ao iniciar a câmera", exc)
+          onCameraInitError(exc)
         }
       }, executor)
 

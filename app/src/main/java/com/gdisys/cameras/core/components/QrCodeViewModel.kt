@@ -3,9 +3,11 @@ package com.gdisys.cameras.core.components
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.util.Log
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.gdisys.cameras.core.DEBUG_TAG
+import com.gdisys.cameras.core.ToastEventViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.channels.Channel
@@ -22,7 +24,7 @@ import javax.inject.Inject
 @HiltViewModel
 class QrCodeViewModel @Inject constructor(
   @ApplicationContext context: Context
-) : ViewModel() {
+) : ToastEventViewModel() {
 
   private val _hasCameraPermission = MutableStateFlow(
     ContextCompat.checkSelfPermission(
@@ -49,6 +51,11 @@ class QrCodeViewModel @Inject constructor(
     viewModelScope.launch {
       _qrCodeScannedEvent.send(rawValue)
     }
+  }
+
+  fun onCameraInitError(error: Throwable) {
+    Log.e(DEBUG_TAG, "Falha ao iniciar a câmera", error)
+    showToast(QrCodeToastMessage.CAMERA_INIT_ERROR)
   }
 
   override fun onCleared() {

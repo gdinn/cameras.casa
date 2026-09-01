@@ -27,6 +27,9 @@
     <string name="qrcode_screen_camera_permission_required">Camera access is required to scan QR Codes</string>
     <string name="qrcode_screen_camera_grant_access">Grant access</string>
 
+    <!-- QR Code Route -->
+    <string name="qrcode_route_camera_init_error">Failed to start camera</string>
+
     <!-- Home Screen -->
     <string name="home_screen_move_up">Move up</string>
     <string name="home_screen_move_down">Move down</string>
