@@ -4,8 +4,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gdisys.cameras.core.DEBUG_TAG
-import com.gdisys.cameras.core.storage.domain.toVpnConfigOrNull
-import com.gdisys.cameras.core.storage.domain.usecase.GetUserPreferencesUseCase
+import com.gdisys.cameras.core.storage.domain.usecase.GetVpnConfigUseCase
 import com.gdisys.cameras.core.vpn.domain.VpnTunnelState
 import com.gdisys.cameras.core.vpn.domain.usecase.ConnectVpnUseCase
 import com.gdisys.cameras.core.vpn.domain.usecase.DisconnectVpnUseCase
@@ -17,7 +16,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.webrtc.VideoSink
@@ -37,7 +35,7 @@ class HomeViewModel @Inject constructor(
   observeVpnStateUseCase: ObserveVpnStateUseCase,
   private val connectVpnUseCase: ConnectVpnUseCase,
   private val disconnectVpnUseCase: DisconnectVpnUseCase,
-  private val getUserPreferencesUseCase: GetUserPreferencesUseCase,
+  private val getVpnConfigUseCase: GetVpnConfigUseCase,
   private val whepClientProvider: Provider<WhepClient>
 ) : ViewModel() {
   private val _uiState: MutableStateFlow<HomeUiState> = MutableStateFlow(HomeUiState.Loading)
@@ -113,7 +111,7 @@ class HomeViewModel @Inject constructor(
   fun connectVpn() {
     viewModelScope.launch {
       try {
-        getUserPreferencesUseCase().first().toVpnConfigOrNull()?.let { config ->
+        getVpnConfigUseCase()?.let { config ->
           connectVpnUseCase(config)
         }
       } catch (e: Exception) {
