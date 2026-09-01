@@ -11,10 +11,12 @@ import com.gdisys.cameras.core.vpn.domain.usecase.DisconnectVpnUseCase
 import com.gdisys.cameras.core.vpn.domain.usecase.ObserveVpnStateUseCase
 import com.gdisys.cameras.core.webrtc.data.WhepConnectionManager
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.webrtc.VideoSink
@@ -41,6 +43,9 @@ class HomeViewModel @Inject constructor(
 
   private val _streams = MutableStateFlow(DEFAULT_CAMERA_STREAMS)
   private val _focusedStream = MutableStateFlow<String?>(null)
+
+  private val _navigateUiEvent = Channel<HomeNavigateUiEvent>()
+  val navigateUiEvent = _navigateUiEvent.receiveAsFlow()
 
   init {
     viewModelScope.launch {
@@ -103,11 +108,13 @@ class HomeViewModel @Inject constructor(
           connectVpnUseCase(config).onFailure { e ->
             Log.d(DEBUG_TAG, e.message.toString())
             showToast(HomeToastMessage.VPN_CONNECTION_ERROR)
+            _navigateUiEvent.send(HomeNavigateUiEvent.ToConfig)
           }
         },
         onFailure = { e ->
           Log.d(DEBUG_TAG, e.message.toString())
           showToast(HomeToastMessage.VPN_CONNECTION_ERROR)
+          _navigateUiEvent.send(HomeNavigateUiEvent.ToConfig)
         }
       )
     }
@@ -123,4 +130,8 @@ class HomeViewModel @Inject constructor(
     whepConnectionManager.closeAll()
     super.onCleared()
   }
+}
+
+sealed interface HomeNavigateUiEvent {
+  data object ToConfig : HomeNavigateUiEvent
 }

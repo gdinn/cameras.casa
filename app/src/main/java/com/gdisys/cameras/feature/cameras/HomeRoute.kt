@@ -1,6 +1,7 @@
 package com.gdisys.cameras.feature.cameras
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
@@ -18,6 +19,14 @@ fun HomeRoute(
 ) {
   LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.connectVpn() }
   LifecycleEventEffect(Lifecycle.Event.ON_PAUSE) { viewModel.disconnectVpn() }
+
+  LaunchedEffect(viewModel) {
+    viewModel.navigateUiEvent.collect { event ->
+      when (event) {
+        HomeNavigateUiEvent.ToConfig -> onNavigateToConfig()
+      }
+    }
+  }
 
   ToastDisplayer(toastUiEvent = viewModel.uiEvent)
 
