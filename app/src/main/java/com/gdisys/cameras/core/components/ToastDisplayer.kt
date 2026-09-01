@@ -1,21 +1,19 @@
 package com.gdisys.cameras.core.components
 
-import android.content.Context
-import android.content.res.Resources
 import android.widget.Toast
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.lifecycle.ViewModel
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import kotlinx.coroutines.flow.Flow
 
 @Composable
 fun ToastDisplayer(
-  viewModel: ViewModel,
-  toastUiEvent: Flow<ToastUiEvent>,
-  context: Context,
-  resources: Resources
+  toastUiEvent: Flow<ToastUiEvent>
 ) {
-  LaunchedEffect(viewModel) {
+  val context = LocalContext.current
+  val resources = LocalResources.current
+  LaunchedEffect(toastUiEvent) {
     toastUiEvent.collect { event ->
       when (event) {
         is ToastUiEvent.Show -> {

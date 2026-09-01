@@ -8,7 +8,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalResources
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gdisys.cameras.core.components.ToastDisplayer
 import com.gdisys.cameras.feature.config.components.ConfigScreen
@@ -20,7 +19,6 @@ fun ConfigRoute(
   onQrCodeScanned: (String) -> Unit
 ) {
   val context = LocalContext.current
-  val resources = LocalResources.current
   val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
   val vpnLauncher = rememberLauncherForActivityResult(
@@ -42,10 +40,7 @@ fun ConfigRoute(
   }
 
   ToastDisplayer(
-    viewModel,
-    toastUiEvent = viewModel.uiEvent,
-    context = context,
-    resources = resources
+    toastUiEvent = viewModel.uiEvent
   )
 
   ConfigScreen(
