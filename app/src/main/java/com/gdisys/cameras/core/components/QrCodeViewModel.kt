@@ -32,6 +32,10 @@ class QrCodeViewModel @Inject constructor(
     _hasCameraPermission.value = granted
   }
 
+  fun resetScan() {
+    hasScanned = false
+  }
+
   fun onQrCodeScanned(rawValue: String) {
     if (hasScanned) return
     hasScanned = true

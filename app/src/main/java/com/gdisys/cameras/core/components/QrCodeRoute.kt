@@ -22,11 +22,13 @@ fun QrCodeRoute(
     onResult = viewModel::onPermissionResult
   )
 
-  // Solicita a permissão assim que a tela abre, caso ainda não tenha
+  // Solicita a permissão assim que a tela abre, caso ainda não tenha, e reabilita a
+  // leitura de QR code, já que a QrCodeViewModel é retida entre exibições do scanner.
   LaunchedEffect(Unit) {
     if (!hasCameraPermission) {
       permissionLauncher.launch(Manifest.permission.CAMERA)
     }
+    viewModel.resetScan()
   }
 
   LaunchedEffect(viewModel) {
