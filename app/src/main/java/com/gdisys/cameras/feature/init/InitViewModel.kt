@@ -1,7 +1,7 @@
 package com.gdisys.cameras.feature.init
 
 import androidx.lifecycle.viewModelScope
-import com.gdisys.cameras.core.components.ToastEventViewModel
+import com.gdisys.cameras.core.ToastEventViewModel
 import com.gdisys.cameras.core.storage.domain.VpnDataUiState
 import com.gdisys.cameras.core.storage.domain.usecase.GetVpnConfigStatusUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel

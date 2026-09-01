@@ -1,8 +1,9 @@
-package com.gdisys.cameras.core.components
+package com.gdisys.cameras.core
 
 import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.gdisys.cameras.core.components.ToastUiEvent
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.receiveAsFlow
