@@ -8,9 +8,14 @@ import androidx.navigation.compose.rememberNavController
 import com.gdisys.cameras.app.navigation.NavigationRoot
 import com.gdisys.cameras.ui.theme.CamerasTheme
 import dagger.hilt.android.AndroidEntryPoint
+import org.webrtc.EglBase
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+  @Inject
+  lateinit var eglBase: EglBase
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
@@ -18,7 +23,8 @@ class MainActivity : ComponentActivity() {
     setContent {
       CamerasTheme {
         NavigationRoot(
-          navController = rememberNavController()
+          navController = rememberNavController(),
+          eglBase = eglBase
         )
       }
     }

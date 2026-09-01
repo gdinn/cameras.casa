@@ -30,14 +30,14 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.gdisys.cameras.R
 import org.webrtc.EglBase
-import org.webrtc.SurfaceViewRenderer
+import org.webrtc.VideoSink
 
 @Composable
 fun HomeScreen(
   streams: List<String>,
   focusedStream: String?,
   eglBase: EglBase,
-  onConnectStream: (streamUrl: String, renderer: SurfaceViewRenderer) -> Unit,
+  onConnectStream: (streamUrl: String, videoSink: VideoSink) -> Unit,
   onDisconnectStream: (streamUrl: String) -> Unit,
   onFocusStream: (String) -> Unit,
   onClearFocusedStream: () -> Unit,

@@ -7,10 +7,12 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gdisys.cameras.feature.cameras.components.CamerasLoadingScreen
 import com.gdisys.cameras.feature.cameras.components.HomeScreen
+import org.webrtc.EglBase
 
 @Composable
 fun HomeRoute(
   viewModel: HomeViewModel,
+  eglBase: EglBase,
   onNavigateToConfig: () -> Unit
 ) {
   LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.connectVpn() }
@@ -23,7 +25,7 @@ fun HomeRoute(
       HomeScreen(
         streams = state.streams,
         focusedStream = state.focusedStream,
-        eglBase = viewModel.eglBase,
+        eglBase = eglBase,
         onConnectStream = viewModel::connectStream,
         onDisconnectStream = viewModel::disconnectStream,
         onFocusStream = viewModel::focusStream,

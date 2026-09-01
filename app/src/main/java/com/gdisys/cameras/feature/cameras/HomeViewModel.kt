@@ -10,7 +10,7 @@ import com.gdisys.cameras.core.vpn.domain.VpnRepository
 import com.gdisys.cameras.core.vpn.domain.VpnTunnelState
 import com.gdisys.cameras.core.vpn.domain.usecase.ConnectVpnUseCase
 import com.gdisys.cameras.core.vpn.domain.usecase.DisconnectVpnUseCase
-import com.gdisys.cameras.core.webrtc.domain.WhepClient
+import com.gdisys.cameras.core.webrtc.WhepClient
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,8 +20,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import org.webrtc.EglBase
-import org.webrtc.SurfaceViewRenderer
+import org.webrtc.VideoSink
 import javax.inject.Inject
 import javax.inject.Provider
 
@@ -39,8 +38,7 @@ class HomeViewModel @Inject constructor(
   private val connectVpnUseCase: ConnectVpnUseCase,
   private val disconnectVpnUseCase: DisconnectVpnUseCase,
   private val getUserPreferencesUseCase: GetUserPreferencesUseCase,
-  private val whepClientProvider: Provider<WhepClient>,
-  val eglBase: EglBase
+  private val whepClientProvider: Provider<WhepClient>
 ) : ViewModel() {
   private val _uiState: MutableStateFlow<HomeUiState> = MutableStateFlow(HomeUiState.Loading)
   val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
@@ -72,11 +70,11 @@ class HomeViewModel @Inject constructor(
     }
   }
 
-  fun connectStream(streamUrl: String, renderer: SurfaceViewRenderer) {
+  fun connectStream(streamUrl: String, videoSink: VideoSink) {
     whepConnectionJobs[streamUrl] = viewModelScope.launch {
       try {
         val whepClient = whepClientProvider.get()
-        whepClient.connect(streamUrl, renderer)
+        whepClient.connect(streamUrl, videoSink)
         whepClients[streamUrl] = whepClient
       } catch (e: Exception) {
         Log.d(DEBUG_TAG, e.message.toString())

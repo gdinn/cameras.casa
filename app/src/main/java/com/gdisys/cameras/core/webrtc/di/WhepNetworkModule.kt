@@ -3,7 +3,7 @@ package com.gdisys.cameras.core.webrtc.di
 import com.gdisys.cameras.core.webrtc.data.WhepClientImpl
 import com.gdisys.cameras.core.webrtc.data.remote.WhepRemoteDataSource
 import com.gdisys.cameras.core.webrtc.data.remote.WhepRemoteDataSourceImpl
-import com.gdisys.cameras.core.webrtc.domain.WhepClient
+import com.gdisys.cameras.core.webrtc.WhepClient
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn

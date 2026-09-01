@@ -15,10 +15,12 @@ import com.gdisys.cameras.feature.config.ConfigRoute
 import com.gdisys.cameras.feature.config.ConfigViewModel
 import com.gdisys.cameras.feature.init.InitRoute
 import com.gdisys.cameras.feature.init.InitViewModel
+import org.webrtc.EglBase
 
 @Composable
 fun NavigationRoot(
-  navController: NavHostController
+  navController: NavHostController,
+  eglBase: EglBase
 ) {
   NavHost(
     navController = navController,
@@ -59,6 +61,7 @@ fun NavigationRoot(
       val homeViewModel: HomeViewModel = hiltViewModel()
       HomeRoute(
         viewModel = homeViewModel,
+        eglBase = eglBase,
         onNavigateToConfig = {
           navController.navigate(NavigationRoute.Config)
         }

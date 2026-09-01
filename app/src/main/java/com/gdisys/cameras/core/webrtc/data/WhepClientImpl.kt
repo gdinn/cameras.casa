@@ -4,7 +4,7 @@ import com.gdisys.cameras.core.webrtc.data.extensions.createOfferSuspend
 import com.gdisys.cameras.core.webrtc.data.extensions.setLocalDescriptionSuspend
 import com.gdisys.cameras.core.webrtc.data.extensions.setRemoteDescriptionSuspend
 import com.gdisys.cameras.core.webrtc.data.remote.WhepRemoteDataSource
-import com.gdisys.cameras.core.webrtc.domain.WhepClient
+import com.gdisys.cameras.core.webrtc.WhepClient
 import kotlinx.coroutines.CompletableDeferred
 import org.webrtc.DataChannel
 import org.webrtc.IceCandidate

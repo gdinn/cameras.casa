@@ -1,9 +1,12 @@
-package com.gdisys.cameras.core.webrtc.domain
+package com.gdisys.cameras.core.webrtc
 
 import org.webrtc.VideoSink
 
 /**
  * Contrato para o cliente WHEP.
+ *
+ * Fica fora de `domain` de propósito: o tipo do sink é do SDK WebRTC,
+ * então este contrato já assume a dependência em vez de fingir ser domínio puro.
  */
 interface WhepClient {
   /**
