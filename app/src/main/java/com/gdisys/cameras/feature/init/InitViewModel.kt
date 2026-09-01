@@ -2,8 +2,8 @@ package com.gdisys.cameras.feature.init
 
 import androidx.lifecycle.viewModelScope
 import com.gdisys.cameras.core.components.ToastEventViewModel
-import com.gdisys.cameras.core.storage.domain.VpnConfigStatusProvider
 import com.gdisys.cameras.core.storage.domain.VpnDataUiState
+import com.gdisys.cameras.core.storage.domain.usecase.GetVpnConfigStatusUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -12,14 +12,14 @@ import javax.inject.Inject
 
 @HiltViewModel
 class InitViewModel  @Inject constructor(
-  vpnConfigStatusProvider: VpnConfigStatusProvider
+  getVpnConfigStatusUseCase: GetVpnConfigStatusUseCase
 ) : ToastEventViewModel() {
   private val _navigateUiEvent = Channel<NavigateUiEvent>()
   val navigateUiEvent = _navigateUiEvent.receiveAsFlow()
 
   init {
     viewModelScope.launch {
-      vpnConfigStatusProvider.uiState.collect { state ->
+      getVpnConfigStatusUseCase().collect { state ->
         if (state !is VpnDataUiState.Success) return@collect
         if (state.vpnConfigTokensEmpty) {
           showToast(InitToastMessage.CREDENTIALS_NOT_FOUND)

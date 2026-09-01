@@ -8,9 +8,9 @@ import androidx.lifecycle.viewModelScope
 import com.gdisys.cameras.core.DEBUG_TAG
 import com.gdisys.cameras.core.components.ToastEventViewModel
 import com.gdisys.cameras.core.storage.domain.model.UserPreferences
+import com.gdisys.cameras.core.storage.domain.usecase.GetVpnConfigStatusUseCase
 import com.gdisys.cameras.core.storage.domain.usecase.ParseUserPreferencesFromQrCodeUseCase
 import com.gdisys.cameras.core.storage.domain.usecase.SaveUserPreferencesUseCase
-import com.gdisys.cameras.core.storage.domain.VpnConfigStatusProvider
 import com.gdisys.cameras.core.storage.domain.VpnDataUiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -31,10 +31,10 @@ sealed interface VpnPermissionUiEvent {
 class ConfigViewModel @Inject constructor(
   private val saveUserPreferencesUseCase: SaveUserPreferencesUseCase,
   private val parseUserPreferencesFromQrCodeUseCase: ParseUserPreferencesFromQrCodeUseCase,
-  vpnConfigStatusProvider: VpnConfigStatusProvider,
+  getVpnConfigStatusUseCase: GetVpnConfigStatusUseCase,
   @ApplicationContext private val context: Context
 ) : ToastEventViewModel() {
-  val uiState: StateFlow<VpnDataUiState> = vpnConfigStatusProvider.uiState.stateIn(
+  val uiState: StateFlow<VpnDataUiState> = getVpnConfigStatusUseCase().stateIn(
     viewModelScope,
     SharingStarted.WhileSubscribed(5000),
     VpnDataUiState.Loading
