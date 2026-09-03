@@ -43,6 +43,30 @@ fun Tunnel.State.toVpnTunnelState(): VpnTunnelState {
   }
 }
 
+/**
+ * Mapeamento puro `VpnConfig` -> `Config` do WireGuard, extraído de [VpnRepositoryImpl.connect]
+ * para ser testável sem instanciar `GoBackend` (lib nativa, não roda em JVM puro).
+ */
+fun VpnConfig.toWireGuardConfig(): Config {
+  val interfaceBuilder = Interface.Builder()
+    .parsePrivateKey(privateKey)
+    .parseAddresses(address)
+    .parseDnsServers(dns)
+    .parseMtu(mtu)
+
+  val peerBuilder = Peer.Builder()
+    .parsePublicKey(publicKey)
+    .parsePreSharedKey(preSharedKey)
+    .parseAllowedIPs(allowedIps)
+    .parseEndpoint(endpoint)
+    .parsePersistentKeepalive(keepAlive)
+
+  return Config.Builder()
+    .setInterface(interfaceBuilder.build())
+    .addPeer(peerBuilder.build())
+    .build()
+}
+
 @Singleton
 class VpnRepositoryImpl @Inject constructor(
   @ApplicationContext private val context: Context
@@ -71,29 +95,7 @@ class VpnRepositoryImpl @Inject constructor(
     config: VpnConfig
   ) = withContext<Unit>(Dispatchers.IO) {
     _vpnState.value = VpnTunnelState.CONNECTING
-    // 1. Configuração da Interface (Cliente)
-    val interfaceBuilder = Interface.Builder()
-      .parsePrivateKey(config.privateKey)
-      .parseAddresses(config.address)
-      .parseDnsServers(config.dns)
-      .parseMtu(config.mtu)
-
-    // 2. Configuração do Peer (Servidor)
-    val peerBuilder = Peer.Builder()
-      .parsePublicKey(config.publicKey)
-      .parsePreSharedKey(config.preSharedKey)
-      .parseAllowedIPs(config.allowedIps)
-      .parseEndpoint(config.endpoint)
-      .parsePersistentKeepalive(config.keepAlive)
-
-    // 3. Montar a Configuração Final
-    val vpnConfig = Config.Builder()
-      .setInterface(interfaceBuilder.build())
-      .addPeer(peerBuilder.build())
-      .build()
-
-    // 4. Ligar o VPN
-    backend.setState(tunnel, Tunnel.State.UP, vpnConfig)
+    backend.setState(tunnel, Tunnel.State.UP, config.toWireGuardConfig())
   }
 
   /**

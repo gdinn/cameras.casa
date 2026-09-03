@@ -9,7 +9,9 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.util.Base64
 
-object UserPreferencesSerializer: Serializer<UserPreferences> {
+class UserPreferencesSerializer(
+  private val crypto: CryptoEngine = Crypto
+) : Serializer<UserPreferences> {
   override val defaultValue: UserPreferences
     get() = UserPreferences()
 
@@ -24,7 +26,7 @@ object UserPreferencesSerializer: Serializer<UserPreferences> {
 
     return try {
       val encryptedBytesDecoded = Base64.getDecoder().decode(encryptedBytes)
-      val decryptedBytes = Crypto.decrypt(encryptedBytesDecoded)
+      val decryptedBytes = crypto.decrypt(encryptedBytesDecoded)
       val decodedJsonString = decryptedBytes.decodeToString()
       Json.decodeFromString(decodedJsonString)
     } catch (e: Exception) {
@@ -37,7 +39,7 @@ object UserPreferencesSerializer: Serializer<UserPreferences> {
   override suspend fun writeTo(t: UserPreferences, output: OutputStream) {
     val json = Json.encodeToString(t)
     val bytes = json.toByteArray()
-    val encryptedBytes = Crypto.encrypt(bytes)
+    val encryptedBytes = crypto.encrypt(bytes)
     val encryptedBytesBase64 = Base64.getEncoder().encode(encryptedBytes)
     withContext(Dispatchers.IO) {
       output.use {
