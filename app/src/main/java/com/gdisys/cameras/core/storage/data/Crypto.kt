@@ -8,7 +8,12 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.IvParameterSpec
 
-object Crypto {
+interface CryptoEngine {
+  fun encrypt(bytes: ByteArray): ByteArray
+  fun decrypt(bytes: ByteArray): ByteArray
+}
+
+object Crypto : CryptoEngine {
   private const val STORAGE_KEY_ALIAS = "gdi-sys-storage"
   private const val ALGORITHM = KeyProperties.KEY_ALGORITHM_AES
   private const val BLOCK_MODE = KeyProperties.BLOCK_MODE_CBC
@@ -45,7 +50,7 @@ object Crypto {
 
   private fun getCipher(): Cipher = Cipher.getInstance(TRANSFORMATION)
 
-  fun encrypt(bytes: ByteArray): ByteArray {
+  override fun encrypt(bytes: ByteArray): ByteArray {
     val cipher = getCipher()
     cipher.init(Cipher.ENCRYPT_MODE, getKey())
     val iv = cipher.iv
@@ -53,7 +58,7 @@ object Crypto {
     return iv + encrypted
   }
 
-  fun decrypt(bytes: ByteArray): ByteArray {
+  override fun decrypt(bytes: ByteArray): ByteArray {
     val cipher = getCipher()
     val ivSize = 16 // AES block size
     if (bytes.size < ivSize) throw IllegalArgumentException("Invalid data for decryption")

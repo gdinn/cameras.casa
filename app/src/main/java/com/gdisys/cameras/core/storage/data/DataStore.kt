@@ -5,5 +5,5 @@ import androidx.datastore.dataStore
 
 val Context.dataStore by dataStore(
   fileName = "user-preferences",
-  serializer = UserPreferencesSerializer
+  serializer = UserPreferencesSerializer()
 )
