@@ -4,11 +4,8 @@ import android.util.Log
 import androidx.lifecycle.viewModelScope
 import com.gdisys.cameras.core.DEBUG_TAG
 import com.gdisys.cameras.core.ToastEventViewModel
-import com.gdisys.cameras.core.storage.domain.usecase.GetVpnConfigUseCase
+import com.gdisys.cameras.core.vpn.domain.VpnSessionCoordinator
 import com.gdisys.cameras.core.vpn.domain.VpnTunnelState
-import com.gdisys.cameras.core.vpn.domain.usecase.ConnectVpnUseCase
-import com.gdisys.cameras.core.vpn.domain.usecase.DisconnectVpnUseCase
-import com.gdisys.cameras.core.vpn.domain.usecase.ObserveVpnStateUseCase
 import com.gdisys.cameras.core.webrtc.data.WhepConnectionManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.channels.Channel
@@ -32,10 +29,7 @@ private val DEFAULT_CAMERA_STREAMS = listOf(
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
-  observeVpnStateUseCase: ObserveVpnStateUseCase,
-  private val connectVpnUseCase: ConnectVpnUseCase,
-  private val disconnectVpnUseCase: DisconnectVpnUseCase,
-  private val getVpnConfigUseCase: GetVpnConfigUseCase,
+  private val vpnSessionCoordinator: VpnSessionCoordinator,
   private val whepConnectionManager: WhepConnectionManager
 ) : ToastEventViewModel() {
   private val _uiState: MutableStateFlow<HomeUiState> = MutableStateFlow(HomeUiState.Loading)
@@ -52,7 +46,7 @@ class HomeViewModel @Inject constructor(
       combine(
         _streams,
         _focusedStream,
-        observeVpnStateUseCase()
+        vpnSessionCoordinator.vpnState
       ) { streams, focusedStream, vpn ->
         if (vpn != VpnTunnelState.CONNECTED) {
           return@combine HomeUiState.Loading
@@ -103,26 +97,17 @@ class HomeViewModel @Inject constructor(
 
   fun connectVpn() {
     viewModelScope.launch {
-      getVpnConfigUseCase().fold(
-        onSuccess = { config ->
-          connectVpnUseCase(config).onFailure { e ->
-            Log.d(DEBUG_TAG, e.message.toString())
-            showToast(HomeToastMessage.VPN_CONNECTION_ERROR)
-            _navigateUiEvent.send(HomeNavigateUiEvent.ToConfig)
-          }
-        },
-        onFailure = { e ->
-          Log.d(DEBUG_TAG, e.message.toString())
-          showToast(HomeToastMessage.VPN_CONNECTION_ERROR)
-          _navigateUiEvent.send(HomeNavigateUiEvent.ToConfig)
-        }
-      )
+      vpnSessionCoordinator.connect().onFailure { e ->
+        Log.d(DEBUG_TAG, e.message.toString())
+        showToast(HomeToastMessage.VPN_CONNECTION_ERROR)
+        _navigateUiEvent.send(HomeNavigateUiEvent.ToConfig)
+      }
     }
   }
 
   fun disconnectVpn() {
     viewModelScope.launch {
-      disconnectVpnUseCase()
+      vpnSessionCoordinator.disconnect()
     }
   }
 

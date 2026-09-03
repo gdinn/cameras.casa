@@ -3,10 +3,9 @@ package com.gdisys.cameras.feature.cameras
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gdisys.cameras.core.components.ToastDisplayer
+import com.gdisys.cameras.core.components.VpnSessionLifecycleEffect
 import com.gdisys.cameras.feature.cameras.components.CamerasLoadingScreen
 import com.gdisys.cameras.feature.cameras.components.HomeScreen
 import org.webrtc.EglBase
@@ -18,13 +17,18 @@ fun HomeRoute(
   onNavigateToConfig: () -> Unit,
   onNavigateToHistory: () -> Unit
 ) {
-  LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.connectVpn() }
-  LifecycleEventEffect(Lifecycle.Event.ON_PAUSE) { viewModel.disconnectVpn() }
+  VpnSessionLifecycleEffect(
+    onAppForegrounded = viewModel::connectVpn,
+    onAppBackgrounded = viewModel::disconnectVpn
+  )
 
   LaunchedEffect(viewModel) {
     viewModel.navigateUiEvent.collect { event ->
       when (event) {
-        HomeNavigateUiEvent.ToConfig -> onNavigateToConfig()
+        HomeNavigateUiEvent.ToConfig -> {
+          viewModel.disconnectVpn()
+          onNavigateToConfig()
+        }
       }
     }
   }
@@ -45,7 +49,10 @@ fun HomeRoute(
         onClearFocusedStream = viewModel::clearFocusedStream,
         onMoveStreamUp = viewModel::moveStreamUp,
         onMoveStreamDown = viewModel::moveStreamDown,
-        onNavigateToConfig = onNavigateToConfig,
+        onNavigateToConfig = {
+          viewModel.disconnectVpn()
+          onNavigateToConfig()
+        },
         onNavigateToHistory = onNavigateToHistory
       )
     }

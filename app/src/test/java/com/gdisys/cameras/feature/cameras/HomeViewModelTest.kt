@@ -5,12 +5,8 @@ import app.cash.turbine.test
 import app.cash.turbine.turbineScope
 import com.gdisys.cameras.MainDispatcherRule
 import com.gdisys.cameras.core.components.ToastUiEvent
-import com.gdisys.cameras.core.storage.domain.usecase.GetVpnConfigUseCase
+import com.gdisys.cameras.core.vpn.domain.VpnSessionCoordinator
 import com.gdisys.cameras.core.vpn.domain.VpnTunnelState
-import com.gdisys.cameras.core.vpn.domain.model.VpnConfig
-import com.gdisys.cameras.core.vpn.domain.usecase.ConnectVpnUseCase
-import com.gdisys.cameras.core.vpn.domain.usecase.DisconnectVpnUseCase
-import com.gdisys.cameras.core.vpn.domain.usecase.ObserveVpnStateUseCase
 import com.gdisys.cameras.core.webrtc.data.WhepConnectionManager
 import io.mockk.Runs
 import io.mockk.coEvery
@@ -36,10 +32,7 @@ class HomeViewModelTest {
 
   private val vpnState = MutableStateFlow(VpnTunnelState.DISCONNECTED)
 
-  private val observeVpnStateUseCase = mockk<ObserveVpnStateUseCase>()
-  private val connectVpnUseCase = mockk<ConnectVpnUseCase>()
-  private val disconnectVpnUseCase = mockk<DisconnectVpnUseCase>()
-  private val getVpnConfigUseCase = mockk<GetVpnConfigUseCase>()
+  private val vpnSessionCoordinator = mockk<VpnSessionCoordinator>()
   private val whepConnectionManager = mockk<WhepConnectionManager>(relaxed = true)
 
   private lateinit var viewModel: HomeViewModel
@@ -51,28 +44,10 @@ class HomeViewModelTest {
     "http://[fd00:20::cafe]:8889/cam_163"
   )
 
-  private val validConfig = VpnConfig(
-    privateKey = "private-key",
-    address = "10.0.0.2/32",
-    dns = "1.1.1.1",
-    publicKey = "public-key",
-    preSharedKey = "pre-shared-key",
-    endpoint = "vpn.example.com:51820",
-    allowedIps = "0.0.0.0/0",
-    keepAlive = "25",
-    mtu = "1420"
-  )
-
   @Before
   fun setUp() {
-    every { observeVpnStateUseCase() } returns vpnState
-    viewModel = HomeViewModel(
-      observeVpnStateUseCase,
-      connectVpnUseCase,
-      disconnectVpnUseCase,
-      getVpnConfigUseCase,
-      whepConnectionManager
-    )
+    every { vpnSessionCoordinator.vpnState } returns vpnState
+    viewModel = HomeViewModel(vpnSessionCoordinator, whepConnectionManager)
   }
 
   @Test
@@ -201,9 +176,8 @@ class HomeViewModelTest {
   }
 
   @Test
-  fun `connectVpn connects successfully without toast or navigation`() = runTest {
-    coEvery { getVpnConfigUseCase() } returns Result.success(validConfig)
-    coEvery { connectVpnUseCase(validConfig) } returns Result.success(Unit)
+  fun `connectVpn delegates to the coordinator without toast or navigation on success`() = runTest {
+    coEvery { vpnSessionCoordinator.connect() } returns Result.success(Unit)
 
     turbineScope {
       val toastTurbine = viewModel.uiEvent.testIn(this)
@@ -211,7 +185,7 @@ class HomeViewModelTest {
 
       viewModel.connectVpn()
 
-      coVerify(exactly = 1) { connectVpnUseCase(validConfig) }
+      coVerify(exactly = 1) { vpnSessionCoordinator.connect() }
       toastTurbine.expectNoEvents()
       navigateTurbine.expectNoEvents()
 
@@ -221,8 +195,8 @@ class HomeViewModelTest {
   }
 
   @Test
-  fun `connectVpn shows a toast and navigates to config when getVpnConfigUseCase fails`() = runTest {
-    coEvery { getVpnConfigUseCase() } returns Result.failure(RuntimeException("boom"))
+  fun `connectVpn shows a toast and navigates to config when the coordinator fails`() = runTest {
+    coEvery { vpnSessionCoordinator.connect() } returns Result.failure(RuntimeException("boom"))
 
     turbineScope {
       val toastTurbine = viewModel.uiEvent.testIn(this)
@@ -242,34 +216,12 @@ class HomeViewModelTest {
   }
 
   @Test
-  fun `connectVpn shows a toast and navigates to config when connectVpnUseCase fails`() = runTest {
-    coEvery { getVpnConfigUseCase() } returns Result.success(validConfig)
-    coEvery { connectVpnUseCase(validConfig) } returns Result.failure(RuntimeException("boom"))
-
-    turbineScope {
-      val toastTurbine = viewModel.uiEvent.testIn(this)
-      val navigateTurbine = viewModel.navigateUiEvent.testIn(this)
-
-      viewModel.connectVpn()
-
-      assertEquals(
-        ToastUiEvent.Show(HomeToastMessage.VPN_CONNECTION_ERROR.resId),
-        toastTurbine.awaitItem()
-      )
-      assertEquals(HomeNavigateUiEvent.ToConfig, navigateTurbine.awaitItem())
-
-      toastTurbine.cancelAndIgnoreRemainingEvents()
-      navigateTurbine.cancelAndIgnoreRemainingEvents()
-    }
-  }
-
-  @Test
-  fun `disconnectVpn delegates to the use case`() = runTest {
-    coEvery { disconnectVpnUseCase() } returns Result.success(Unit)
+  fun `disconnectVpn delegates to the coordinator`() = runTest {
+    coEvery { vpnSessionCoordinator.disconnect() } returns Result.success(Unit)
 
     viewModel.disconnectVpn()
 
-    coVerify(exactly = 1) { disconnectVpnUseCase() }
+    coVerify(exactly = 1) { vpnSessionCoordinator.disconnect() }
   }
 
   @Test
