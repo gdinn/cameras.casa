@@ -43,11 +43,13 @@ fun HomeScreen(
   onClearFocusedStream: () -> Unit,
   onMoveStreamUp: (Int) -> Unit,
   onMoveStreamDown: (Int) -> Unit,
-  onNavigateToConfig: () -> Unit
+  onNavigateToConfig: () -> Unit,
+  onNavigateToHistory: () -> Unit
 ) {
 
   val gridState = rememberLazyGridState()
   val overscrollReconfigure = rememberOverscrollReconfigure(gridState)
+  val overscrollHistory = rememberOverscrollHistory(gridState)
 
   rememberSystemBarsController(focusedStream)
 
@@ -82,6 +84,7 @@ fun HomeScreen(
                 .fillMaxSize()
                 .background(Color.DarkGray)
                 .nestedScroll(overscrollReconfigure.nestedScrollConnection)
+                .nestedScroll(overscrollHistory.nestedScrollConnection)
             ) {
               itemsIndexed(streams, key = { _, url -> url }) { index, url ->
                 CameraGridItem(
@@ -105,6 +108,19 @@ fun HomeScreen(
             ) {
               Button(onClick = onNavigateToConfig) {
                 Text(text = stringResource(R.string.home_screen_reconfigure))
+              }
+            }
+
+            AnimatedVisibility(
+              visible = overscrollHistory.isHistoryButtonVisible,
+              modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(16.dp),
+              enter = fadeIn() + slideInVertically(initialOffsetY = { -it }),
+              exit = fadeOut() + slideOutVertically(targetOffsetY = { -it })
+            ) {
+              Button(onClick = onNavigateToHistory) {
+                Text(text = stringResource(R.string.home_screen_history))
               }
             }
           }

@@ -18,7 +18,9 @@
     <string name="home_screen_move_down">Mover para baixo</string>
     <string name="home_screen_establishing_secure_connection">Estabelecendo conexão segura…</string>
     <string name="home_screen_reconfigure">Reconfigurar</string>
+    <string name="home_screen_history">Histórico</string>
     <string name="home_route_vpn_connection_error">Falha ao conectar à VPN</string>
     <string name="home_route_stream_connection_error">Falha ao conectar à câmera</string>
     <string name="qrcode_route_camera_init_error">Falha ao iniciar a câmera</string>
+    <string name="history_screen_title">Histórico</string>
 </resources>

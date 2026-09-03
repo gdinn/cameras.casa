@@ -13,6 +13,8 @@ import com.gdisys.cameras.feature.cameras.HomeRoute
 import com.gdisys.cameras.feature.cameras.HomeViewModel
 import com.gdisys.cameras.feature.config.ConfigRoute
 import com.gdisys.cameras.feature.config.ConfigViewModel
+import com.gdisys.cameras.feature.history.HistoryRoute
+import com.gdisys.cameras.feature.history.HistoryViewModel
 import com.gdisys.cameras.feature.init.InitRoute
 import com.gdisys.cameras.feature.init.InitViewModel
 import org.webrtc.EglBase
@@ -64,7 +66,17 @@ fun NavigationRoot(
         eglBase = eglBase,
         onNavigateToConfig = {
           navController.navigate(NavigationRoute.Config)
+        },
+        onNavigateToHistory = {
+          navController.navigate(NavigationRoute.History)
         }
+      )
+    }
+
+    composable<NavigationRoute.History> {
+      val historyViewModel: HistoryViewModel = hiltViewModel()
+      HistoryRoute(
+        viewModel = historyViewModel
       )
     }
   }

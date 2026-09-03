@@ -10,5 +10,8 @@ sealed interface NavigationRoute {
   data object Home
 
   @Serializable
+  data object History
+
+  @Serializable
   data object Loading
 }

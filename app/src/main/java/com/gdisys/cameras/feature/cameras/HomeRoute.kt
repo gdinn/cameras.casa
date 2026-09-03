@@ -15,7 +15,8 @@ import org.webrtc.EglBase
 fun HomeRoute(
   viewModel: HomeViewModel,
   eglBase: EglBase,
-  onNavigateToConfig: () -> Unit
+  onNavigateToConfig: () -> Unit,
+  onNavigateToHistory: () -> Unit
 ) {
   LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.connectVpn() }
   LifecycleEventEffect(Lifecycle.Event.ON_PAUSE) { viewModel.disconnectVpn() }
@@ -44,7 +45,8 @@ fun HomeRoute(
         onClearFocusedStream = viewModel::clearFocusedStream,
         onMoveStreamUp = viewModel::moveStreamUp,
         onMoveStreamDown = viewModel::moveStreamDown,
-        onNavigateToConfig = onNavigateToConfig
+        onNavigateToConfig = onNavigateToConfig,
+        onNavigateToHistory = onNavigateToHistory
       )
     }
   }
