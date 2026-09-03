@@ -67,6 +67,17 @@ class VpnSessionCoordinatorTest {
   }
 
   @Test
+  fun `connect does nothing when a connection attempt is already in progress`() = runTest {
+    vpnState.value = VpnTunnelState.CONNECTING
+
+    val result = coordinator.connect()
+
+    assertTrue(result.isSuccess)
+    coVerify(exactly = 0) { getVpnConfigUseCase() }
+    coVerify(exactly = 0) { connectVpnUseCase(any()) }
+  }
+
+  @Test
   fun `connect fetches the config and connects when not already connected`() = runTest {
     coEvery { getVpnConfigUseCase() } returns Result.success(validConfig)
     coEvery { connectVpnUseCase(validConfig) } returns Result.success(Unit)

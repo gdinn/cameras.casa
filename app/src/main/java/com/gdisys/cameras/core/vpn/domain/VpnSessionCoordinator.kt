@@ -10,7 +10,8 @@ import javax.inject.Singleton
 
 /**
  * Coordena a sessão de VPN compartilhada pelas telas que dependem dela (Home e
- * Histórico), evitando reconectar um túnel que já está ativo.
+ * Histórico), evitando reconectar um túnel que já está ativo ou disparar uma nova
+ * tentativa de conexão enquanto outra já está em andamento.
  */
 @Singleton
 class VpnSessionCoordinator @Inject constructor(
@@ -22,7 +23,9 @@ class VpnSessionCoordinator @Inject constructor(
   val vpnState: StateFlow<VpnTunnelState> = observeVpnStateUseCase()
 
   suspend fun connect(): Result<Unit> {
-    if (vpnState.value == VpnTunnelState.CONNECTED) return Result.success(Unit)
+    if (vpnState.value == VpnTunnelState.CONNECTED || vpnState.value == VpnTunnelState.CONNECTING) {
+      return Result.success(Unit)
+    }
 
     return getVpnConfigUseCase().fold(
       onSuccess = { config -> connectVpnUseCase(config) },
