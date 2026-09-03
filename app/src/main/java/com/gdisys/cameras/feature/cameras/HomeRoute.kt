@@ -22,13 +22,15 @@ fun HomeRoute(
     onAppBackgrounded = viewModel::disconnectVpn
   )
 
+  val navigateToConfig: () -> Unit = {
+    viewModel.disconnectVpn()
+    onNavigateToConfig()
+  }
+
   LaunchedEffect(viewModel) {
     viewModel.navigateUiEvent.collect { event ->
       when (event) {
-        HomeNavigateUiEvent.ToConfig -> {
-          viewModel.disconnectVpn()
-          onNavigateToConfig()
-        }
+        HomeNavigateUiEvent.ToConfig -> navigateToConfig()
       }
     }
   }
@@ -49,10 +51,7 @@ fun HomeRoute(
         onClearFocusedStream = viewModel::clearFocusedStream,
         onMoveStreamUp = viewModel::moveStreamUp,
         onMoveStreamDown = viewModel::moveStreamDown,
-        onNavigateToConfig = {
-          viewModel.disconnectVpn()
-          onNavigateToConfig()
-        },
+        onNavigateToConfig = navigateToConfig,
         onNavigateToHistory = onNavigateToHistory
       )
     }

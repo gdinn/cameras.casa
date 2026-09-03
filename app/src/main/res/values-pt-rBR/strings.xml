@@ -23,4 +23,5 @@
     <string name="home_route_stream_connection_error">Falha ao conectar à câmera</string>
     <string name="qrcode_route_camera_init_error">Falha ao iniciar a câmera</string>
     <string name="history_screen_title">Histórico</string>
+    <string name="history_route_vpn_connection_error">Falha ao conectar à VPN</string>
 </resources>

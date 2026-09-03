@@ -44,4 +44,7 @@
 
     <!-- History Screen -->
     <string name="history_screen_title">History</string>
+
+    <!-- History Route -->
+    <string name="history_route_vpn_connection_error">Failed to connect to VPN</string>
 </resources>

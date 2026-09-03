@@ -1,6 +1,7 @@
 package com.gdisys.cameras.feature.history
 
 import androidx.compose.runtime.Composable
+import com.gdisys.cameras.core.components.ToastDisplayer
 import com.gdisys.cameras.core.components.VpnSessionLifecycleEffect
 import com.gdisys.cameras.feature.history.components.HistoryScreen
 
@@ -12,6 +13,8 @@ fun HistoryRoute(
     onAppForegrounded = viewModel::connectVpn,
     onAppBackgrounded = viewModel::disconnectVpn
   )
+
+  ToastDisplayer(toastUiEvent = viewModel.uiEvent)
 
   HistoryScreen()
 }
