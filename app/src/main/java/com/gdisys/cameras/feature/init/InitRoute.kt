@@ -2,12 +2,13 @@ package com.gdisys.cameras.feature.init
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.gdisys.cameras.core.components.ToastDisplayer
 import com.gdisys.cameras.feature.init.components.InitScreen
 
 @Composable
 fun InitRoute(
-  viewModel: InitViewModel,
+  viewModel: InitViewModel = hiltViewModel(),
   onNavigateToConfig: () -> Unit,
   onNavigateToHome: () -> Unit,
 ) {
