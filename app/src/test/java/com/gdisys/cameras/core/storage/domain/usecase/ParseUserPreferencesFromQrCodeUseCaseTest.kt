@@ -127,7 +127,7 @@ class ParseUserPreferencesFromQrCodeUseCaseTest {
 
   @Test
   fun `strips BOM character before parsing`() {
-    val result = useCase("﻿$validJson")
+    val result = useCase("\uFEFF$validJson")
 
     assertTrue(result.isSuccess)
     assertEquals("private-key", result.getOrNull()?.vpnConfigTokens?.iPrk)

@@ -5,7 +5,7 @@
     <string name="init_screen_no_credentials">Credentials not found</string>
 
     <!-- Loading Screen -->
-    <string name="loading_screen_verifying_credentials">Verifying credentials…</string>">
+    <string name="loading_screen_verifying_credentials">Verifying credentials…</string>
 
     <!-- Config Route -->
     <string name="config_route_vpn_accepted">VPN Permission Accepted</string>

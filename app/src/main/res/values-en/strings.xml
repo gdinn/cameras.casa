@@ -5,6 +5,7 @@
     <string name="loading_screen_verifying_credentials">Verifying credentials…</string>
     <string name="config_route_vpn_accepted">VPN Permission Accepted</string>
     <string name="config_route_vpn_already_granted">Permission already granted</string>
+    <string name="config_route_save_preferences_error">Failed to save settings</string>
     <string name="config_screen_settings_loaded">Settings loaded!</string>
     <string name="config_screen_reload_settings">Reload settings</string>
     <string name="config_screen_load_settings">Load settings</string>
