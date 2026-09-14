@@ -3,12 +3,14 @@ package com.gdisys.cameras.feature.cameras
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.res.stringResource
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.gdisys.cameras.R
 import com.gdisys.cameras.core.components.ToastDisplayer
-import com.gdisys.cameras.feature.cameras.components.CamerasLoadingScreen
+import com.gdisys.cameras.core.components.LoadingScreen
 import com.gdisys.cameras.feature.cameras.components.HomeScreen
 import org.webrtc.EglBase
 
@@ -33,7 +35,7 @@ fun HomeRoute(
 
   val uiState by viewModel.uiState.collectAsStateWithLifecycle()
   when (val state = uiState) {
-    HomeUiState.Loading -> CamerasLoadingScreen()
+    HomeUiState.Loading -> LoadingScreen(stringResource(R.string.home_screen_establishing_secure_connection))
     is HomeUiState.Ready -> {
       HomeScreen(
         streams = state.streams,

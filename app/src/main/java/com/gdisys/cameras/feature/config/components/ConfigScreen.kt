@@ -15,7 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.gdisys.cameras.R
-import com.gdisys.cameras.core.components.LoadingStorageScreen
+import com.gdisys.cameras.core.components.LoadingScreen
 import com.gdisys.cameras.feature.config.ConfigUiState
 
 @Composable
@@ -37,7 +37,7 @@ fun ConfigScreen(
 
       when (uiState) {
         is ConfigUiState.Loading -> {
-          LoadingStorageScreen()
+          LoadingScreen(stringResource(R.string.loading_screen_verifying_credentials))
         }
 
         is ConfigUiState.Scanning -> {
