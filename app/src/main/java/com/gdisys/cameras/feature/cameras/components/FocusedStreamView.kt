@@ -5,11 +5,11 @@ import androidx.compose.ui.Modifier
 
 @Composable
 fun FocusedStreamView(
-  streamUrl: String,
+  videoContent: @Composable () -> Unit,
   modifier: Modifier = Modifier
 ) {
   VideoStreamCard(
-    streamUrl = streamUrl,
+    videoContent = videoContent,
     modifier = modifier
   )
 }

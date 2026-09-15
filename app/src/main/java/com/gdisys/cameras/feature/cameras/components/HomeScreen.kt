@@ -21,6 +21,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -59,6 +61,21 @@ fun HomeScreen(
     WebRtcConnection(eglBase = eglBase, connect = onConnectStream, disconnect = onDisconnectStream)
   }
 
+  // Movable content per stream URL: lets the same WebRtcVideoPlayer instance (renderer +
+  // WHEP connection) move between the grid and the focused view without being disposed
+  // and recreated, so the video never restarts when toggling focus.
+  val moviePlayers = remember { mutableMapOf<String, @Composable () -> Unit>() }
+  fun movablePlayerFor(url: String): @Composable () -> Unit =
+    moviePlayers.getOrPut(url) {
+      movableContentOf {
+        WebRtcVideoPlayer(streamUrl = url, modifier = Modifier.fillMaxSize())
+      }
+    }
+
+  LaunchedEffect(streams) {
+    moviePlayers.keys.retainAll(streams.toSet())
+  }
+
   CompositionLocalProvider(LocalWebRtcConnection provides webRtcConnection) {
     Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
       Box(
@@ -69,7 +86,7 @@ fun HomeScreen(
         contentAlignment = Alignment.Center
       ) {
         if (focusedStream != null) {
-          FocusedStreamView(streamUrl = focusedStream)
+          FocusedStreamView(videoContent = movablePlayerFor(focusedStream))
         } else {
           Box(modifier = Modifier.fillMaxSize()) {
             LazyVerticalGrid(
@@ -88,6 +105,7 @@ fun HomeScreen(
                   url = url,
                   canMoveUp = index > 0,
                   canMoveDown = index < streams.size - 1,
+                  videoContent = movablePlayerFor(url),
                   onFocusedStreamChange = onFocusStream,
                   onMoveUp = { onMoveStreamUp(index) },
                   onMoveDown = { onMoveStreamDown(index) }

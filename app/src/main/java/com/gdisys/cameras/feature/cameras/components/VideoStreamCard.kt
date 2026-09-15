@@ -4,7 +4,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -13,7 +12,7 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 fun VideoStreamCard(
-  streamUrl: String,
+  videoContent: @Composable () -> Unit,
   modifier: Modifier = Modifier,
   onClick: (() -> Unit)? = null,
   content: @Composable BoxScope.() -> Unit = {}
@@ -24,10 +23,7 @@ fun VideoStreamCard(
       .clip(RoundedCornerShape(8.dp))
       .let { if (onClick != null) it.clickable(onClick = onClick) else it }
   ) {
-    WebRtcVideoPlayer(
-      streamUrl = streamUrl,
-      modifier = Modifier.fillMaxSize()
-    )
+    videoContent()
     content()
   }
 }

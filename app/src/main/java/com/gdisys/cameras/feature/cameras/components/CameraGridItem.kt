@@ -23,12 +23,13 @@ fun CameraGridItem(
   url: String,
   canMoveUp: Boolean,
   canMoveDown: Boolean,
+  videoContent: @Composable () -> Unit,
   onFocusedStreamChange: (String) -> Unit,
   onMoveUp: () -> Unit,
   onMoveDown: () -> Unit
 ) {
   VideoStreamCard(
-    streamUrl = url,
+    videoContent = videoContent,
     onClick = { onFocusedStreamChange(url) }
   ) {
     Row(
