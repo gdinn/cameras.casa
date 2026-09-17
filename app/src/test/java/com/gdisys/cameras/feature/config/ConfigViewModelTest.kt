@@ -4,6 +4,8 @@ import android.content.Intent
 import app.cash.turbine.test
 import com.gdisys.cameras.MainDispatcherRule
 import com.gdisys.cameras.core.components.ToastUiEvent
+import com.gdisys.cameras.core.permission.domain.usecase.HasCameraPermissionUseCase
+import com.gdisys.cameras.core.permission.domain.usecase.HasVpnPermissionUseCase
 import com.gdisys.cameras.core.storage.domain.VpnCredentialsStatus
 import com.gdisys.cameras.core.storage.domain.model.UserPreferences
 import com.gdisys.cameras.core.storage.domain.model.VpnConfigDefaults
@@ -31,6 +33,8 @@ class ConfigViewModelTest {
   private val saveUserPreferencesUseCase = mockk<SaveUserPreferencesUseCase>()
   private val parseUserPreferencesFromQrCodeUseCase = mockk<ParseUserPreferencesFromQrCodeUseCase>()
   private val getVpnConfigStatusUseCase = mockk<GetVpnConfigStatusUseCase>()
+  private val hasVpnPermissionUseCase = mockk<HasVpnPermissionUseCase>()
+  private val hasCameraPermissionUseCase = mockk<HasCameraPermissionUseCase>()
   private val requestVpnPermissionUseCase = mockk<RequestVpnPermissionUseCase>()
 
   private val statusFlow = MutableStateFlow<VpnCredentialsStatus>(VpnCredentialsStatus.Loading)
@@ -53,33 +57,127 @@ class ConfigViewModelTest {
 
   private lateinit var viewModel: ConfigViewModel
 
-  @Before
-  fun setUp() {
+  private fun createViewModel(
+    hasVpnPermission: Boolean = false,
+    hasCameraPermission: Boolean = false,
+  ): ConfigViewModel {
     every { getVpnConfigStatusUseCase() } returns statusFlow
-    viewModel = ConfigViewModel(
+    every { hasVpnPermissionUseCase() } returns hasVpnPermission
+    every { hasCameraPermissionUseCase() } returns hasCameraPermission
+    return ConfigViewModel(
       saveUserPreferencesUseCase,
       parseUserPreferencesFromQrCodeUseCase,
       getVpnConfigStatusUseCase,
+      hasVpnPermissionUseCase,
+      hasCameraPermissionUseCase,
       requestVpnPermissionUseCase
     )
   }
 
+  @Before
+  fun setUp() {
+    viewModel = createViewModel()
+  }
+
   @Test
-  fun `uiState reflects Loading, ConfigurationLoaded, NeedsConfiguration and Scanning`() = runTest {
+  fun `uiState reflects vpn and camera permission on init`() = runTest {
+    every { getVpnConfigStatusUseCase() } returns statusFlow
+    every { hasVpnPermissionUseCase() } returns true
+    every { hasCameraPermissionUseCase() } returns true
+
+    val viewModel = ConfigViewModel(
+      saveUserPreferencesUseCase,
+      parseUserPreferencesFromQrCodeUseCase,
+      getVpnConfigStatusUseCase,
+      hasVpnPermissionUseCase,
+      hasCameraPermissionUseCase,
+      requestVpnPermissionUseCase
+    )
+
     viewModel.uiState.test {
-      assertEquals(ConfigUiState.Loading, awaitItem())
+      var state = awaitItem()
+      while (state.vpnPermissionButtonState != ConfigButtonState.Done ||
+        state.cameraPermissionButtonState != ConfigButtonState.Done
+      ) {
+        state = awaitItem()
+      }
+      assertEquals(ConfigButtonState.Done, state.vpnPermissionButtonState)
+      assertEquals(ConfigButtonState.Done, state.cameraPermissionButtonState)
+    }
+  }
 
-      statusFlow.value = VpnCredentialsStatus.Loaded(hasValidCredentials = true)
-      assertEquals(ConfigUiState.ConfigurationLoaded, awaitItem())
+  @Test
+  fun `onShowScanner emits a navigate to scanner event when camera permission is granted`() = runTest {
+    val viewModel = createViewModel(hasCameraPermission = true)
 
-      statusFlow.value = VpnCredentialsStatus.Loaded(hasValidCredentials = false)
-      assertEquals(ConfigUiState.NeedsConfiguration, awaitItem())
+    viewModel.uiState.test {
+      var state = awaitItem()
+      while (state.cameraPermissionButtonState != ConfigButtonState.Done) {
+        state = awaitItem()
+      }
 
+      viewModel.navigateToScannerEvent.test {
+        viewModel.onShowScanner()
+
+        awaitItem()
+      }
+    }
+  }
+
+  @Test
+  fun `onShowScanner does nothing when camera permission is not granted`() = runTest {
+    viewModel.navigateToScannerEvent.test {
       viewModel.onShowScanner()
-      assertEquals(ConfigUiState.Scanning, awaitItem())
 
-      statusFlow.value = VpnCredentialsStatus.Loading
-      assertEquals(ConfigUiState.Loading, awaitItem())
+      expectNoEvents()
+    }
+  }
+
+  @Test
+  fun `onRequestCameraPermission emits a request permission event`() = runTest {
+    viewModel.requestCameraPermissionEvent.test {
+      viewModel.onRequestCameraPermission()
+
+      awaitItem()
+    }
+  }
+
+  @Test
+  fun `onCameraPermissionResult with granted true sets camera permission button to Done`() = runTest {
+    viewModel.uiState.test {
+      awaitItem()
+
+      viewModel.onCameraPermissionResult(true)
+
+      assertEquals(ConfigButtonState.Done, awaitItem().cameraPermissionButtonState)
+    }
+  }
+
+  @Test
+  fun `onCameraPermissionResult with granted false sets camera permission button to Ready`() = runTest {
+    val viewModel = createViewModel(hasCameraPermission = true)
+
+    viewModel.uiState.test {
+      var state = awaitItem()
+      while (state.cameraPermissionButtonState != ConfigButtonState.Done) {
+        state = awaitItem()
+      }
+
+      viewModel.onCameraPermissionResult(false)
+
+      assertEquals(ConfigButtonState.Ready, awaitItem().cameraPermissionButtonState)
+    }
+  }
+
+  @Test
+  fun `onVpnPermissionAccepted sets vpn permission button to Done`() = runTest {
+    viewModel.uiState.test {
+      val state = awaitItem()
+      assertEquals(ConfigButtonState.Ready, state.vpnPermissionButtonState)
+
+      viewModel.onVpnPermissionAccepted()
+
+      assertEquals(ConfigButtonState.Done, awaitItem().vpnPermissionButtonState)
     }
   }
 
@@ -112,6 +210,20 @@ class ConfigViewModelTest {
   }
 
   @Test
+  fun `onQrCodeScanned with null preferences sets qrCodeButtonState to Error`() = runTest {
+    every { parseUserPreferencesFromQrCodeUseCase("raw-json") } returns Result.success(null)
+    coEvery { saveUserPreferencesUseCase(UserPreferences()) } returns Result.success(Unit)
+
+    viewModel.uiState.test {
+      awaitItem()
+
+      viewModel.onQrCodeScanned("raw-json")
+
+      assertEquals(ConfigButtonState.Error, awaitItem().qrCodeButtonState)
+    }
+  }
+
+  @Test
   fun `onQrCodeScanned with malformed json resets preferences and shows format error toast`() = runTest {
     val exception = RuntimeException("malformed")
     every { parseUserPreferencesFromQrCodeUseCase("bad-json") } returns Result.failure(exception)
@@ -129,6 +241,40 @@ class ConfigViewModelTest {
   }
 
   @Test
+  fun `onQrCodeScanned with malformed json sets qrCodeButtonState to Error`() = runTest {
+    val exception = RuntimeException("malformed")
+    every { parseUserPreferencesFromQrCodeUseCase("bad-json") } returns Result.failure(exception)
+    coEvery { saveUserPreferencesUseCase(UserPreferences()) } returns Result.success(Unit)
+
+    viewModel.uiState.test {
+      awaitItem()
+
+      viewModel.onQrCodeScanned("bad-json")
+
+      assertEquals(ConfigButtonState.Error, awaitItem().qrCodeButtonState)
+    }
+  }
+
+  @Test
+  fun `onQrCodeScanned clears a previous Error on a new successful scan`() = runTest {
+    statusFlow.value = VpnCredentialsStatus.Loaded(hasValidCredentials = false)
+    every { parseUserPreferencesFromQrCodeUseCase("bad-json") } returns Result.failure(RuntimeException("malformed"))
+    every { parseUserPreferencesFromQrCodeUseCase("raw-json") } returns Result.success(userPreferences)
+    coEvery { saveUserPreferencesUseCase(UserPreferences()) } returns Result.success(Unit)
+    coEvery { saveUserPreferencesUseCase(userPreferences) } returns Result.success(Unit)
+
+    viewModel.uiState.test {
+      assertEquals(ConfigButtonState.Ready, awaitItem().qrCodeButtonState)
+
+      viewModel.onQrCodeScanned("bad-json")
+      assertEquals(ConfigButtonState.Error, awaitItem().qrCodeButtonState)
+
+      viewModel.onQrCodeScanned("raw-json")
+      assertEquals(ConfigButtonState.Ready, awaitItem().qrCodeButtonState)
+    }
+  }
+
+  @Test
   fun `updateUserPreferences shows a toast when saving fails`() = runTest {
     coEvery { saveUserPreferencesUseCase(userPreferences) } returns Result.failure(RuntimeException("boom"))
 
@@ -139,6 +285,19 @@ class ConfigViewModelTest {
         ToastUiEvent.Show(ConfigToastMessage.SAVE_PREFERENCES_ERROR.resId),
         awaitItem()
       )
+    }
+  }
+
+  @Test
+  fun `updateUserPreferences sets qrCodeButtonState to Error when saving fails`() = runTest {
+    coEvery { saveUserPreferencesUseCase(userPreferences) } returns Result.failure(RuntimeException("boom"))
+
+    viewModel.uiState.test {
+      awaitItem()
+
+      viewModel.updateUserPreferences(userPreferences)
+
+      assertEquals(ConfigButtonState.Error, awaitItem().qrCodeButtonState)
     }
   }
 

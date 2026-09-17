@@ -3,7 +3,9 @@ package com.gdisys.cameras.core.permission.data
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.util.Log
 import androidx.core.content.ContextCompat
+import com.gdisys.cameras.core.DEBUG_TAG
 import com.gdisys.cameras.core.permission.domain.CameraPermissionRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -14,9 +16,9 @@ class CameraPermissionRepositoryImpl @Inject constructor(
   @ApplicationContext private val context: Context
 ) : CameraPermissionRepository {
 
-  override fun hasCameraPermission(): Boolean =
-    ContextCompat.checkSelfPermission(
+  override fun hasCameraPermission(): Boolean = ContextCompat.checkSelfPermission(
       context,
       Manifest.permission.CAMERA
     ) == PackageManager.PERMISSION_GRANTED
+
 }

@@ -1,8 +1,18 @@
 package com.gdisys.cameras.feature.config
 
-sealed interface ConfigUiState {
-  data object Loading : ConfigUiState
-  data object NeedsConfiguration : ConfigUiState
-  data object Scanning : ConfigUiState
-  data object ConfigurationLoaded : ConfigUiState
+data class ConfigUiState(
+  val cameraPermissionButtonState: ConfigButtonState = ConfigButtonState.Loading,
+  val qrCodeButtonState: ConfigButtonState = ConfigButtonState.Loading,
+  val vpnPermissionButtonState: ConfigButtonState = ConfigButtonState.Loading,
+  val streamURLsButtonState: ConfigButtonState = ConfigButtonState.Loading
+) {
+  val isQrCodeButtonEnabled: Boolean
+    get() = cameraPermissionButtonState == ConfigButtonState.Done
+}
+
+sealed interface ConfigButtonState {
+  data object Loading: ConfigButtonState
+  data object Ready: ConfigButtonState
+  data object Done: ConfigButtonState
+  data object Error: ConfigButtonState
 }

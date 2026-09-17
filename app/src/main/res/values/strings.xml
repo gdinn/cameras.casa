@@ -13,10 +13,14 @@
     <string name="config_route_save_preferences_error">Failed to save settings</string>
 
     <!-- Config Screen -->
-    <string name="config_screen_settings_loaded">Settings loaded!</string>
-    <string name="config_screen_reload_settings">Reload settings</string>
-    <string name="config_screen_load_settings">Load settings</string>
-    <string name="config_screen_accept_vpn_permission">Accept VPN permission</string>
+    <string name="config_screen_camera_permission_title">Camera Permission</string>
+    <string name="config_screen_camera_permission_subtitle">Allow camera access to scan configuration QR Codes</string>
+    <string name="config_screen_load_configuration_title">Load Configuration</string>
+    <string name="config_screen_load_configuration_subtitle">Open camera and read Wireguard Configuration from a QR Code</string>
+    <string name="config_screen_vpn_permission_title">VPN Permission</string>
+    <string name="config_screen_vpn_permission_subtitle">Will enable VPN connections through the configured Wireguard instance</string>
+    <string name="config_screen_stream_urls_title">Stream URLs</string>
+    <string name="config_screen_stream_urls_subtitle">Configure from which URLs the video will be streamed</string>
     <string name="config_screen_navigate_to_home">Navigate to Home</string>
 
     <!-- QR Code validations -->
@@ -25,8 +29,6 @@
 
 
     <!-- QR Code Screen -->
-    <string name="qrcode_screen_camera_permission_required">Camera access is required to scan QR Codes</string>
-    <string name="qrcode_screen_camera_grant_access">Grant access</string>
 
     <!-- QR Code Route -->
     <string name="qrcode_route_camera_init_error">Failed to start camera</string>
