@@ -45,7 +45,6 @@ fun ConfigButton(
     modifier = Modifier
         .alpha(if (enabled) 1f else 0.5f)
         .clickable(
-            enabled = enabled,
             onClick = onClicked
         )
         .clip(RoundedCornerShape(20.dp, 20.dp, 20.dp, 20.dp))

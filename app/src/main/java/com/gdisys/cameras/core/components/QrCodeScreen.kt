@@ -1,5 +1,7 @@
 package com.gdisys.cameras.core.components
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.view.ViewGroup
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
@@ -59,6 +61,15 @@ private fun QrCodeCameraPreview(
       val executor = ContextCompat.getMainExecutor(ctx)
 
       cameraProviderFuture.addListener({
+        if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.CAMERA) !=
+          PackageManager.PERMISSION_GRANTED
+        ) {
+          // A permissão pode ter sido revogada externamente (ex.: configurações do
+          // sistema) enquanto esta tela já estava aberta.
+          onCameraInitError(SecurityException("Camera permission not granted"))
+          return@addListener
+        }
+
         val cameraProvider = cameraProviderFuture.get()
 
         val preview = Preview.Builder().build().also {

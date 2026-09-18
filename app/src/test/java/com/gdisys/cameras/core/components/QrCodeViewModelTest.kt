@@ -52,4 +52,34 @@ class QrCodeViewModelTest {
       assertEquals(ToastUiEvent.Show(QrCodeToastMessage.CAMERA_INIT_ERROR.resId), awaitItem())
     }
   }
+
+  @Test
+  fun `onCameraInitError emits a navigate back event`() = runTest {
+    val viewModel = createViewModel()
+
+    viewModel.navigateBackEvent.test {
+      viewModel.onCameraInitError(RuntimeException("camera boom"))
+      awaitItem()
+    }
+  }
+
+  @Test
+  fun `onBackPressed shows a toast`() = runTest {
+    val viewModel = createViewModel()
+
+    viewModel.uiEvent.test {
+      viewModel.onBackPressed()
+      assertEquals(ToastUiEvent.Show(QrCodeToastMessage.READING_CANCELLED.resId), awaitItem())
+    }
+  }
+
+  @Test
+  fun `onBackPressed emits a navigate back event`() = runTest {
+    val viewModel = createViewModel()
+
+    viewModel.navigateBackEvent.test {
+      viewModel.onBackPressed()
+      awaitItem()
+    }
+  }
 }

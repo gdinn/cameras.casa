@@ -4,7 +4,12 @@
     <string name="init_screen_no_credentials">Credenciais não encontradas</string>
     <string name="loading_screen_verifying_credentials">Verificando credenciais…</string>
     <string name="config_route_vpn_accepted">Permissão da VPN aceita</string>
+    <string name="config_route_vpn_denied">Permissão da VPN negada</string>
     <string name="config_route_vpn_already_granted">Permissão já concedida</string>
+    <string name="config_route_camera_already_granted">Permissão de câmera já concedida</string>
+    <string name="config_route_camera_permanently_denied">Permissão de câmera negada. Habilite-a nas configurações do aplicativo para escanear QR Codes</string>
+    <string name="config_route_camera_permission_required_for_qr_code">Conceda a permissão de câmera antes de carregar um QR Code de configuração</string>
+    <string name="config_route_qr_code_loaded_successfully">Configuração carregada com sucesso</string>
     <string name="config_route_save_preferences_error">Falha ao salvar as configurações</string>
     <string name="config_screen_camera_permission_title">Permissão de Câmera</string>
     <string name="config_screen_camera_permission_subtitle">Permitir acesso à câmera para escanear QR Codes de configuração</string>
@@ -23,5 +28,6 @@
     <string name="home_screen_reconfigure">Reconfigurar</string>
     <string name="home_route_vpn_connection_error">Falha ao conectar à VPN</string>
     <string name="home_route_stream_connection_error">Falha ao conectar à câmera</string>
-    <string name="qrcode_route_camera_init_error">Falha ao iniciar a câmera</string>
+    <string name="qr_code_route_camera_init_error">Falha ao iniciar a câmera</string>
+    <string name="qr_code_route_reading_cancelled">Leitura de QR Code cancelada</string>
 </resources>

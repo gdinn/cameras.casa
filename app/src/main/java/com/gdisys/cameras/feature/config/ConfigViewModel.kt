@@ -37,7 +37,7 @@ class ConfigViewModel @Inject constructor(
   private val parseUserPreferencesFromQrCodeUseCase: ParseUserPreferencesFromQrCodeUseCase,
   getVpnConfigStatusUseCase: GetVpnConfigStatusUseCase,
   hasVpnPermissionUseCase: HasVpnPermissionUseCase,
-  hasCameraPermissionUseCase: HasCameraPermissionUseCase,
+  private val hasCameraPermissionUseCase: HasCameraPermissionUseCase,
   private val requestVpnPermissionUseCase: RequestVpnPermissionUseCase
 ) : ToastEventViewModel() {
 
@@ -82,24 +82,44 @@ class ConfigViewModel @Inject constructor(
   val navigateToScannerEvent: Flow<Unit> = _navigateToScannerEvent.receiveAsFlow()
 
   fun onShowScanner() {
-    if (_cameraPermissionButtonState.value != ConfigButtonState.Done) return
+    if (_cameraPermissionButtonState.value != ConfigButtonState.Done) {
+      showToast(ConfigToastMessage.CAMERA_PERMISSION_REQUIRED_FOR_QR_CODE)
+      return
+    }
     viewModelScope.launch {
       _navigateToScannerEvent.send(Unit)
     }
   }
 
   fun onRequestCameraPermission() {
+    if (_cameraPermissionButtonState.value == ConfigButtonState.Done) {
+      showToast(ConfigToastMessage.CAMERA_PERMISSION_ALREADY_GRANTED)
+      return
+    }
     viewModelScope.launch {
       _requestCameraPermissionEvent.send(Unit)
     }
   }
 
-  fun onCameraPermissionResult(granted: Boolean) {
+  fun onCameraPermissionResult(granted: Boolean, shouldShowRationale: Boolean) {
     _cameraPermissionButtonState.value = if (granted) ConfigButtonState.Done else ConfigButtonState.Ready
+    if (!granted && !shouldShowRationale) {
+      showToast(ConfigToastMessage.CAMERA_PERMISSION_PERMANENTLY_DENIED)
+    }
+  }
+
+  fun refreshCameraPermissionState() {
+    _cameraPermissionButtonState.value =
+      if (hasCameraPermissionUseCase()) ConfigButtonState.Done else ConfigButtonState.Ready
   }
 
   fun onVpnPermissionAccepted() {
     _vpnPermissionButtonState.value = ConfigButtonState.Done
+    showToast(ConfigToastMessage.VPN_PERMISSION_ACCEPTED)
+  }
+
+  fun onVpnPermissionDenied() {
+    showToast(ConfigToastMessage.VPN_PERMISSION_DENIED)
   }
 
   fun onQrCodeScanned(rawJson: String) {
@@ -111,7 +131,7 @@ class ConfigViewModel @Inject constructor(
           updateUserPreferences(UserPreferences())
           showToast(ConfigToastMessage.QR_CODE_INVALID_DATA_ERROR)
         } else {
-          updateUserPreferences(userPreferences)
+          updateUserPreferences(userPreferences, showSuccessToast = true)
         }
       },
       onFailure = { e ->
@@ -123,13 +143,17 @@ class ConfigViewModel @Inject constructor(
     )
   }
 
-  fun updateUserPreferences(userPreferences: UserPreferences) {
+  private fun updateUserPreferences(userPreferences: UserPreferences, showSuccessToast: Boolean = false) {
     viewModelScope.launch {
-      saveUserPreferencesUseCase(userPreferences).onFailure { e ->
-        Log.e(DEBUG_TAG, "Failed to save user preferences", e)
-        _qrCodeError.value = true
-        showToast(ConfigToastMessage.SAVE_PREFERENCES_ERROR)
-      }
+      saveUserPreferencesUseCase(userPreferences)
+        .onSuccess {
+          if (showSuccessToast) showToast(ConfigToastMessage.QR_CODE_LOADED_SUCCESSFULLY)
+        }
+        .onFailure { e ->
+          Log.e(DEBUG_TAG, "Failed to save user preferences", e)
+          _qrCodeError.value = true
+          showToast(ConfigToastMessage.SAVE_PREFERENCES_ERROR)
+        }
     }
   }
 

@@ -9,7 +9,12 @@
 
     <!-- Config Route -->
     <string name="config_route_vpn_accepted">VPN Permission Accepted</string>
+    <string name="config_route_vpn_denied">VPN Permission Denied</string>
     <string name="config_route_vpn_already_granted">Permission already granted</string>
+    <string name="config_route_camera_already_granted">Camera permission already granted</string>
+    <string name="config_route_camera_permanently_denied">Camera permission denied. Enable it in the app settings to scan QR Codes</string>
+    <string name="config_route_camera_permission_required_for_qr_code">Grant camera permission before loading a configuration QR Code</string>
+    <string name="config_route_qr_code_loaded_successfully">Configuration loaded successfully</string>
     <string name="config_route_save_preferences_error">Failed to save settings</string>
 
     <!-- Config Screen -->
@@ -31,7 +36,8 @@
     <!-- QR Code Screen -->
 
     <!-- QR Code Route -->
-    <string name="qrcode_route_camera_init_error">Failed to start camera</string>
+    <string name="qr_code_route_camera_init_error">Failed to start camera</string>
+    <string name="qr_code_route_reading_cancelled">QR Code reading cancelled</string>
 
     <!-- Home Screen -->
     <string name="home_screen_move_up">Move up</string>

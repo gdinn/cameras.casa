@@ -125,11 +125,23 @@ class ConfigViewModelTest {
   }
 
   @Test
-  fun `onShowScanner does nothing when camera permission is not granted`() = runTest {
+  fun `onShowScanner does not navigate when camera permission is not granted`() = runTest {
     viewModel.navigateToScannerEvent.test {
       viewModel.onShowScanner()
 
       expectNoEvents()
+    }
+  }
+
+  @Test
+  fun `onShowScanner shows a toast when camera permission is not granted`() = runTest {
+    viewModel.uiEvent.test {
+      viewModel.onShowScanner()
+
+      assertEquals(
+        ToastUiEvent.Show(ConfigToastMessage.CAMERA_PERMISSION_REQUIRED_FOR_QR_CODE.resId),
+        awaitItem()
+      )
     }
   }
 
@@ -143,11 +155,35 @@ class ConfigViewModelTest {
   }
 
   @Test
+  fun `onRequestCameraPermission shows a toast and does not emit a request event when permission is already granted`() = runTest {
+    val viewModel = createViewModel(hasCameraPermission = true)
+
+    viewModel.uiState.test {
+      var state = awaitItem()
+      while (state.cameraPermissionButtonState != ConfigButtonState.Done) {
+        state = awaitItem()
+      }
+    }
+
+    viewModel.requestCameraPermissionEvent.test {
+      viewModel.uiEvent.test {
+        viewModel.onRequestCameraPermission()
+
+        assertEquals(
+          ToastUiEvent.Show(ConfigToastMessage.CAMERA_PERMISSION_ALREADY_GRANTED.resId),
+          awaitItem()
+        )
+      }
+      expectNoEvents()
+    }
+  }
+
+  @Test
   fun `onCameraPermissionResult with granted true sets camera permission button to Done`() = runTest {
     viewModel.uiState.test {
       awaitItem()
 
-      viewModel.onCameraPermissionResult(true)
+      viewModel.onCameraPermissionResult(granted = true, shouldShowRationale = false)
 
       assertEquals(ConfigButtonState.Done, awaitItem().cameraPermissionButtonState)
     }
@@ -163,9 +199,30 @@ class ConfigViewModelTest {
         state = awaitItem()
       }
 
-      viewModel.onCameraPermissionResult(false)
+      viewModel.onCameraPermissionResult(granted = false, shouldShowRationale = true)
 
       assertEquals(ConfigButtonState.Ready, awaitItem().cameraPermissionButtonState)
+    }
+  }
+
+  @Test
+  fun `onCameraPermissionResult with granted false and rationale allowed shows no toast`() = runTest {
+    viewModel.uiEvent.test {
+      viewModel.onCameraPermissionResult(granted = false, shouldShowRationale = true)
+
+      expectNoEvents()
+    }
+  }
+
+  @Test
+  fun `onCameraPermissionResult with granted false and rationale unavailable shows permanently denied toast`() = runTest {
+    viewModel.uiEvent.test {
+      viewModel.onCameraPermissionResult(granted = false, shouldShowRationale = false)
+
+      assertEquals(
+        ToastUiEvent.Show(ConfigToastMessage.CAMERA_PERMISSION_PERMANENTLY_DENIED.resId),
+        awaitItem()
+      )
     }
   }
 
@@ -182,13 +239,41 @@ class ConfigViewModelTest {
   }
 
   @Test
-  fun `onQrCodeScanned with valid preferences saves them without showing a toast`() = runTest {
+  fun `onVpnPermissionAccepted shows a toast`() = runTest {
+    viewModel.uiEvent.test {
+      viewModel.onVpnPermissionAccepted()
+
+      assertEquals(
+        ToastUiEvent.Show(ConfigToastMessage.VPN_PERMISSION_ACCEPTED.resId),
+        awaitItem()
+      )
+    }
+  }
+
+  @Test
+  fun `onVpnPermissionDenied shows a toast`() = runTest {
+    viewModel.uiEvent.test {
+      viewModel.onVpnPermissionDenied()
+
+      assertEquals(
+        ToastUiEvent.Show(ConfigToastMessage.VPN_PERMISSION_DENIED.resId),
+        awaitItem()
+      )
+    }
+  }
+
+  @Test
+  fun `onQrCodeScanned with valid preferences saves them and shows a success toast`() = runTest {
     every { parseUserPreferencesFromQrCodeUseCase("raw-json") } returns Result.success(userPreferences)
     coEvery { saveUserPreferencesUseCase(userPreferences) } returns Result.success(Unit)
 
     viewModel.uiEvent.test {
       viewModel.onQrCodeScanned("raw-json")
-      expectNoEvents()
+
+      assertEquals(
+        ToastUiEvent.Show(ConfigToastMessage.QR_CODE_LOADED_SUCCESSFULLY.resId),
+        awaitItem()
+      )
     }
     coVerify(exactly = 1) { saveUserPreferencesUseCase(userPreferences) }
   }
@@ -275,11 +360,12 @@ class ConfigViewModelTest {
   }
 
   @Test
-  fun `updateUserPreferences shows a toast when saving fails`() = runTest {
+  fun `onQrCodeScanned shows a toast when saving fails`() = runTest {
+    every { parseUserPreferencesFromQrCodeUseCase("raw-json") } returns Result.success(userPreferences)
     coEvery { saveUserPreferencesUseCase(userPreferences) } returns Result.failure(RuntimeException("boom"))
 
     viewModel.uiEvent.test {
-      viewModel.updateUserPreferences(userPreferences)
+      viewModel.onQrCodeScanned("raw-json")
 
       assertEquals(
         ToastUiEvent.Show(ConfigToastMessage.SAVE_PREFERENCES_ERROR.resId),
@@ -289,27 +375,17 @@ class ConfigViewModelTest {
   }
 
   @Test
-  fun `updateUserPreferences sets qrCodeButtonState to Error when saving fails`() = runTest {
+  fun `onQrCodeScanned sets qrCodeButtonState to Error when saving fails`() = runTest {
+    every { parseUserPreferencesFromQrCodeUseCase("raw-json") } returns Result.success(userPreferences)
     coEvery { saveUserPreferencesUseCase(userPreferences) } returns Result.failure(RuntimeException("boom"))
 
     viewModel.uiState.test {
       awaitItem()
 
-      viewModel.updateUserPreferences(userPreferences)
+      viewModel.onQrCodeScanned("raw-json")
 
       assertEquals(ConfigButtonState.Error, awaitItem().qrCodeButtonState)
     }
-  }
-
-  @Test
-  fun `updateUserPreferences does not show a toast on success`() = runTest {
-    coEvery { saveUserPreferencesUseCase(userPreferences) } returns Result.success(Unit)
-
-    viewModel.uiEvent.test {
-      viewModel.updateUserPreferences(userPreferences)
-      expectNoEvents()
-    }
-    coVerify(exactly = 1) { saveUserPreferencesUseCase(userPreferences) }
   }
 
   @Test
@@ -335,6 +411,36 @@ class ConfigViewModelTest {
       viewModel.acceptVpnPermission()
 
       assertEquals(VpnPermissionUiEvent.RequestPermission(intent), awaitItem())
+    }
+  }
+
+  @Test
+  fun `refreshCameraPermissionState sets camera permission button to Done when permission is granted`() = runTest {
+    every { hasCameraPermissionUseCase() } returns true
+
+    viewModel.uiState.test {
+      awaitItem()
+
+      viewModel.refreshCameraPermissionState()
+
+      assertEquals(ConfigButtonState.Done, awaitItem().cameraPermissionButtonState)
+    }
+  }
+
+  @Test
+  fun `refreshCameraPermissionState sets camera permission button to Ready when permission is not granted`() = runTest {
+    val viewModel = createViewModel(hasCameraPermission = true)
+
+    viewModel.uiState.test {
+      var state = awaitItem()
+      while (state.cameraPermissionButtonState != ConfigButtonState.Done) {
+        state = awaitItem()
+      }
+
+      every { hasCameraPermissionUseCase() } returns false
+      viewModel.refreshCameraPermissionState()
+
+      assertEquals(ConfigButtonState.Ready, awaitItem().cameraPermissionButtonState)
     }
   }
 }

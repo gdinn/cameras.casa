@@ -68,6 +68,9 @@ fun NavigationRoot(
             ?.savedStateHandle
             ?.set(QR_CODE_RESULT_KEY, rawJson)
           navController.popBackStack()
+        },
+        onNavigateBack = {
+          navController.popBackStack()
         }
       )
     }
