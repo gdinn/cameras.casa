@@ -1,5 +1,7 @@
 package com.gdisys.cameras.feature.cameras
 
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -20,13 +22,20 @@ fun HomeRoute(
   eglBase: EglBase,
   onNavigateToConfig: () -> Unit
 ) {
+  val activity = LocalActivity.current
+
   LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.connectVpn() }
   LifecycleEventEffect(Lifecycle.Event.ON_PAUSE) { viewModel.disconnectVpn() }
+
+  BackHandler {
+    viewModel.onBackPressed()
+  }
 
   LaunchedEffect(viewModel) {
     viewModel.navigateUiEvent.collect { event ->
       when (event) {
         HomeNavigateUiEvent.ToConfig -> onNavigateToConfig()
+        HomeNavigateUiEvent.ExitApp -> activity?.finish()
       }
     }
   }

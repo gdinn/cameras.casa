@@ -48,13 +48,15 @@ class ConfigViewModel @Inject constructor(
     if (hasVpnPermissionUseCase()) ConfigButtonState.Done else ConfigButtonState.Ready
   )
   private val _qrCodeError = MutableStateFlow(false)
+  private val _canNavigateBackToHome = MutableStateFlow(false)
 
   val uiState: StateFlow<ConfigUiState> = combine(
     _cameraPermissionButtonState,
     getVpnConfigStatusUseCase(),
     _vpnPermissionButtonState,
-    _qrCodeError
-  ) { cameraPermissionButtonState, vpnConfigStatus, vpnPermissionButtonState, qrCodeError ->
+    _qrCodeError,
+    _canNavigateBackToHome
+  ) { cameraPermissionButtonState, vpnConfigStatus, vpnPermissionButtonState, qrCodeError, canNavigateBackToHome ->
     ConfigUiState(
       cameraPermissionButtonState = cameraPermissionButtonState,
       qrCodeButtonState = when {
@@ -64,7 +66,8 @@ class ConfigViewModel @Inject constructor(
         else -> ConfigButtonState.Ready
       },
       vpnPermissionButtonState = vpnPermissionButtonState,
-      streamURLsButtonState = ConfigButtonState.Done
+      streamURLsButtonState = ConfigButtonState.Done,
+      canNavigateBackToHome = canNavigateBackToHome
     )
   }.stateIn(
     viewModelScope,
@@ -155,6 +158,14 @@ class ConfigViewModel @Inject constructor(
           showToast(ConfigToastMessage.SAVE_PREFERENCES_ERROR)
         }
     }
+  }
+
+  fun setCanNavigateBackToHome(canNavigateBackToHome: Boolean) {
+    _canNavigateBackToHome.value = canNavigateBackToHome
+  }
+
+  fun onBackPressedWithoutHome() {
+    showToast(ConfigToastMessage.APP_CONFIGURATION_MISSING)
   }
 
   fun acceptVpnPermission() {

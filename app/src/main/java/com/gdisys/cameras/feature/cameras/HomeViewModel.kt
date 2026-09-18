@@ -11,7 +11,9 @@ import com.gdisys.cameras.core.vpn.domain.usecase.DisconnectVpnUseCase
 import com.gdisys.cameras.core.vpn.domain.usecase.ObserveVpnStateUseCase
 import com.gdisys.cameras.core.webrtc.data.WhepConnectionManager
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -21,6 +23,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.webrtc.VideoSink
 import javax.inject.Inject
+
+private const val EXIT_CONFIRMATION_WINDOW_MS = 2000L
 
 // TODO: Pegar via storage os endpoints finais -> http://[fd00:20::cafe] é padrão por conta do network_security_config
 private val DEFAULT_CAMERA_STREAMS = listOf(
@@ -46,6 +50,8 @@ class HomeViewModel @Inject constructor(
 
   private val _navigateUiEvent = Channel<HomeNavigateUiEvent>()
   val navigateUiEvent = _navigateUiEvent.receiveAsFlow()
+
+  private var exitConfirmationJob: Job? = null
 
   init {
     viewModelScope.launch {
@@ -101,6 +107,21 @@ class HomeViewModel @Inject constructor(
     }
   }
 
+  fun onBackPressed() {
+    val pendingExitConfirmation = exitConfirmationJob
+    if (pendingExitConfirmation != null) {
+      pendingExitConfirmation.cancel()
+      exitConfirmationJob = null
+      viewModelScope.launch { _navigateUiEvent.send(HomeNavigateUiEvent.ExitApp) }
+    } else {
+      showToast(HomeToastMessage.PRESS_BACK_AGAIN_TO_EXIT)
+      exitConfirmationJob = viewModelScope.launch {
+        delay(EXIT_CONFIRMATION_WINDOW_MS)
+        exitConfirmationJob = null
+      }
+    }
+  }
+
   fun connectVpn() {
     viewModelScope.launch {
       getVpnConfigUseCase().fold(
@@ -134,4 +155,5 @@ class HomeViewModel @Inject constructor(
 
 sealed interface HomeNavigateUiEvent {
   data object ToConfig : HomeNavigateUiEvent
+  data object ExitApp : HomeNavigateUiEvent
 }

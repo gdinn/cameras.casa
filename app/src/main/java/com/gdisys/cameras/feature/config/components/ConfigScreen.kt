@@ -92,7 +92,15 @@ fun ConfigScreen(
         ),
         onClick = onNavigateToHome
       ) {
-        Text(stringResource(R.string.config_screen_navigate_to_home))
+        Text(
+          stringResource(
+            if (uiState.canNavigateBackToHome) {
+              R.string.config_screen_back_to_home
+            } else {
+              R.string.config_screen_navigate_to_home
+            }
+          )
+        )
       }
     }
   }

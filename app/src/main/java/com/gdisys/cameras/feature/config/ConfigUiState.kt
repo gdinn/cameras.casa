@@ -4,7 +4,8 @@ data class ConfigUiState(
   val cameraPermissionButtonState: ConfigButtonState = ConfigButtonState.Loading,
   val qrCodeButtonState: ConfigButtonState = ConfigButtonState.Loading,
   val vpnPermissionButtonState: ConfigButtonState = ConfigButtonState.Loading,
-  val streamURLsButtonState: ConfigButtonState = ConfigButtonState.Loading
+  val streamURLsButtonState: ConfigButtonState = ConfigButtonState.Loading,
+  val canNavigateBackToHome: Boolean = false
 ) {
   val isQrCodeButtonEnabled: Boolean
     get() = cameraPermissionButtonState == ConfigButtonState.Done

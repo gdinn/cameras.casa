@@ -6,7 +6,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.navigation.NavDestination.Companion.hasRoute
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -47,8 +50,13 @@ fun NavigationRoot(
         .getStateFlow<String?>(QR_CODE_RESULT_KEY, null)
         .collectAsState()
 
+      val canNavigateBackToHome = remember(backStackEntry) {
+        navController.hasHomeInBackStack()
+      }
+
       ConfigRoute(
         qrCodeRawJsonResult = qrCodeRawJsonResult,
+        canNavigateBackToHome = canNavigateBackToHome,
         onQrCodeResultConsumed = {
           backStackEntry.savedStateHandle[QR_CODE_RESULT_KEY] = null
         },
@@ -87,10 +95,17 @@ fun NavigationRoot(
 }
 
 private fun navigateToHome(navController: NavHostController) {
+  if (navController.hasHomeInBackStack()) {
+    navController.popBackStack(route = NavigationRoute.Home, inclusive = false)
+  } else {
     navController.navigate(NavigationRoute.Home) {
-      popUpTo<NavigationRoute.Loading> {
+      popUpTo(navController.graph.findStartDestination().id) {
         inclusive = true
       }
       launchSingleTop = true
     }
+  }
 }
+
+private fun NavHostController.hasHomeInBackStack(): Boolean =
+  currentBackStack.value.any { it.destination.hasRoute<NavigationRoute.Home>() }

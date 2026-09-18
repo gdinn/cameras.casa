@@ -11,6 +11,7 @@
     <string name="config_route_camera_permission_required_for_qr_code">Conceda a permissão de câmera antes de carregar um QR Code de configuração</string>
     <string name="config_route_qr_code_loaded_successfully">Configuração carregada com sucesso</string>
     <string name="config_route_save_preferences_error">Falha ao salvar as configurações</string>
+    <string name="config_route_app_configuration_missing">Configuração do aplicativo ausente!</string>
     <string name="config_screen_camera_permission_title">Permissão de Câmera</string>
     <string name="config_screen_camera_permission_subtitle">Permitir acesso à câmera para escanear QR Codes de configuração</string>
     <string name="config_screen_load_configuration_title">Carregar Configuração</string>
@@ -20,6 +21,7 @@
     <string name="config_screen_stream_urls_title">URLs de Streaming</string>
     <string name="config_screen_stream_urls_subtitle">Configure de quais URLs o vídeo será transmitido</string>
     <string name="config_screen_navigate_to_home">Navegar para a Home</string>
+    <string name="config_screen_back_to_home">Voltar para a Home</string>
     <string name="qr_code_format_error">QR Code inválido</string>
     <string name="qr_code_invalid_data_error">Dados inválidos</string>
     <string name="home_screen_move_up">Mover para cima</string>
@@ -28,6 +30,7 @@
     <string name="home_screen_reconfigure">Reconfigurar</string>
     <string name="home_route_vpn_connection_error">Falha ao conectar à VPN</string>
     <string name="home_route_stream_connection_error">Falha ao conectar à câmera</string>
+    <string name="home_route_press_back_again_to_exit">Pressione voltar novamente para sair</string>
     <string name="qr_code_route_camera_init_error">Falha ao iniciar a câmera</string>
     <string name="qr_code_route_reading_cancelled">Leitura de QR Code cancelada</string>
 </resources>

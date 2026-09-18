@@ -2,6 +2,7 @@ package com.gdisys.cameras.feature.config
 
 import android.Manifest
 import android.app.Activity.RESULT_OK
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
@@ -22,6 +23,7 @@ import kotlinx.coroutines.flow.map
 fun ConfigRoute(
   viewModel: ConfigViewModel = hiltViewModel(),
   qrCodeRawJsonResult: String?,
+  canNavigateBackToHome: Boolean,
   onQrCodeResultConsumed: () -> Unit,
   onNavigateToScanner: () -> Unit,
   onNavigateToHome: () -> Unit,
@@ -33,6 +35,16 @@ fun ConfigRoute(
   // do sistema, enquanto esta tela está em segundo plano.
   LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
     viewModel.refreshCameraPermissionState()
+  }
+
+  LaunchedEffect(canNavigateBackToHome) {
+    viewModel.setCanNavigateBackToHome(canNavigateBackToHome)
+  }
+
+  // Quando não há Home na pilha de navegação, o único caminho válido para
+  // sair desta tela é pelo botão "Navigate to Home".
+  BackHandler(enabled = !uiState.canNavigateBackToHome) {
+    viewModel.onBackPressedWithoutHome()
   }
 
   LaunchedEffect(qrCodeRawJsonResult) {
