@@ -4,7 +4,12 @@ import android.util.Log
 import androidx.lifecycle.viewModelScope
 import com.gdisys.cameras.core.DEBUG_TAG
 import com.gdisys.cameras.core.ToastEventViewModel
+import com.gdisys.cameras.core.storage.domain.model.StreamOrientation
+import com.gdisys.cameras.core.storage.domain.model.gridFor
+import com.gdisys.cameras.core.storage.domain.model.orderFor
+import com.gdisys.cameras.core.storage.domain.usecase.GetStreamPreferencesUseCase
 import com.gdisys.cameras.core.storage.domain.usecase.GetVpnConfigUseCase
+import com.gdisys.cameras.core.storage.domain.usecase.UpdateStreamOrderUseCase
 import com.gdisys.cameras.core.vpn.domain.VpnTunnelState
 import com.gdisys.cameras.core.vpn.domain.usecase.ConnectVpnUseCase
 import com.gdisys.cameras.core.vpn.domain.usecase.DisconnectVpnUseCase
@@ -19,24 +24,17 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.receiveAsFlow
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.webrtc.VideoSink
 import javax.inject.Inject
 
 private const val EXIT_CONFIRMATION_WINDOW_MS = 2000L
 
-// TODO: Pegar via storage os endpoints finais -> http://[fd00:20::cafe] é padrão por conta do network_security_config
-private val DEFAULT_CAMERA_STREAMS = listOf(
-  "http://[fd00:20::cafe]:8889/cam_160",
-  "http://[fd00:20::cafe]:8889/cam_161",
-  "http://[fd00:20::cafe]:8889/cam_162",
-  "http://[fd00:20::cafe]:8889/cam_163"
-)
-
 @HiltViewModel
 class HomeViewModel @Inject constructor(
   observeVpnStateUseCase: ObserveVpnStateUseCase,
+  getStreamPreferencesUseCase: GetStreamPreferencesUseCase,
+  private val updateStreamOrderUseCase: UpdateStreamOrderUseCase,
   private val connectVpnUseCase: ConnectVpnUseCase,
   private val disconnectVpnUseCase: DisconnectVpnUseCase,
   private val getVpnConfigUseCase: GetVpnConfigUseCase,
@@ -45,8 +43,10 @@ class HomeViewModel @Inject constructor(
   private val _uiState: MutableStateFlow<HomeUiState> = MutableStateFlow(HomeUiState.Loading)
   val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
-  private val _streams = MutableStateFlow(DEFAULT_CAMERA_STREAMS)
   private val _focusedStream = MutableStateFlow<String?>(null)
+
+  /** Alimentada pela UI, que é quem enxerga a orientação real do dispositivo. */
+  private val _orientation = MutableStateFlow(StreamOrientation.PORTRAIT)
 
   private val _navigateUiEvent = Channel<HomeNavigateUiEvent>()
   val navigateUiEvent = _navigateUiEvent.receiveAsFlow()
@@ -56,16 +56,22 @@ class HomeViewModel @Inject constructor(
   init {
     viewModelScope.launch {
       combine(
-        _streams,
+        getStreamPreferencesUseCase(),
+        _orientation,
         _focusedStream,
         observeVpnStateUseCase()
-      ) { streams, focusedStream, vpn ->
-        if (vpn != VpnTunnelState.CONNECTED) {
-          return@combine HomeUiState.Loading
-        } else {
-          return@combine HomeUiState.Ready(
-            streams = streams,
-            focusedStream = focusedStream
+      ) { preferences, orientation, focusedStream, vpn ->
+        when {
+          // Sem URLs não há nada a conectar: esperar pela VPN só mostraria um spinner perpétuo.
+          preferences.streamUrls.isEmpty() -> HomeUiState.Empty
+
+          vpn != VpnTunnelState.CONNECTED -> HomeUiState.Loading
+
+          else -> HomeUiState.Ready(
+            streams = preferences.orderFor(orientation),
+            focusedStream = focusedStream,
+            grid = preferences.gridFor(orientation),
+            orientation = orientation
           )
         }
       }.collect {
@@ -92,18 +98,20 @@ class HomeViewModel @Inject constructor(
     _focusedStream.value = null
   }
 
-  fun moveStreamUp(index: Int) {
-    moveStream(index, index - 1)
+  fun onOrientationChanged(orientation: StreamOrientation) {
+    _orientation.value = orientation
   }
 
-  fun moveStreamDown(index: Int) {
-    moveStream(index, index + 1)
-  }
-
-  private fun moveStream(fromIndex: Int, toIndex: Int) {
-    _streams.update { current ->
-      if (toIndex !in current.indices) return@update current
-      current.toMutableList().apply { add(toIndex, removeAt(fromIndex)) }
+  /**
+   * Persiste a nova ordem — **somente** a da orientação corrente; a da outra permanece intacta.
+   * Chamada quando o item é solto, não a cada movimento do arraste.
+   */
+  fun onStreamsReordered(newOrder: List<String>) {
+    viewModelScope.launch {
+      updateStreamOrderUseCase(_orientation.value, newOrder).onFailure { e ->
+        Log.e(DEBUG_TAG, "Failed to persist the stream order", e)
+        showToast(HomeToastMessage.STREAM_ORDER_SAVE_ERROR)
+      }
     }
   }
 

@@ -9,6 +9,7 @@ import com.gdisys.cameras.core.permission.domain.usecase.HasCameraPermissionUseC
 import com.gdisys.cameras.core.permission.domain.usecase.HasVpnPermissionUseCase
 import com.gdisys.cameras.core.storage.domain.VpnCredentialsStatus
 import com.gdisys.cameras.core.storage.domain.model.UserPreferences
+import com.gdisys.cameras.core.storage.domain.usecase.GetStreamPreferencesUseCase
 import com.gdisys.cameras.core.storage.domain.usecase.GetVpnConfigStatusUseCase
 import com.gdisys.cameras.core.storage.domain.usecase.ParseUserPreferencesFromQrCodeUseCase
 import com.gdisys.cameras.core.storage.domain.usecase.SaveUserPreferencesUseCase
@@ -20,6 +21,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -36,6 +39,7 @@ class ConfigViewModel @Inject constructor(
   private val saveUserPreferencesUseCase: SaveUserPreferencesUseCase,
   private val parseUserPreferencesFromQrCodeUseCase: ParseUserPreferencesFromQrCodeUseCase,
   getVpnConfigStatusUseCase: GetVpnConfigStatusUseCase,
+  getStreamPreferencesUseCase: GetStreamPreferencesUseCase,
   hasVpnPermissionUseCase: HasVpnPermissionUseCase,
   private val hasCameraPermissionUseCase: HasCameraPermissionUseCase,
   private val requestVpnPermissionUseCase: RequestVpnPermissionUseCase
@@ -50,28 +54,45 @@ class ConfigViewModel @Inject constructor(
   private val _qrCodeError = MutableStateFlow(false)
   private val _canNavigateBackToHome = MutableStateFlow(false)
 
+  // O estado de cada botão é derivado antes de compor o UiState: a sobrecarga tipada de `combine`
+  // só vai até 5 fontes, e com as preferências de stream seriam 6.
+  private val qrCodeButtonState: Flow<ConfigButtonState> = combine(
+    getVpnConfigStatusUseCase(),
+    _qrCodeError
+  ) { vpnConfigStatus, qrCodeError ->
+    when {
+      qrCodeError -> ConfigButtonState.Error
+      vpnConfigStatus is VpnCredentialsStatus.Loading -> ConfigButtonState.Loading
+      vpnConfigStatus is VpnCredentialsStatus.Loaded && vpnConfigStatus.hasValidCredentials -> ConfigButtonState.Done
+      else -> ConfigButtonState.Ready
+    }
+  }
+
+  private val streamURLsButtonState: Flow<ConfigButtonState> = getStreamPreferencesUseCase()
+    .map { streamPreferences ->
+      if (streamPreferences.streamUrls.isNotEmpty()) ConfigButtonState.Done else ConfigButtonState.Ready
+    }
+    .onStart { emit(ConfigButtonState.Loading) }
+
+  // Eagerly porque o gating da navegação consulta `uiState.value` no momento do clique: o estado
+  // precisa estar atualizado mesmo em um instante sem coletores.
   val uiState: StateFlow<ConfigUiState> = combine(
     _cameraPermissionButtonState,
-    getVpnConfigStatusUseCase(),
+    qrCodeButtonState,
     _vpnPermissionButtonState,
-    _qrCodeError,
+    streamURLsButtonState,
     _canNavigateBackToHome
-  ) { cameraPermissionButtonState, vpnConfigStatus, vpnPermissionButtonState, qrCodeError, canNavigateBackToHome ->
+  ) { cameraPermissionButtonState, qrCodeButtonState, vpnPermissionButtonState, streamURLsButtonState, canNavigateBackToHome ->
     ConfigUiState(
       cameraPermissionButtonState = cameraPermissionButtonState,
-      qrCodeButtonState = when {
-        qrCodeError -> ConfigButtonState.Error
-        vpnConfigStatus is VpnCredentialsStatus.Loading -> ConfigButtonState.Loading
-        vpnConfigStatus is VpnCredentialsStatus.Loaded && vpnConfigStatus.hasValidCredentials -> ConfigButtonState.Done
-        else -> ConfigButtonState.Ready
-      },
+      qrCodeButtonState = qrCodeButtonState,
       vpnPermissionButtonState = vpnPermissionButtonState,
-      streamURLsButtonState = ConfigButtonState.Done,
+      streamURLsButtonState = streamURLsButtonState,
       canNavigateBackToHome = canNavigateBackToHome
     )
   }.stateIn(
     viewModelScope,
-    SharingStarted.WhileSubscribed(5000),
+    SharingStarted.Eagerly,
     ConfigUiState()
   )
 
@@ -83,6 +104,9 @@ class ConfigViewModel @Inject constructor(
 
   private val _navigateToScannerEvent = Channel<Unit>()
   val navigateToScannerEvent: Flow<Unit> = _navigateToScannerEvent.receiveAsFlow()
+
+  private val _navigateToHomeEvent = Channel<Unit>()
+  val navigateToHomeEvent: Flow<Unit> = _navigateToHomeEvent.receiveAsFlow()
 
   fun onShowScanner() {
     if (_cameraPermissionButtonState.value != ConfigButtonState.Done) {
@@ -164,8 +188,34 @@ class ConfigViewModel @Inject constructor(
     _canNavigateBackToHome.value = canNavigateBackToHome
   }
 
-  fun onBackPressedWithoutHome() {
-    showToast(ConfigToastMessage.APP_CONFIGURATION_MISSING)
+  /**
+   * A Home só é alcançável com credenciais válidas, permissão de VPN concedida e ao menos uma
+   * Stream URL. Faltando qualquer um, o feedback é o toast do primeiro requisito pendente.
+   */
+  fun onNavigateToHomeRequested() {
+    val missingRequirement = uiState.value.missingRequirement
+    if (missingRequirement != null) {
+      showToast(missingRequirement.toToastMessage())
+      return
+    }
+    viewModelScope.launch {
+      _navigateToHomeEvent.send(Unit)
+    }
+  }
+
+  /**
+   * Back consumido pela tela: ou falta um requisito, ou não há Home na pilha de navegação — nesse
+   * caso o único caminho válido é o botão "Navigate to Home".
+   */
+  fun onBackPressedBlocked() {
+    val missingRequirement = uiState.value.missingRequirement
+    showToast(missingRequirement?.toToastMessage() ?: ConfigToastMessage.NAVIGATE_TO_HOME_REQUIRED)
+  }
+
+  private fun ConfigRequirement.toToastMessage(): ConfigToastMessage = when (this) {
+    ConfigRequirement.VPN_CREDENTIALS -> ConfigToastMessage.VPN_CREDENTIALS_MISSING
+    ConfigRequirement.VPN_PERMISSION -> ConfigToastMessage.VPN_PERMISSION_MISSING
+    ConfigRequirement.STREAM_URLS -> ConfigToastMessage.STREAM_URLS_MISSING
   }
 
   fun acceptVpnPermission() {

@@ -9,6 +9,28 @@ data class ConfigUiState(
 ) {
   val isQrCodeButtonEnabled: Boolean
     get() = cameraPermissionButtonState == ConfigButtonState.Done
+
+  /**
+   * Primeiro requisito ainda não satisfeito para a Home funcionar, ou `null` quando todos estão.
+   * A ordem é a do feedback esperado: credenciais → permissão de VPN → URLs.
+   */
+  val missingRequirement: ConfigRequirement?
+    get() = when {
+      qrCodeButtonState != ConfigButtonState.Done -> ConfigRequirement.VPN_CREDENTIALS
+      vpnPermissionButtonState != ConfigButtonState.Done -> ConfigRequirement.VPN_PERMISSION
+      streamURLsButtonState != ConfigButtonState.Done -> ConfigRequirement.STREAM_URLS
+      else -> null
+    }
+
+  val canNavigateToHome: Boolean
+    get() = missingRequirement == null
+}
+
+/** Requisitos que a Home precisa ter satisfeitos para ser exibida. */
+enum class ConfigRequirement {
+  VPN_CREDENTIALS,
+  VPN_PERMISSION,
+  STREAM_URLS
 }
 
 sealed interface ConfigButtonState {

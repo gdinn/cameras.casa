@@ -113,6 +113,9 @@ dependencies {
   implementation(libs.androidx.compose.navigation)
   implementation(libs.kotlinx.serialization.json)
   implementation(libs.androidx.material.icons.extended)
+
+  // Drag-and-drop de itens em LazyVerticalGrid (reordenação dos streams na Home)
+  implementation(libs.reorderable)
 }
 
 /**
@@ -168,6 +171,8 @@ tasks.register<JacocoReport>("jacocoTestReport") {
     "com/gdisys/cameras/feature/config/components/**",
     "com/gdisys/cameras/feature/init/InitRouteKt*.class",
     "com/gdisys/cameras/feature/init/components/**",
+    "com/gdisys/cameras/feature/streamurls/StreamURLsRouteKt*.class",
+    "com/gdisys/cameras/feature/streamurls/components/**",
     "com/gdisys/cameras/ui/theme/**",
     "com/gdisys/cameras/core/storage/data/DataStoreKt*.class", // fiação de DI, sem lógica própria
     "com/gdisys/cameras/core/storage/data/Crypto.class", // AndroidKeyStore, hardware-backed

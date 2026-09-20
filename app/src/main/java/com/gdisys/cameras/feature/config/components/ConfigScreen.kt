@@ -32,6 +32,7 @@ fun ConfigScreen(
   onShowScanner: () -> Unit,
   acceptVpnPermission: () -> Unit,
   onRequestCameraPermission: () -> Unit,
+  onNavigateToStreamURLs: () -> Unit,
   onNavigateToHome: () -> Unit
 ) {
   Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
@@ -82,7 +83,7 @@ fun ConfigScreen(
           title = stringResource(R.string.config_screen_stream_urls_title),
           subTitle = stringResource(R.string.config_screen_stream_urls_subtitle),
           uiState = uiState.streamURLsButtonState,
-          onClicked = onShowScanner
+          onClicked = onNavigateToStreamURLs
         )
       }
 
@@ -117,6 +118,25 @@ fun ConfigScreenPreview() {
       streamURLsButtonState = ConfigButtonState.Done
     ),
     onShowScanner = {},
+    onNavigateToStreamURLs = {},
+    onNavigateToHome = {},
+    onRequestCameraPermission = {},
+    acceptVpnPermission = {}
+  )
+}
+
+@Preview
+@Composable
+fun ConfigScreenPendingStreamURLsPreview() {
+  ConfigScreen(
+    uiState = ConfigUiState(
+      cameraPermissionButtonState = ConfigButtonState.Done,
+      qrCodeButtonState = ConfigButtonState.Done,
+      vpnPermissionButtonState = ConfigButtonState.Done,
+      streamURLsButtonState = ConfigButtonState.Ready
+    ),
+    onShowScanner = {},
+    onNavigateToStreamURLs = {},
     onNavigateToHome = {},
     onRequestCameraPermission = {},
     acceptVpnPermission = {}

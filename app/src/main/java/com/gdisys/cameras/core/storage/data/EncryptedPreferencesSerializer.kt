@@ -1,21 +1,26 @@
 package com.gdisys.cameras.core.storage.data
 
 import androidx.datastore.core.Serializer
-import com.gdisys.cameras.core.storage.domain.model.UserPreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.Json
 import java.io.InputStream
 import java.io.OutputStream
 import java.util.Base64
 
-class UserPreferencesSerializer(
-  private val crypto: CryptoEngine = Crypto
-) : Serializer<UserPreferences> {
-  override val defaultValue: UserPreferences
-    get() = UserPreferences()
+/**
+ * Serializer de DataStore que grava o modelo [T] como JSON cifrado por [crypto] e codificado em
+ * Base64. Qualquer falha de leitura (Base64 inválido, decriptação, JSON inválido) cai no
+ * [defaultValue], para que um storage corrompido não derrube o app.
+ */
+class EncryptedPreferencesSerializer<T>(
+  private val serializer: KSerializer<T>,
+  override val defaultValue: T,
+  private val crypto: CryptoEngine
+) : Serializer<T> {
 
-  override suspend fun readFrom(input: InputStream): UserPreferences {
+  override suspend fun readFrom(input: InputStream): T {
     val encryptedBytes = withContext(Dispatchers.IO) {
       input.use { it.readBytes() }
     }
@@ -28,7 +33,7 @@ class UserPreferencesSerializer(
       val encryptedBytesDecoded = Base64.getDecoder().decode(encryptedBytes)
       val decryptedBytes = crypto.decrypt(encryptedBytesDecoded)
       val decodedJsonString = decryptedBytes.decodeToString()
-      Json.decodeFromString(decodedJsonString)
+      Json.decodeFromString(serializer, decodedJsonString)
     } catch (e: Exception) {
       e.printStackTrace()
       // If decryption fails (e.g. BadPaddingException), return default value to avoid crash
@@ -36,8 +41,8 @@ class UserPreferencesSerializer(
     }
   }
 
-  override suspend fun writeTo(t: UserPreferences, output: OutputStream) {
-    val json = Json.encodeToString(t)
+  override suspend fun writeTo(t: T, output: OutputStream) {
+    val json = Json.encodeToString(serializer, t)
     val bytes = json.toByteArray()
     val encryptedBytes = crypto.encrypt(bytes)
     val encryptedBytesBase64 = Base64.getEncoder().encode(encryptedBytes)

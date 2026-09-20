@@ -18,6 +18,7 @@ import com.gdisys.cameras.feature.cameras.HomeRoute
 import com.gdisys.cameras.feature.config.ConfigRoute
 import com.gdisys.cameras.feature.config.QR_CODE_RESULT_KEY
 import com.gdisys.cameras.feature.init.InitRoute
+import com.gdisys.cameras.feature.streamurls.StreamURLsRoute
 import org.webrtc.EglBase
 
 @Composable
@@ -63,8 +64,19 @@ fun NavigationRoot(
         onNavigateToScanner = {
           navController.navigate(NavigationRoute.QrCode)
         },
+        onNavigateToStreamURLs = {
+          navController.navigate(NavigationRoute.StreamURLs)
+        },
         onNavigateToHome = {
           navigateToHome(navController)
+        }
+      )
+    }
+
+    composable<NavigationRoute.StreamURLs> {
+      StreamURLsRoute(
+        onNavigateBack = {
+          navController.popBackStack()
         }
       )
     }

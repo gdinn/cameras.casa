@@ -7,14 +7,12 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.Button
 import androidx.compose.material3.Scaffold
@@ -31,6 +29,8 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.gdisys.cameras.R
+import com.gdisys.cameras.core.storage.domain.model.GridPreferences
+import com.gdisys.cameras.core.storage.domain.model.StreamOrientation
 import org.webrtc.EglBase
 import org.webrtc.VideoSink
 
@@ -38,13 +38,14 @@ import org.webrtc.VideoSink
 fun HomeScreen(
   streams: List<String>,
   focusedStream: String?,
+  grid: GridPreferences,
+  orientation: StreamOrientation,
   eglBase: EglBase,
   onConnectStream: (streamUrl: String, videoSink: VideoSink) -> Unit,
   onDisconnectStream: (streamUrl: String) -> Unit,
   onFocusStream: (String) -> Unit,
   onClearFocusedStream: () -> Unit,
-  onMoveStreamUp: (Int) -> Unit,
-  onMoveStreamDown: (Int) -> Unit,
+  onStreamsReordered: (List<String>) -> Unit,
   onNavigateToConfig: () -> Unit
 ) {
 
@@ -61,6 +62,10 @@ fun HomeScreen(
     WebRtcConnection(eglBase = eglBase, connect = onConnectStream, disconnect = onDisconnectStream)
   }
 
+  // Resolução real de cada stream, preenchida pelo primeiro frame; até lá, 16:9.
+  val streamResolutions = remember { StreamResolutionRegistry() }
+  val aspectRatioOf: (String) -> Float = { url -> streamResolutions.aspectRatioOf(url) }
+
   // Movable content per stream URL: lets the same WebRtcVideoPlayer instance (renderer +
   // WHEP connection) move between the grid and the focused view without being disposed
   // and recreated, so the video never restarts when toggling focus.
@@ -76,7 +81,10 @@ fun HomeScreen(
     moviePlayers.keys.retainAll(streams.toSet())
   }
 
-  CompositionLocalProvider(LocalWebRtcConnection provides webRtcConnection) {
+  CompositionLocalProvider(
+    LocalWebRtcConnection provides webRtcConnection,
+    LocalStreamResolutions provides streamResolutions
+  ) {
     Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
       Box(
         modifier = Modifier
@@ -85,49 +93,132 @@ fun HomeScreen(
           .background(Color.Black),
         contentAlignment = Alignment.Center
       ) {
-        if (focusedStream != null) {
-          FocusedStreamView(videoContent = movablePlayerFor(focusedStream))
-        } else {
-          Box(modifier = Modifier.fillMaxSize()) {
-            LazyVerticalGrid(
-              state = gridState,
-              columns = GridCells.Fixed(1),
-              contentPadding = PaddingValues(8.dp),
-              verticalArrangement = Arrangement.spacedBy(8.dp),
-              horizontalArrangement = Arrangement.spacedBy(8.dp),
-              modifier = Modifier
-                .fillMaxSize()
-                .background(Color.DarkGray)
-                .nestedScroll(overscrollReconfigure.nestedScrollConnection)
-            ) {
-              itemsIndexed(streams, key = { _, url -> url }) { index, url ->
-                CameraGridItem(
-                  url = url,
-                  canMoveUp = index > 0,
-                  canMoveDown = index < streams.size - 1,
-                  videoContent = movablePlayerFor(url),
-                  onFocusedStreamChange = onFocusStream,
-                  onMoveUp = { onMoveStreamUp(index) },
-                  onMoveDown = { onMoveStreamDown(index) }
-                )
-              }
-            }
+        when {
+          // O stream em foco conta sempre como visível: é o único composto, então é o único
+          // conectado — nem a troca de página por baixo o derruba.
+          focusedStream != null -> FocusedStreamView(
+            videoContent = movablePlayerFor(focusedStream),
+            aspectRatio = aspectRatioOf(focusedStream)
+          )
 
-            AnimatedVisibility(
-              visible = overscrollReconfigure.isReconfigureButtonVisible,
-              modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(16.dp),
-              enter = fadeIn() + slideInVertically(initialOffsetY = { it }),
-              exit = fadeOut() + slideOutVertically(targetOffsetY = { it })
-            ) {
-              Button(onClick = onNavigateToConfig) {
-                Text(text = stringResource(R.string.home_screen_reconfigure))
-              }
-            }
-          }
+          grid.dynamicRows -> DynamicStreamGrid(
+            streams = streams,
+            grid = grid,
+            gridState = gridState,
+            overscrollReconfigure = overscrollReconfigure,
+            aspectRatioOf = aspectRatioOf,
+            onFocusStream = onFocusStream,
+            onStreamsReordered = onStreamsReordered,
+            onNavigateToConfig = onNavigateToConfig,
+            playerFor = ::movablePlayerFor
+          )
+
+          else -> FixedStreamGrid(
+            streams = streams,
+            grid = grid,
+            orientation = orientation,
+            aspectRatioOf = aspectRatioOf,
+            onFocusStream = onFocusStream,
+            onStreamsReordered = onStreamsReordered,
+            onNavigateToConfig = onNavigateToConfig,
+            playerFor = ::movablePlayerFor
+          )
         }
       }
     }
+  }
+}
+
+/** Modo dinâmico: o de sempre — scroll vertical e "Reconfigure" revelado por overscroll. */
+@Composable
+private fun DynamicStreamGrid(
+  streams: List<String>,
+  grid: GridPreferences,
+  gridState: LazyGridState,
+  overscrollReconfigure: OverscrollReconfigureState,
+  aspectRatioOf: (String) -> Float,
+  onFocusStream: (String) -> Unit,
+  onStreamsReordered: (List<String>) -> Unit,
+  onNavigateToConfig: () -> Unit,
+  playerFor: (String) -> @Composable () -> Unit
+) {
+  Box(modifier = Modifier.fillMaxSize()) {
+    ReorderableStreamGrid(
+      streams = streams,
+      columns = grid.columns,
+      gridState = gridState,
+      contentPadding = PaddingValues(8.dp),
+      onStreamsReordered = onStreamsReordered,
+      modifier = Modifier
+        .fillMaxSize()
+        .background(Color.DarkGray)
+        .nestedScroll(overscrollReconfigure.nestedScrollConnection)
+    ) { url, dragHandleModifier ->
+      CameraGridItem(
+        url = url,
+        dragHandleModifier = dragHandleModifier,
+        videoContent = playerFor(url),
+        onFocusedStreamChange = onFocusStream,
+        aspectRatio = aspectRatioOf(url)
+      )
+    }
+
+    AnimatedVisibility(
+      visible = overscrollReconfigure.isReconfigureButtonVisible,
+      modifier = Modifier
+        .align(Alignment.BottomCenter)
+        .padding(16.dp),
+      enter = fadeIn() + slideInVertically(initialOffsetY = { it }),
+      exit = fadeOut() + slideOutVertically(targetOffsetY = { it })
+    ) {
+      Button(onClick = onNavigateToConfig) {
+        Text(text = stringResource(R.string.home_screen_reconfigure))
+      }
+    }
+  }
+}
+
+/**
+ * Modo fixo: sem scroll, com paginação e o "Reconfigure" flutuando por cima da grade — arrastável,
+ * já que sem scroll não há como tirá-lo da frente de um stream de outro jeito.
+ */
+@Composable
+private fun FixedStreamGrid(
+  streams: List<String>,
+  grid: GridPreferences,
+  orientation: StreamOrientation,
+  aspectRatioOf: (String) -> Float,
+  onFocusStream: (String) -> Unit,
+  onStreamsReordered: (List<String>) -> Unit,
+  onNavigateToConfig: () -> Unit,
+  playerFor: (String) -> @Composable () -> Unit
+) {
+  BoxWithConstraints(
+    modifier = Modifier
+      .fillMaxSize()
+      .background(Color.DarkGray)
+  ) {
+    PagedStreamGrid(
+      streams = streams,
+      grid = grid,
+      orientation = orientation,
+      aspectRatioOf = aspectRatioOf,
+      onStreamsReordered = onStreamsReordered,
+      modifier = Modifier.fillMaxSize()
+    ) { url, dragHandleModifier, cellModifier ->
+      CameraGridItem(
+        url = url,
+        dragHandleModifier = dragHandleModifier,
+        videoContent = playerFor(url),
+        onFocusedStreamChange = onFocusStream,
+        modifier = cellModifier
+      )
+    }
+
+    DraggableReconfigureButton(
+      containerWidth = maxWidth,
+      containerHeight = maxHeight,
+      onClick = onNavigateToConfig
+    )
   }
 }

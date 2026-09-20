@@ -26,6 +26,7 @@ fun ConfigRoute(
   canNavigateBackToHome: Boolean,
   onQrCodeResultConsumed: () -> Unit,
   onNavigateToScanner: () -> Unit,
+  onNavigateToStreamURLs: () -> Unit,
   onNavigateToHome: () -> Unit,
 ) {
   val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -41,10 +42,10 @@ fun ConfigRoute(
     viewModel.setCanNavigateBackToHome(canNavigateBackToHome)
   }
 
-  // Quando não há Home na pilha de navegação, o único caminho válido para
-  // sair desta tela é pelo botão "Navigate to Home".
-  BackHandler(enabled = !uiState.canNavigateBackToHome) {
-    viewModel.onBackPressedWithoutHome()
+  // O back só sai desta tela quando há Home na pilha de navegação *e* a configuração está
+  // completa; caso contrário ele é consumido aqui e vira toast.
+  BackHandler(enabled = !uiState.canNavigateBackToHome || !uiState.canNavigateToHome) {
+    viewModel.onBackPressedBlocked()
   }
 
   LaunchedEffect(qrCodeRawJsonResult) {
@@ -57,6 +58,12 @@ fun ConfigRoute(
   LaunchedEffect(Unit) {
     viewModel.navigateToScannerEvent.collect {
       onNavigateToScanner()
+    }
+  }
+
+  LaunchedEffect(Unit) {
+    viewModel.navigateToHomeEvent.collect {
+      onNavigateToHome()
     }
   }
 
@@ -91,6 +98,7 @@ fun ConfigRoute(
     onShowScanner = viewModel::onShowScanner,
     acceptVpnPermission = viewModel::acceptVpnPermission,
     onRequestCameraPermission = viewModel::onRequestCameraPermission,
-    onNavigateToHome = onNavigateToHome
+    onNavigateToStreamURLs = onNavigateToStreamURLs,
+    onNavigateToHome = viewModel::onNavigateToHomeRequested
   )
 }

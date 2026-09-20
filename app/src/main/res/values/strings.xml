@@ -16,7 +16,10 @@
     <string name="config_route_camera_permission_required_for_qr_code">Grant camera permission before loading a configuration QR Code</string>
     <string name="config_route_qr_code_loaded_successfully">Configuration loaded successfully</string>
     <string name="config_route_save_preferences_error">Failed to save settings</string>
-    <string name="config_route_app_configuration_missing">App configuration missing!</string>
+    <string name="config_route_vpn_credentials_missing">Load a configuration QR Code before continuing</string>
+    <string name="config_route_vpn_permission_missing">Grant the VPN permission before continuing</string>
+    <string name="config_route_stream_urls_missing">Configure at least one Stream URL before continuing</string>
+    <string name="config_route_navigate_to_home_required">Use the \"Navigate to Home\" button to continue</string>
 
     <!-- Config Screen -->
     <string name="config_screen_camera_permission_title">Camera Permission</string>
@@ -30,6 +33,53 @@
     <string name="config_screen_navigate_to_home">Navigate to Home</string>
     <string name="config_screen_back_to_home">Back to Home</string>
 
+    <!-- Stream URLs Screen -->
+    <string name="stream_urls_screen_title">Stream URLs</string>
+    <string name="stream_urls_screen_navigate_back">Back</string>
+    <string name="stream_urls_screen_loading">Loading Stream URLs…</string>
+    <string name="stream_urls_screen_disclaimer">Your URLs need to be on the \"http://[fd00:20::cafe]:PORT/STREAM_NAME\" format</string>
+    <string name="stream_urls_screen_urls_section_title">URLs</string>
+    <string name="stream_urls_screen_no_urls">No Stream URL configured yet</string>
+    <string name="stream_urls_screen_add_url">Add URL</string>
+    <string name="stream_urls_screen_remove_url">Remove URL</string>
+    <string name="stream_urls_screen_port_label">PORT</string>
+    <string name="stream_urls_screen_stream_name_label">STREAM NAME</string>
+    <string name="stream_urls_screen_confirm_add_url">Add URL</string>
+    <string name="stream_urls_screen_cancel_add_url">Cancel</string>
+    <string name="stream_urls_screen_load_defaults">Default configuration</string>
+    <string name="stream_urls_screen_save_urls">Save URLs</string>
+    <string name="stream_urls_screen_grid_section_title">Grid</string>
+    <string name="stream_urls_screen_grid_portrait">Portrait</string>
+    <string name="stream_urls_screen_grid_landscape">Landscape</string>
+    <string name="stream_urls_screen_grid_columns_label">COLUMNS</string>
+    <string name="stream_urls_screen_grid_rows_label">ROWS</string>
+    <string name="stream_urls_screen_grid_dynamic_rows">Dynamic rows</string>
+    <string name="stream_urls_screen_save_grid">Save grid</string>
+
+    <!-- Stream URLs Dialogs -->
+    <string name="stream_urls_dialog_confirm">Confirm</string>
+    <string name="stream_urls_dialog_dismiss">Cancel</string>
+    <string name="stream_urls_dialog_save_title">Save Stream URLs?</string>
+    <string name="stream_urls_dialog_save_message">The saved URLs will be overwritten by the current list.</string>
+    <string name="stream_urls_dialog_load_defaults_title">Load default configuration?</string>
+    <string name="stream_urls_dialog_load_defaults_message">The current list will be replaced by the default URLs. Nothing is stored until you save.</string>
+    <string name="stream_urls_dialog_save_grid_title">Save grid configuration?</string>
+    <string name="stream_urls_dialog_save_grid_message">The saved grid configuration will be overwritten for both orientations.</string>
+    <string name="stream_urls_dialog_discard_title">Discard changes?</string>
+    <string name="stream_urls_dialog_discard_message">There are unsaved changes. Leaving now discards them.</string>
+    <string name="stream_urls_dialog_discard_confirm">Discard</string>
+
+    <!-- Stream URLs Route -->
+    <string name="stream_urls_route_invalid_port">The port must be a number between 1 and 65535</string>
+    <string name="stream_urls_route_invalid_stream_name">The stream name accepts only letters, digits, \"_\" and \"-\"</string>
+    <string name="stream_urls_route_duplicate_url">This URL has already been added</string>
+    <string name="stream_urls_route_urls_saved">Stream URLs saved</string>
+    <string name="stream_urls_route_save_error">Failed to save the Stream URLs</string>
+    <string name="stream_urls_route_invalid_grid">Columns and rows must be numbers between 1 and 6</string>
+    <string name="stream_urls_route_grid_saved">Grid configuration saved</string>
+    <string name="stream_urls_route_save_grid_error">Failed to save the grid configuration</string>
+    <string name="stream_urls_route_grid_hides_streams">The grid is smaller than your list of streams, so it will not show all of them</string>
+
     <!-- QR Code validations -->
     <string name="qr_code_format_error">Invalid QR Code</string>
     <string name="qr_code_invalid_data_error">Invalid Data</string>
@@ -42,13 +92,17 @@
     <string name="qr_code_route_reading_cancelled">QR Code reading cancelled</string>
 
     <!-- Home Screen -->
-    <string name="home_screen_move_up">Move up</string>
-    <string name="home_screen_move_down">Move down</string>
+    <string name="home_screen_drag_handle">Drag to reorder</string>
+    <string name="home_screen_no_streams">You need to configure your Stream URLs first</string>
     <string name="home_screen_establishing_secure_connection">Establishing secure connection…</string>
     <string name="home_screen_reconfigure">Reconfigure</string>
+    <string name="home_screen_previous_page">Previous page</string>
+    <string name="home_screen_next_page">Next page</string>
+    <string name="home_screen_page_indicator">Page %1$d of %2$d</string>
 
     <!-- Home Route -->
     <string name="home_route_vpn_connection_error">Failed to connect to VPN</string>
     <string name="home_route_stream_connection_error">Failed to connect to camera stream</string>
     <string name="home_route_press_back_again_to_exit">Press back again to exit</string>
+    <string name="home_route_stream_order_save_error">Failed to save the new stream order</string>
 </resources>

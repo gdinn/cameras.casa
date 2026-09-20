@@ -14,4 +14,7 @@ sealed interface NavigationRoute {
 
   @Serializable
   data object QrCode
+
+  @Serializable
+  data object StreamURLs
 }

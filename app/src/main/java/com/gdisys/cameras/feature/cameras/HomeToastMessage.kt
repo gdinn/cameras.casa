@@ -8,4 +8,5 @@ enum class HomeToastMessage(@StringRes override val resId: Int) : ToastMessage {
   VPN_CONNECTION_ERROR(R.string.home_route_vpn_connection_error),
   STREAM_CONNECTION_ERROR(R.string.home_route_stream_connection_error),
   PRESS_BACK_AGAIN_TO_EXIT(R.string.home_route_press_back_again_to_exit),
+  STREAM_ORDER_SAVE_ERROR(R.string.home_route_stream_order_save_error),
 }
