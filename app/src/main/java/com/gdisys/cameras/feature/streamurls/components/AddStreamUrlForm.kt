@@ -20,7 +20,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.gdisys.cameras.R
-import com.gdisys.cameras.feature.streamurls.domain.STREAM_URL_HOST_PREFIX
+import com.gdisys.cameras.core.network.STREAM_URL_HOST_PREFIX
 
 /**
  * Formulário de uma nova URL. O host é fixo, então só porta e nome do stream são editáveis; a

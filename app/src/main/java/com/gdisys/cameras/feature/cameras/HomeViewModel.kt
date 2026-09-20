@@ -14,7 +14,7 @@ import com.gdisys.cameras.core.vpn.domain.VpnTunnelState
 import com.gdisys.cameras.core.vpn.domain.usecase.ConnectVpnUseCase
 import com.gdisys.cameras.core.vpn.domain.usecase.DisconnectVpnUseCase
 import com.gdisys.cameras.core.vpn.domain.usecase.ObserveVpnStateUseCase
-import com.gdisys.cameras.core.webrtc.data.WhepConnectionManager
+import com.gdisys.cameras.core.webrtc.StreamConnectionRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
@@ -38,7 +38,7 @@ class HomeViewModel @Inject constructor(
   private val connectVpnUseCase: ConnectVpnUseCase,
   private val disconnectVpnUseCase: DisconnectVpnUseCase,
   private val getVpnConfigUseCase: GetVpnConfigUseCase,
-  private val whepConnectionManager: WhepConnectionManager
+  private val streamConnectionRepository: StreamConnectionRepository
 ) : ToastEventViewModel() {
   private val _uiState: MutableStateFlow<HomeUiState> = MutableStateFlow(HomeUiState.Loading)
   val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
@@ -81,13 +81,13 @@ class HomeViewModel @Inject constructor(
   }
 
   fun connectStream(streamUrl: String, videoSink: VideoSink) {
-    whepConnectionManager.connect(streamUrl, videoSink) {
+    streamConnectionRepository.connect(streamUrl, videoSink) {
       showToast(HomeToastMessage.STREAM_CONNECTION_ERROR)
     }
   }
 
   fun disconnectStream(streamUrl: String) {
-    whepConnectionManager.disconnect(streamUrl)
+    streamConnectionRepository.disconnect(streamUrl)
   }
 
   fun focusStream(url: String) {
@@ -156,7 +156,7 @@ class HomeViewModel @Inject constructor(
   }
 
   override fun onCleared() {
-    whepConnectionManager.closeAll()
+    streamConnectionRepository.closeAll()
     super.onCleared()
   }
 }

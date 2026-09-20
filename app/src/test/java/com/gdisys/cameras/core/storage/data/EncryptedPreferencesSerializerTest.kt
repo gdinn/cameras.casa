@@ -8,7 +8,6 @@ import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
 import kotlinx.coroutines.test.runTest
-import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import java.io.ByteArrayInputStream
@@ -40,7 +39,7 @@ class EncryptedPreferencesSerializerTest {
   @Test
   fun `readFrom decrypts and decodes the stored preferences`() = runTest {
     val preferences = UserPreferences(vpnConfigTokens = VpnConfigTokens(iPrk = "private-key"))
-    val plainBytes = Json.encodeToString(preferences).toByteArray()
+    val plainBytes = EncryptedPreferencesSerializer.json.encodeToString(preferences).toByteArray()
     val cipherBytes = "cipher".toByteArray()
     val storedBytes = Base64.getEncoder().encode(cipherBytes)
     every { crypto.decrypt(cipherBytes) } returns plainBytes
@@ -82,7 +81,7 @@ class EncryptedPreferencesSerializerTest {
   @Test
   fun `writeTo encrypts the serialized preferences and writes them Base64-encoded`() = runTest {
     val preferences = UserPreferences(vpnConfigTokens = VpnConfigTokens(iPrk = "private-key"))
-    val expectedPlainBytes = Json.encodeToString(preferences).toByteArray()
+    val expectedPlainBytes = EncryptedPreferencesSerializer.json.encodeToString(preferences).toByteArray()
     val cipherBytes = "cipher".toByteArray()
     val plainBytesSlot = slot<ByteArray>()
     every { crypto.encrypt(capture(plainBytesSlot)) } returns cipherBytes

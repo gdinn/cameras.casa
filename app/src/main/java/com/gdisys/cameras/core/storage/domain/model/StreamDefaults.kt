@@ -1,13 +1,16 @@
 package com.gdisys.cameras.core.storage.domain.model
 
+import com.gdisys.cameras.core.network.STREAM_URL_HOST_PREFIX
+
 /** Configuração de fábrica oferecida ao usuário quando ele ainda não cadastrou URLs. */
 object StreamDefaults {
 
-  // http://[fd00:20::cafe] é o host padrão por conta do network_security_config
-  val CAMERA_STREAM_URLS = listOf(
-    "http://[fd00:20::cafe]:8889/cam_160",
-    "http://[fd00:20::cafe]:8889/cam_161",
-    "http://[fd00:20::cafe]:8889/cam_162",
-    "http://[fd00:20::cafe]:8889/cam_163"
-  )
+  private const val DEFAULT_PORT = 8889
+  private val DEFAULT_CAMERA_IDS = 160..163
+
+  // The host comes from STREAM_URL_HOST_PREFIX so that these defaults cannot drift from the host
+  // allowed by network_security_config.
+  val CAMERA_STREAM_URLS: List<String> = DEFAULT_CAMERA_IDS.map { cameraId ->
+    "$STREAM_URL_HOST_PREFIX$DEFAULT_PORT/cam_$cameraId"
+  }
 }

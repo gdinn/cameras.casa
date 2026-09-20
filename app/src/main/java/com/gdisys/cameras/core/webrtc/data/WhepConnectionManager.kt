@@ -2,6 +2,7 @@ package com.gdisys.cameras.core.webrtc.data
 
 import android.util.Log
 import com.gdisys.cameras.core.DEBUG_TAG
+import com.gdisys.cameras.core.webrtc.StreamConnectionRepository
 import com.gdisys.cameras.core.webrtc.WhepClient
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -19,16 +20,23 @@ import javax.inject.Provider
  * Vive em `core/webrtc` porque, assim como [WhepClient], lida com tipos e recursos do SDK
  * WebRTC; mantém essa orquestração fora da camada de apresentação e sincroniza o acesso aos
  * mapas de jobs/clients, que antes eram mutados a partir de coroutines sem nenhuma proteção.
+ *
+ * WHEP implementation of [StreamConnectionRepository]: the presentation layer depends on that
+ * contract, never on this class.
  */
 class WhepConnectionManager @Inject constructor(
   private val whepClientProvider: Provider<WhepClient>
-) {
+) : StreamConnectionRepository {
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
   private val lock = Any()
   private val connectionJobs = mutableMapOf<String, Job>()
   private val clients = mutableMapOf<String, WhepClient>()
 
-  fun connect(streamUrl: String, videoSink: VideoSink, onError: (Throwable) -> Unit = {}) {
+  override fun connect(
+    streamUrl: String,
+    videoSink: VideoSink,
+    onError: (Throwable) -> Unit
+  ) {
     val job = scope.launch {
       try {
         val whepClient = whepClientProvider.get()
@@ -44,7 +52,7 @@ class WhepConnectionManager @Inject constructor(
     synchronized(lock) { connectionJobs[streamUrl] = job }
   }
 
-  fun disconnect(streamUrl: String) {
+  override fun disconnect(streamUrl: String) {
     val (job, client) = synchronized(lock) {
       connectionJobs.remove(streamUrl) to clients.remove(streamUrl)
     }
@@ -52,7 +60,7 @@ class WhepConnectionManager @Inject constructor(
     client?.close()
   }
 
-  fun closeAll() {
+  override fun closeAll() {
     val (jobs, closedClients) = synchronized(lock) {
       val jobsSnapshot = connectionJobs.values.toList()
       val clientsSnapshot = clients.values.toList()

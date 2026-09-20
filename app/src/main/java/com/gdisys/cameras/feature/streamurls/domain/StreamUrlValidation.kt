@@ -1,13 +1,6 @@
 package com.gdisys.cameras.feature.streamurls.domain
 
-/**
- * Prefixo fixo de toda URL de stream. O host é imposto pelo `network_security_config`, então o
- * usuário preenche apenas a porta e o nome do stream.
- *
- * Também é o texto exibido antes do campo de porta: manter uma única constante impede que o
- * rótulo da tela divirja da URL efetivamente montada.
- */
-const val STREAM_URL_HOST_PREFIX = "http://[fd00:20::cafe]:"
+import com.gdisys.cameras.core.network.STREAM_URL_HOST_PREFIX
 
 private const val MIN_PORT = 1
 private const val MAX_PORT = 65535

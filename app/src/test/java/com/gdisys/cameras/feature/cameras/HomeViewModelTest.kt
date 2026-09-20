@@ -16,7 +16,7 @@ import com.gdisys.cameras.core.vpn.domain.model.VpnConfig
 import com.gdisys.cameras.core.vpn.domain.usecase.ConnectVpnUseCase
 import com.gdisys.cameras.core.vpn.domain.usecase.DisconnectVpnUseCase
 import com.gdisys.cameras.core.vpn.domain.usecase.ObserveVpnStateUseCase
-import com.gdisys.cameras.core.webrtc.data.WhepConnectionManager
+import com.gdisys.cameras.core.webrtc.StreamConnectionRepository
 import com.gdisys.cameras.feature.cameras.domain.movedToPage
 import io.mockk.Runs
 import io.mockk.coEvery
@@ -48,7 +48,7 @@ class HomeViewModelTest {
   private val connectVpnUseCase = mockk<ConnectVpnUseCase>()
   private val disconnectVpnUseCase = mockk<DisconnectVpnUseCase>()
   private val getVpnConfigUseCase = mockk<GetVpnConfigUseCase>()
-  private val whepConnectionManager = mockk<WhepConnectionManager>(relaxed = true)
+  private val streamConnectionRepository = mockk<StreamConnectionRepository>(relaxed = true)
 
   private lateinit var viewModel: HomeViewModel
 
@@ -97,7 +97,7 @@ class HomeViewModelTest {
       connectVpnUseCase,
       disconnectVpnUseCase,
       getVpnConfigUseCase,
-      whepConnectionManager
+      streamConnectionRepository
     )
   }
 
@@ -272,18 +272,18 @@ class HomeViewModelTest {
   @Test
   fun `connectStream delegates to WhepConnectionManager`() {
     val videoSink = mockk<VideoSink>()
-    every { whepConnectionManager.connect(any(), any(), any()) } just Runs
+    every { streamConnectionRepository.connect(any(), any(), any()) } just Runs
 
     viewModel.connectStream("stream-url", videoSink)
 
-    verify(exactly = 1) { whepConnectionManager.connect("stream-url", videoSink, any()) }
+    verify(exactly = 1) { streamConnectionRepository.connect("stream-url", videoSink, any()) }
   }
 
   @Test
   fun `connectStream shows a toast when the connection fails`() = runTest {
     val videoSink = mockk<VideoSink>()
     val onErrorSlot = slot<(Throwable) -> Unit>()
-    every { whepConnectionManager.connect(any(), any(), capture(onErrorSlot)) } just Runs
+    every { streamConnectionRepository.connect(any(), any(), capture(onErrorSlot)) } just Runs
 
     viewModel.uiEvent.test {
       viewModel.connectStream("stream-url", videoSink)
@@ -300,7 +300,7 @@ class HomeViewModelTest {
   fun `disconnectStream delegates to WhepConnectionManager`() {
     viewModel.disconnectStream("stream-url")
 
-    verify(exactly = 1) { whepConnectionManager.disconnect("stream-url") }
+    verify(exactly = 1) { streamConnectionRepository.disconnect("stream-url") }
   }
 
   @Test
@@ -382,6 +382,6 @@ class HomeViewModelTest {
 
     viewModelStore.clear()
 
-    verify(exactly = 1) { whepConnectionManager.closeAll() }
+    verify(exactly = 1) { streamConnectionRepository.closeAll() }
   }
 }

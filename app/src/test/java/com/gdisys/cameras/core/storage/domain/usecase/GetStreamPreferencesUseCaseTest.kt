@@ -6,6 +6,7 @@ import com.gdisys.cameras.core.storage.domain.model.StreamPreferences
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
@@ -49,5 +50,33 @@ class GetStreamPreferencesUseCaseTest {
     val result = GetStreamPreferencesUseCase(streamPreferencesRepository)().first()
 
     assertEquals(stored, result)
+  }
+
+  @Test
+  fun `emits empty preferences when the read fails, instead of cancelling the collector`() =
+    runTest {
+      every { streamPreferencesRepository.streamPreferences } returns
+        flow { throw IllegalStateException("corrupt storage") }
+
+      val result = GetStreamPreferencesUseCase(streamPreferencesRepository)().toList()
+
+      assertEquals(listOf(StreamPreferences()), result)
+    }
+
+  @Test
+  fun `keeps the emissions that preceded a read failure`() = runTest {
+    val stored = StreamPreferences(
+      streamUrls = listOf("a"),
+      portraitOrder = listOf("a"),
+      landscapeOrder = listOf("a")
+    )
+    every { streamPreferencesRepository.streamPreferences } returns flow {
+      emit(stored)
+      throw IllegalStateException("corrupt storage")
+    }
+
+    val result = GetStreamPreferencesUseCase(streamPreferencesRepository)().toList()
+
+    assertEquals(listOf(stored, StreamPreferences()), result)
   }
 }
