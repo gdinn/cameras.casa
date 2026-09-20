@@ -1,4 +1,4 @@
-package com.gdisys.cameras.feature.cameras.domain
+package com.gdisys.cameras.feature.cameras.logic
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue

@@ -2,7 +2,7 @@ package com.gdisys.cameras.feature.cameras.components
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import com.gdisys.cameras.feature.cameras.domain.DEFAULT_STREAM_ASPECT_RATIO
+import com.gdisys.cameras.feature.cameras.logic.DEFAULT_STREAM_ASPECT_RATIO
 
 @Composable
 fun FocusedStreamView(

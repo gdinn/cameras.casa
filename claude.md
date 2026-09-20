@@ -5,3 +5,6 @@ This document contains critical information about working with this codebase. Fo
 - MVVM
 - Jetpack Compose
 - Gradle kts with toml
+
+## Code Language
+- Use en-us to write and comment code

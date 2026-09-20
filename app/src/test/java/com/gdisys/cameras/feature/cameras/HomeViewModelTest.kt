@@ -17,7 +17,7 @@ import com.gdisys.cameras.core.vpn.domain.usecase.ConnectVpnUseCase
 import com.gdisys.cameras.core.vpn.domain.usecase.DisconnectVpnUseCase
 import com.gdisys.cameras.core.vpn.domain.usecase.ObserveVpnStateUseCase
 import com.gdisys.cameras.core.webrtc.StreamConnectionRepository
-import com.gdisys.cameras.feature.cameras.domain.movedToPage
+import com.gdisys.cameras.feature.cameras.logic.movedToPage
 import io.mockk.Runs
 import io.mockk.coEvery
 import io.mockk.coVerify

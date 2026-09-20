@@ -1,4 +1,4 @@
-package com.gdisys.cameras.feature.cameras.domain
+package com.gdisys.cameras.feature.cameras.logic
 
 /** Proporção usada enquanto o primeiro frame do stream não chega. */
 const val DEFAULT_STREAM_ASPECT_RATIO = 16f / 9f

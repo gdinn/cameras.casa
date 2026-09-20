@@ -20,8 +20,8 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.gdisys.cameras.core.storage.domain.model.StreamOrientation
-import com.gdisys.cameras.feature.cameras.domain.fittedCellSize
-import com.gdisys.cameras.feature.cameras.domain.fixedGridRowHeights
+import com.gdisys.cameras.feature.cameras.logic.fittedCellSize
+import com.gdisys.cameras.feature.cameras.logic.fixedGridRowHeights
 
 /**
  * Grade de linhas fixas: **sem scroll** e com medição própria.

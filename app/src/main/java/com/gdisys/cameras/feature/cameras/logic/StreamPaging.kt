@@ -1,4 +1,4 @@
-package com.gdisys.cameras.feature.cameras.domain
+package com.gdisys.cameras.feature.cameras.logic
 
 /**
  * Paginação do modo fixo: a grade não tem scroll, então o que não cabe em `linhas × colunas` vai

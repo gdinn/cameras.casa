@@ -53,11 +53,11 @@ import androidx.compose.ui.unit.dp
 import com.gdisys.cameras.R
 import com.gdisys.cameras.core.storage.domain.model.GridPreferences
 import com.gdisys.cameras.core.storage.domain.model.StreamOrientation
-import com.gdisys.cameras.feature.cameras.domain.itemsPerPage
-import com.gdisys.cameras.feature.cameras.domain.movedToPage
-import com.gdisys.cameras.feature.cameras.domain.pageCount
-import com.gdisys.cameras.feature.cameras.domain.reorderedTo
-import com.gdisys.cameras.feature.cameras.domain.streamsOnPage
+import com.gdisys.cameras.feature.cameras.logic.itemsPerPage
+import com.gdisys.cameras.feature.cameras.logic.movedToPage
+import com.gdisys.cameras.feature.cameras.logic.pageCount
+import com.gdisys.cameras.feature.cameras.logic.reorderedTo
+import com.gdisys.cameras.feature.cameras.logic.streamsOnPage
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt

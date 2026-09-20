@@ -1,4 +1,4 @@
-package com.gdisys.cameras.feature.streamurls.domain
+package com.gdisys.cameras.feature.streamurls.logic
 
 import com.gdisys.cameras.core.storage.domain.model.GridPreferences
 import org.junit.Assert.assertEquals

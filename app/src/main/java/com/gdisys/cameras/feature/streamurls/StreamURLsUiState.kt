@@ -1,7 +1,7 @@
 package com.gdisys.cameras.feature.streamurls
 
 import com.gdisys.cameras.core.storage.domain.model.GridPreferences
-import com.gdisys.cameras.feature.streamurls.domain.validateGridPreferences
+import com.gdisys.cameras.feature.streamurls.logic.validateGridPreferences
 
 /**
  * Estado da tela de Stream URLs.

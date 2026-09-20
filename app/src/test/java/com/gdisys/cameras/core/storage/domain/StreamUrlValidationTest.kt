@@ -1,4 +1,4 @@
-package com.gdisys.cameras.feature.streamurls.domain
+package com.gdisys.cameras.core.storage.domain
 
 import org.junit.Assert.assertEquals
 import org.junit.Test

@@ -1,4 +1,4 @@
-package com.gdisys.cameras.feature.streamurls.domain
+package com.gdisys.cameras.core.storage.domain
 
 import com.gdisys.cameras.core.network.STREAM_URL_HOST_PREFIX
 

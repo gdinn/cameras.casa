@@ -4,23 +4,25 @@ import android.util.Log
 import androidx.lifecycle.viewModelScope
 import com.gdisys.cameras.core.DEBUG_TAG
 import com.gdisys.cameras.core.ToastEventViewModel
+import com.gdisys.cameras.core.storage.domain.StreamUrlValidationResult
 import com.gdisys.cameras.core.storage.domain.model.StreamDefaults
 import com.gdisys.cameras.core.storage.domain.model.StreamOrientation
 import com.gdisys.cameras.core.storage.domain.model.StreamPreferences
 import com.gdisys.cameras.core.storage.domain.usecase.GetStreamPreferencesUseCase
 import com.gdisys.cameras.core.storage.domain.usecase.SaveGridPreferencesUseCase
 import com.gdisys.cameras.core.storage.domain.usecase.SaveStreamUrlsUseCase
-import com.gdisys.cameras.feature.streamurls.domain.StreamUrlValidationResult
-import com.gdisys.cameras.feature.streamurls.domain.showsAllStreams
-import com.gdisys.cameras.feature.streamurls.domain.validateStreamUrl
+import com.gdisys.cameras.core.storage.domain.validateStreamUrl
+import com.gdisys.cameras.feature.streamurls.logic.showsAllStreams
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -32,15 +34,31 @@ class StreamURLsViewModel @Inject constructor(
   private val saveGridPreferencesUseCase: SaveGridPreferencesUseCase
 ) : ToastEventViewModel() {
 
-  private val _uiState = MutableStateFlow(StreamURLsUiState())
-  val uiState: StateFlow<StreamURLsUiState> = _uiState.asStateFlow()
+  /**
+   * Full preferences draft, seeded once from storage. It carries more than the UI shows (both
+   * orders and both grids) precisely so that saving can rewrite the orders along with the
+   * canonical set, without losing what this screen does not edit yet.
+   *
+   * This is the single source of truth for the URLs: what the screen shows is derived from here
+   * by [uiState], so there is no mirrored copy to keep in sync.
+   *
+   * It is in-memory only, by decision: the draft does not survive process death. The screen
+   * already confirms discarding on back, and restoring edits the user never saved would confuse
+   * more than it would help.
+   */
+  private val draft = MutableStateFlow(StreamPreferences())
+
+  /** State owned by the screen alone, which is not part of the persistable draft. */
+  private val screenState = MutableStateFlow(StreamURLsScreenState())
 
   /**
-   * Rascunho completo das preferências, semeado uma única vez a partir do storage. Carrega mais
-   * do que a UI exibe (as duas ordens e as grades) justamente para que o salvar consiga reescrever
-   * as ordens junto do conjunto canônico, sem perder o que a tela ainda não edita.
+   * Projection of the draft plus the screen state. `Eagerly` because the draft is the source of
+   * truth for an edit in progress: it must stay reflected in the state even while the screen is
+   * out of composition (configuration change, system dialog).
    */
-  private var editedPreferences = StreamPreferences()
+  val uiState: StateFlow<StreamURLsUiState> =
+    combine(draft, screenState) { preferences, screen -> screen.toUiState(preferences) }
+      .stateIn(viewModelScope, SharingStarted.Eagerly, StreamURLsUiState())
 
   private val _navigateBackEvent = Channel<Unit>()
   val navigateBackEvent: Flow<Unit> = _navigateBackEvent.receiveAsFlow()
@@ -50,11 +68,10 @@ class StreamURLsViewModel @Inject constructor(
       // A partir daqui a tela é dona do rascunho: mudanças posteriores no storage não o
       // sobrescrevem, ou o usuário perderia o que está editando.
       val storedPreferences = getStreamPreferencesUseCase().first()
-      editedPreferences = storedPreferences
-      _uiState.update {
+      draft.value = storedPreferences
+      screenState.update {
         it.copy(
           isLoading = false,
-          streamUrls = storedPreferences.streamUrls,
           portraitGridInput = storedPreferences.portraitGrid.toInput(),
           landscapeGridInput = storedPreferences.landscapeGrid.toInput()
         )
@@ -63,16 +80,16 @@ class StreamURLsViewModel @Inject constructor(
   }
 
   fun onShowAddUrlForm() {
-    if (_uiState.value.isAddFormVisible) return
-    _uiState.update { it.copy(isAddFormVisible = true, portInput = "", streamNameInput = "") }
+    if (screenState.value.isAddFormVisible) return
+    screenState.update { it.copy(isAddFormVisible = true, portInput = "", streamNameInput = "") }
   }
 
   fun onPortChanged(port: String) {
-    _uiState.update { it.copy(portInput = port) }
+    screenState.update { it.copy(portInput = port) }
   }
 
   fun onStreamNameChanged(streamName: String) {
-    _uiState.update { it.copy(streamNameInput = streamName) }
+    screenState.update { it.copy(streamNameInput = streamName) }
   }
 
   fun onCancelAddUrlForm() {
@@ -80,17 +97,17 @@ class StreamURLsViewModel @Inject constructor(
   }
 
   fun onAddUrlConfirmed() {
-    val state = _uiState.value
+    val screen = screenState.value
     val result = validateStreamUrl(
-      port = state.portInput,
-      streamName = state.streamNameInput,
-      existingUrls = editedPreferences.streamUrls
+      port = screen.portInput,
+      streamName = screen.streamNameInput,
+      existingUrls = draft.value.streamUrls
     )
 
     when (result) {
       is StreamUrlValidationResult.Valid -> {
         // A URL entra no conjunto canônico e no fim das duas ordens.
-        updateEditedPreferences { preferences ->
+        updateStreamUrls { preferences ->
           preferences.copy(
             streamUrls = preferences.streamUrls + result.url,
             portraitOrder = preferences.portraitOrder + result.url,
@@ -112,7 +129,7 @@ class StreamURLsViewModel @Inject constructor(
   }
 
   fun onRemoveUrl(url: String) {
-    updateEditedPreferences { preferences ->
+    updateStreamUrls { preferences ->
       preferences.copy(
         streamUrls = preferences.streamUrls - url,
         portraitOrder = preferences.portraitOrder - url,
@@ -128,7 +145,7 @@ class StreamURLsViewModel @Inject constructor(
   fun onLoadDefaultsConfirmed() {
     dismissDialog()
     // Substituição só em memória: as duas ordens reiniciam na sequência do padrão.
-    updateEditedPreferences { preferences ->
+    updateStreamUrls { preferences ->
       preferences.copy(
         streamUrls = StreamDefaults.CAMERA_STREAM_URLS,
         portraitOrder = StreamDefaults.CAMERA_STREAM_URLS,
@@ -144,14 +161,14 @@ class StreamURLsViewModel @Inject constructor(
 
   fun onSaveUrlsConfirmed() {
     dismissDialog()
-    val preferences = editedPreferences
+    val preferences = draft.value
     viewModelScope.launch {
       saveStreamUrlsUseCase(
         streamUrls = preferences.streamUrls,
         portraitOrder = preferences.portraitOrder,
         landscapeOrder = preferences.landscapeOrder
       ).onSuccess {
-        _uiState.update { it.copy(isUrlsSectionDirty = false) }
+        screenState.update { it.copy(isUrlsSectionDirty = false) }
         showToast(StreamURLsToastMessage.URLS_SAVED)
       }.onFailure { e ->
         Log.e(DEBUG_TAG, "Failed to save stream URLs", e)
@@ -178,14 +195,15 @@ class StreamURLsViewModel @Inject constructor(
 
   fun onSaveGridConfirmed() {
     dismissDialog()
-    val state = _uiState.value
-    val portraitGrid = state.portraitGridInput.validated()
-    val landscapeGrid = state.landscapeGridInput.validated()
+    val screen = screenState.value
+    val portraitGrid = screen.portraitGridInput.validated()
+    val landscapeGrid = screen.landscapeGridInput.validated()
     // O botão já fica desabilitado com configuração inválida; a checagem aqui é a rede de proteção.
     if (portraitGrid == null || landscapeGrid == null) {
       showToast(StreamURLsToastMessage.INVALID_GRID)
       return
     }
+    val streamCount = draft.value.streamUrls.size
 
     viewModelScope.launch {
       // Escopo restrito às duas grades: o conjunto de URLs e as ordens não são tocados.
@@ -193,15 +211,13 @@ class StreamURLsViewModel @Inject constructor(
         portraitGrid = portraitGrid,
         landscapeGrid = landscapeGrid
       ).onSuccess {
-        editedPreferences = editedPreferences.copy(
-          portraitGrid = portraitGrid,
-          landscapeGrid = landscapeGrid
-        )
-        _uiState.update { it.copy(isGridSectionDirty = false) }
+        // The saved grids go back into the draft so that a later URL save does not rewrite
+        // storage with the stale grids.
+        draft.update { it.copy(portraitGrid = portraitGrid, landscapeGrid = landscapeGrid) }
+        screenState.update { it.copy(isGridSectionDirty = false) }
         showToast(StreamURLsToastMessage.GRID_SAVED)
 
         // Grade menor que o número de streams é válido — só merece um aviso não bloqueante.
-        val streamCount = state.streamUrls.size
         if (!portraitGrid.showsAllStreams(streamCount) ||
           !landscapeGrid.showsAllStreams(streamCount)
         ) {
@@ -216,7 +232,7 @@ class StreamURLsViewModel @Inject constructor(
 
   /** Acionado tanto pelo botão de voltar da TopBar quanto pelo back do sistema. */
   fun onBackRequested() {
-    if (_uiState.value.isDirty) {
+    if (screenState.value.isDirty) {
       showDialog(StreamURLsDialog.ConfirmDiscard)
       return
     }
@@ -239,45 +255,82 @@ class StreamURLsViewModel @Inject constructor(
   }
 
   private fun closeAddUrlForm() {
-    _uiState.update { it.copy(isAddFormVisible = false, portInput = "", streamNameInput = "") }
+    screenState.update { it.copy(isAddFormVisible = false, portInput = "", streamNameInput = "") }
   }
 
   private fun showDialog(dialog: StreamURLsDialog) {
-    _uiState.update { it.copy(dialog = dialog) }
+    screenState.update { it.copy(dialog = dialog) }
   }
 
   private fun dismissDialog() {
-    _uiState.update { it.copy(dialog = null) }
+    screenState.update { it.copy(dialog = null) }
   }
 
   /**
-   * Ponto único de escrita no rascunho: mantém o espelho exibido pela UI em sincronia com
-   * [editedPreferences] e marca a seção de URLs como pendente de salvamento.
+   * Single write point for section A: it changes the draft and marks the section as pending.
+   * There is no mirror to update — `uiState.streamUrls` is derived from [draft].
    */
-  private fun updateEditedPreferences(transform: (StreamPreferences) -> StreamPreferences) {
-    editedPreferences = transform(editedPreferences)
-    _uiState.update {
-      it.copy(streamUrls = editedPreferences.streamUrls, isUrlsSectionDirty = true)
-    }
+  private fun updateStreamUrls(transform: (StreamPreferences) -> StreamPreferences) {
+    draft.update(transform)
+    screenState.update { it.copy(isUrlsSectionDirty = true) }
   }
 
   /**
-   * Ponto único de escrita nos campos da grade. O rascunho da seção B vive no próprio `UiState`
-   * (e não em [editedPreferences]) porque os campos são texto livre enquanto o usuário digita —
-   * só viram [com.gdisys.cameras.core.storage.domain.model.GridPreferences] no salvar.
+   * Ponto único de escrita nos campos da grade. O rascunho da seção B vive em [screenState]
+   * (e não em [draft]) porque os campos são texto livre enquanto o usuário digita — só viram
+   * [com.gdisys.cameras.core.storage.domain.model.GridPreferences] no salvar.
    */
   private fun updateGridInput(
     orientation: StreamOrientation,
     transform: (GridInput) -> GridInput
   ) {
-    _uiState.update { state ->
+    screenState.update { screen ->
       when (orientation) {
         StreamOrientation.PORTRAIT ->
-          state.copy(portraitGridInput = transform(state.portraitGridInput))
+          screen.copy(portraitGridInput = transform(screen.portraitGridInput))
 
         StreamOrientation.LANDSCAPE ->
-          state.copy(landscapeGridInput = transform(state.landscapeGridInput))
+          screen.copy(landscapeGridInput = transform(screen.landscapeGridInput))
       }.copy(isGridSectionDirty = true)
     }
   }
+}
+
+/**
+ * State the screen owns and that does not belong to the persistable draft: form fields, the open
+ * dialog and the pending-save flags.
+ *
+ * It exists apart from [StreamURLsUiState] precisely so that the URL list has a single owner
+ * ([StreamURLsViewModel.draft]); the state exposed to the UI is the combination of the two.
+ */
+private data class StreamURLsScreenState(
+  val isLoading: Boolean = true,
+  val isAddFormVisible: Boolean = false,
+  val portInput: String = "",
+  val streamNameInput: String = "",
+  val isUrlsSectionDirty: Boolean = false,
+  val portraitGridInput: GridInput = GridInput(),
+  val landscapeGridInput: GridInput = GridInput(),
+  val isGridSectionDirty: Boolean = false,
+  val dialog: StreamURLsDialog? = null
+) {
+  /**
+   * Same rule as [StreamURLsUiState.isDirty], evaluated at the source: both pending flags are
+   * born here, and reading them here does not depend on when `combine` propagates.
+   */
+  val isDirty: Boolean
+    get() = isUrlsSectionDirty || isGridSectionDirty
+
+  fun toUiState(preferences: StreamPreferences): StreamURLsUiState = StreamURLsUiState(
+    isLoading = isLoading,
+    streamUrls = preferences.streamUrls,
+    isAddFormVisible = isAddFormVisible,
+    portInput = portInput,
+    streamNameInput = streamNameInput,
+    isUrlsSectionDirty = isUrlsSectionDirty,
+    portraitGridInput = portraitGridInput,
+    landscapeGridInput = landscapeGridInput,
+    isGridSectionDirty = isGridSectionDirty,
+    dialog = dialog
+  )
 }

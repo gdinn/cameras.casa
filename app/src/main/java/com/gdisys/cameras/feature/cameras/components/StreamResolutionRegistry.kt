@@ -3,7 +3,7 @@ package com.gdisys.cameras.feature.cameras.components
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.staticCompositionLocalOf
-import com.gdisys.cameras.feature.cameras.domain.DEFAULT_STREAM_ASPECT_RATIO
+import com.gdisys.cameras.feature.cameras.logic.DEFAULT_STREAM_ASPECT_RATIO
 
 /**
  * Proporção real de cada stream, alimentada pelos `RendererEvents` do `SurfaceViewRenderer`.
