@@ -73,6 +73,17 @@ class LayerDependencyTest {
       }
   }
 
+  /**
+   * The files every `domain` rule above is scoped to.
+   *
+   * Worth knowing what this does *not* reach: `core/webrtc` keeps its contracts
+   * (`StreamConnectionRepository`, `WhepClient`) at the package root rather than under
+   * `core/webrtc/domain`, deliberately — `VideoSink` is a WebRTC SDK type and the sink is the
+   * renderer the UI itself creates, so the contract owns that dependency instead of pretending to
+   * be pure domain. Because the scope here is `core..domain..`, none of the domain rules apply to
+   * that package. What protects its boundary is the separate `feature -> .data.` rule: the
+   * presentation layer talks to the contracts and never to `core/webrtc/data`.
+   */
   private fun domainFiles() = productionCode.files.withPackage("$APP_PACKAGE.core..domain..")
 
   private companion object {

@@ -659,32 +659,37 @@ values.
 
 ## 9. Architectural consistency notes
 
-The layering is well enforced where the Konsist test reaches. The items below are the gaps found
-against a strict Clean Architecture + MVVM reading of the tree at `6fdf1ce`. They are observations
-for an incoming developer, ordered roughly by how likely they are to cause confusion or a real
-defect — not a work plan.
+Everything a strict Clean Architecture + MVVM reading of this tree used to flag has been closed,
+except the two entries below. Both are recorded on purpose: the first is a deliberate exception you
+should not "fix", the second is a real gap that is simply not closed yet.
 
-### 9.2 Layering
+### 9.1 `core/webrtc` contracts sit at the package root — deliberate
 
-5. **`core/webrtc` contracts sit at the package root rather than in `core/webrtc/domain`.** This is
-   *documented and deliberate* — `VideoSink` is an SDK type — but it has a consequence worth
-   knowing: `LayerDependencyTest` scopes its domain rules to `core..domain..`, so none of them
-   apply to `core/webrtc`. What actually protects the boundary there is the separate
-   `feature → .data.` rule.
+`StreamConnectionRepository` and `WhepClient` live directly in `core/webrtc`, not under
+`core/webrtc/domain`. `VideoSink` is a WebRTC SDK type and the sink *is* the renderer the UI
+creates, so wrapping it in a project type would only unwrap it again in the same frame; the contract
+owns the dependency instead of pretending to be pure domain.
 
-### 9.3 Configuration drift
+The consequence is worth knowing, because it is invisible otherwise: `LayerDependencyTest` scopes
+all of its domain rules to `core..domain..`, so **none of them apply to `core/webrtc`**. What
+actually protects that boundary is the separate `feature → .data.` rule — the presentation layer
+depends on the contracts and never on `core/webrtc/data`. This is written on `domainFiles()` in
+`LayerDependencyTest` as well, which is where someone extending the rules will be looking.
 
-12. **Release builds have `isMinifyEnabled = false`**, so `proguard-rules.pro` is inert. This is now
-    a *documented decision* rather than drift — see [§2](#2-stack-and-build-configuration) and the
-    comment on the `release` block in `app/build.gradle.kts`, which lists the keep rules to add and
-    requires a minified build to be smoke-tested on a device before the flag is flipped. It is
-    recorded here because it is still a gap someone should eventually close, not a permanent choice.
+### 9.2 Release builds are not minified — open
 
-### 9.4 Coverage configuration
+`isMinifyEnabled = false`, so `proguard-rules.pro` is inert. This is a *documented decision* rather
+than drift — see [§2](#2-stack-and-build-configuration) and the comment on the `release` block in
+`app/build.gradle.kts`, which lists the keep rules to add and ends by requiring a minified build to
+be smoke-tested on a device. It stays listed here because it is a gap someone should eventually
+close, not a permanent choice.
 
-14. **`androidTest/` contains only the generated `ExampleInstrumentedTest`.** The JaCoCo comment
-    justifies excluding Compose UI on the grounds that it is "tested via Compose UI Test", and the
-    dependencies are wired, but no such tests exist yet.
+Related, and also open: `src/androidTest/` still holds only the generated `ExampleInstrumentedTest`.
+The Compose UI Test dependencies are wired but unused. That no longer contradicts anything — the
+JaCoCo KDoc now says Compose UI is excluded *by decision* rather than claiming it is covered
+elsewhere — but the highest-value tests to add, if someone picks this up, are `ConfigScreen` (the
+four `ConfigButtonState` renderings and the navigation gate), `StreamURLsScreen` (add/remove/reset
+and the per-section dirty flags) and `EmptyStreamsScreen`.
 
 ---
 
