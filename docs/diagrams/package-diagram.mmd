@@ -42,7 +42,7 @@ flowchart TD
     SDom["core.storage.domain<br/>repositories, models, 8 use cases,<br/>StreamUrlValidation"]
     VDom["core.vpn.domain<br/>VpnRepository, VpnLifecycleController,<br/>VpnConfig, 4 use cases"]
     PDom["core.permission.domain<br/>Camera/VpnPermissionRepository,<br/>2 use cases"]
-    WDom["core.webrtc (contracts)<br/>StreamConnectionRepository, WhepClient"]
+    WDom["core.webrtc (contracts)<br/>StreamConnectionRepository, WhepClient,<br/>LocalEglBase"]
   end
 
   subgraph COREDATA["core.*.data - implementations"]
@@ -59,6 +59,7 @@ flowchart TD
 
   APP --> FEATURE
   APP --> UI
+  APP -->|"provides LocalEglBase"| WDom
   FEATURE --> UI
   FEATURE --> CORESHARED
   FEATURE --> COREDOMAIN

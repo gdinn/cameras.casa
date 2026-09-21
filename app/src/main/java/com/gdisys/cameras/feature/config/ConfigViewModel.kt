@@ -1,6 +1,5 @@
 package com.gdisys.cameras.feature.config
 
-import android.content.Intent
 import android.util.Log
 import androidx.lifecycle.viewModelScope
 import com.gdisys.cameras.core.DEBUG_TAG
@@ -30,8 +29,13 @@ import javax.inject.Inject
 
 const val QR_CODE_RESULT_KEY = "qr_code_raw_json"
 
+/**
+ * Payload-free on purpose: the consent `Intent` is a platform object, and routes — not ViewModels —
+ * own platform round-trips. The ViewModel decides *whether* consent is needed; `ConfigRoute` builds
+ * the `Intent` and launches it.
+ */
 sealed interface VpnPermissionUiEvent {
-  data class RequestPermission(val intent: Intent): VpnPermissionUiEvent
+  data object RequestPermission : VpnPermissionUiEvent
 }
 
 @HiltViewModel
@@ -219,13 +223,13 @@ class ConfigViewModel @Inject constructor(
   }
 
   fun acceptVpnPermission() {
-    handleVpnPermissionIntent(requestVpnPermissionUseCase())
-  }
-
-  private fun handleVpnPermissionIntent(intent: Intent?) {
-    if(intent != null) {
+    // `RequestVpnPermissionUseCase` returns the consent Intent, or null when consent was already
+    // given. Only that distinction matters here; the Intent itself is discarded and rebuilt by the
+    // route, which is the layer allowed to touch platform types.
+    val needsConsent = requestVpnPermissionUseCase() != null
+    if (needsConsent) {
       viewModelScope.launch {
-        _vpnPermissionUiEvent.send(VpnPermissionUiEvent.RequestPermission(intent))
+        _vpnPermissionUiEvent.send(VpnPermissionUiEvent.RequestPermission)
       }
     } else {
       showToast(ConfigToastMessage.PERMISSION_ALREADY_GRANTED)

@@ -28,15 +28,35 @@ class DataStoreManagerTest {
   }
 
   @Test
-  fun `updateUserPreferences replaces the stored value with the given preferences`() = runTest {
+  fun `updateUserPreferences applies the given transform to the stored value`() = runTest {
     every { dataStore.data } returns flowOf(UserPreferences())
     val newPreferences = UserPreferences(vpnConfigTokens = VpnConfigTokens(iPrk = "private-key"))
     val transform = slot<suspend (UserPreferences) -> UserPreferences>()
     coEvery { dataStore.updateData(capture(transform)) } returns newPreferences
 
     val manager = DataStoreManager(dataStore)
-    manager.updateUserPreferences(newPreferences)
+    manager.updateUserPreferences { newPreferences }
 
     assertEquals(newPreferences, transform.captured(UserPreferences()))
+  }
+
+  @Test
+  fun `updateUserPreferences hands the persisted value to the transform`() = runTest {
+    every { dataStore.data } returns flowOf(UserPreferences())
+    val persisted = UserPreferences(vpnConfigTokens = VpnConfigTokens(iPrk = "persisted-key"))
+    val transform = slot<suspend (UserPreferences) -> UserPreferences>()
+    coEvery { dataStore.updateData(capture(transform)) } returns persisted
+
+    val manager = DataStoreManager(dataStore)
+    manager.updateUserPreferences { current ->
+      current.copy(vpnConfigTokens = current.vpnConfigTokens?.copy(iAddr = "10.0.0.2"))
+    }
+
+    // The point of the transform overload: a caller can rewrite one field and keep the rest,
+    // instead of having to supply a complete object and clobber whatever it did not know about.
+    assertEquals(
+      UserPreferences(vpnConfigTokens = VpnConfigTokens(iPrk = "persisted-key", iAddr = "10.0.0.2")),
+      transform.captured(persisted)
+    )
   }
 }

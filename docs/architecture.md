@@ -237,6 +237,10 @@ Points of interest:
 - **Platform round-trips are events, not state.** VPN consent and the camera permission request are
   emitted as `Channel` events and launched by the reusable
   `LaunchActivityResultOnEvent` composable (`core/components/ActivityResultEventEffect.kt`).
+  `VpnPermissionUiEvent.RequestPermission` is deliberately payload-free: the ViewModel decides
+  *whether* consent is needed (`RequestVpnPermissionUseCase() != null`) and `ConfigRoute` builds the
+  `Intent` with `VpnService.prepare(context)`. No `android.content.Intent` crosses the ViewModel
+  boundary, and a `null` from `prepare` simply launches nothing.
 - **QR result arrives via navigation, not a shared ViewModel.** `QrCodeRoute` writes the raw JSON
   into `previousBackStackEntry.savedStateHandle[QR_CODE_RESULT_KEY]`; `ConfigRoute` observes it,
   hands it to `onQrCodeScanned`, then clears it through `onQrCodeResultConsumed`.
@@ -401,9 +405,12 @@ reporting is a data concern. `GetStreamPreferencesUseCase` then decides what the
 `catch`ing into empty preferences so a corrupt file degrades to the "no URLs configured" screen
 instead of cancelling every collector's `combine` and freezing the UI.
 
-**Scoped writes.** `StreamPreferencesRepository.updateStreamPreferences { current -> ... }` takes a
-transform receiving the value persisted at write time, which is what lets three different use cases
-each rewrite only their own slice of the same file atomically.
+**Scoped writes.** Both DataStore managers take a transform receiving the value persisted at write
+time — `updateStreamPreferences { current -> ... }` and `updateUserPreferences { current -> ... }` —
+which is what lets several use cases each rewrite only their own slice of the same file atomically,
+with no read-then-write race. `UserPreferencesRepository` still exposes a wholesale
+`updateUserPreferences(userPreferences)`, because every caller today writes a complete object; the
+transform underneath is what makes a partial write possible when one is needed.
 
 ### 6.2 `core/vpn` — WireGuard tunnel
 
@@ -443,6 +450,13 @@ dependency instead of pretending to be pure domain.
 for every screen opened after the first was destroyed. `WhepClientImpl` is likewise
 `ViewModelComponent`-bound because it holds a mutable `peerConnection`. Only the stateless
 `WhepRemoteDataSource` and the `PeerConnectionFactory` / `EglBase` are singletons.
+
+**`EglBase` reaches the UI as a `CompositionLocal`, not as a parameter.** `MainActivity` injects the
+singleton and provides `LocalEglBase` (`core/webrtc/EglBaseCompositionLocal.kt`) around the whole
+composition; `HomeRoute` reads it and passes it to `HomeScreen` explicitly. Threading it down as a
+parameter instead would put a WebRTC SDK type in `NavigationRoot`'s signature, making the navigation
+graph depend on the video stack it only routes to. The local stops at the route on purpose —
+`HomeScreen` keeps an explicit `eglBase` parameter so it stays pure and previewable.
 
 ### 6.4 `core/permission`
 
@@ -637,22 +651,6 @@ defect — not a work plan.
    knowing: `LayerDependencyTest` scopes its domain rules to `core..domain..`, so none of them
    apply to `core/webrtc`. What actually protects the boundary there is the separate
    `feature → .data.` rule.
-
-6. **`EglBase` is threaded through the navigation layer.** `MainActivity` injects it, passes it to
-   `NavigationRoot`, which passes it to `HomeRoute`, which passes it to `HomeScreen`. A WebRTC SDK
-   type therefore appears in the signature of the app's navigation graph. Injecting it where it is
-   used (or exposing it through the existing `LocalWebRtcConnection`) would keep the SDK out of
-   `app/navigation`.
-
-7. **`ConfigViewModel` exposes an `android.content.Intent`** in `VpnPermissionUiEvent.RequestPermission`.
-   Pragmatic — it is what `VpnService.prepare()` returns and what the launcher consumes — but it is
-   a platform type crossing the ViewModel boundary.
-
-8. **`DataStoreManager.updateUserPreferences` ignores the current value** (`updateData { userPreferences }`),
-   unlike its stream-preferences sibling, which takes a transform. User preferences can therefore
-   only be replaced wholesale, never partially updated. This is invisible today because
-   `ConfigViewModel` always writes a complete object, but it is an asymmetry waiting to surprise
-   the next writer of a partial update.
 
 ### 9.3 Configuration drift
 

@@ -400,14 +400,14 @@ class ConfigViewModelTest {
   }
 
   @Test
-  fun `acceptVpnPermission emits a request permission event when an intent is returned`() = runTest {
-    val intent = mockk<Intent>()
-    every { requestVpnPermissionUseCase() } returns intent
+  fun `acceptVpnPermission emits a request permission event when consent is still needed`() = runTest {
+    every { requestVpnPermissionUseCase() } returns mockk<Intent>()
 
     viewModel.vpnPermissionUiEvent.test {
       viewModel.acceptVpnPermission()
 
-      assertEquals(VpnPermissionUiEvent.RequestPermission(intent), awaitItem())
+      // The event carries no payload: the consent Intent is the route's to build and launch.
+      assertEquals(VpnPermissionUiEvent.RequestPermission, awaitItem())
     }
   }
 

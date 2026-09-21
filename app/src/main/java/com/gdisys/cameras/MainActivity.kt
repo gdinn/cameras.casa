@@ -4,8 +4,10 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.navigation.compose.rememberNavController
 import com.gdisys.cameras.app.navigation.NavigationRoot
+import com.gdisys.cameras.core.webrtc.LocalEglBase
 import com.gdisys.cameras.ui.theme.CamerasTheme
 import dagger.hilt.android.AndroidEntryPoint
 import org.webrtc.EglBase
@@ -22,10 +24,9 @@ class MainActivity : ComponentActivity() {
     enableEdgeToEdge()
     setContent {
       CamerasTheme {
-        NavigationRoot(
-          navController = rememberNavController(),
-          eglBase = eglBase
-        )
+        CompositionLocalProvider(LocalEglBase provides eglBase) {
+          NavigationRoot(navController = rememberNavController())
+        }
       }
     }
   }

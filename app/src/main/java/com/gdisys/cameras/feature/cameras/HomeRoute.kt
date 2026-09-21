@@ -17,17 +17,20 @@ import com.gdisys.cameras.R
 import com.gdisys.cameras.core.components.LoadingScreen
 import com.gdisys.cameras.core.components.ToastDisplayer
 import com.gdisys.cameras.core.storage.domain.model.StreamOrientation
+import com.gdisys.cameras.core.webrtc.LocalEglBase
 import com.gdisys.cameras.feature.cameras.components.EmptyStreamsScreen
 import com.gdisys.cameras.feature.cameras.components.HomeScreen
-import org.webrtc.EglBase
 
 @Composable
 fun HomeRoute(
   viewModel: HomeViewModel = hiltViewModel(),
-  eglBase: EglBase,
   onNavigateToConfig: () -> Unit
 ) {
   val activity = LocalActivity.current
+
+  // HomeScreen keeps EglBase as an explicit parameter so it stays previewable; the route is the
+  // layer that reads it off the composition.
+  val eglBase = LocalEglBase.current
 
   // Decisão P1: a orientação vem da Configuration e é empurrada para o ViewModel, que escolhe a
   // ordem e a grade correspondentes.
