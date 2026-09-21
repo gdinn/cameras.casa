@@ -1,0 +1,60 @@
+---
+title: "Data flow - VPN tunnel and WebRTC/WHEP video streaming"
+---
+sequenceDiagram
+  autonumber
+  participant U as User
+  participant HR as HomeRoute<br/>(Composable)
+  participant HVM as HomeViewModel
+  participant VUC as Connect/Disconnect/<br/>ObserveVpnStateUseCase
+  participant VR as VpnRepositoryImpl<br/>(GoBackend)
+  participant SVC as VpnLifecycleService
+  participant PL as WebRtcVideoPlayer<br/>(SurfaceViewRenderer)
+  participant SCR as StreamConnectionRepository<br/>(WhepConnectionManager)
+  participant WC as WhepClientImpl<br/>(PeerConnection)
+  participant DS as WhepRemoteDataSource<br/>(HttpURLConnection)
+  participant SRV as Raspberry Pi<br/>MediaMTX / WHEP server
+
+  Note over HR,VR: 1. Bring the tunnel up - only while the app is in the foreground
+  U->>HR: opens Home (Lifecycle ON_RESUME)
+  HR->>HVM: connectVpn()
+  HVM->>VUC: GetVpnConfigUseCase() -> Result of VpnConfig
+  HVM->>VUC: ConnectVpnUseCase(config)
+  VUC->>VR: connect(config) - VpnConfig.toWireGuardConfig()
+  VR->>VR: backend.setState(tunnel, UP, config)
+  VUC->>SVC: VpnLifecycleController.start()
+  Note right of SVC: onTaskRemoved / onDestroy<br/>tear the tunnel down
+  VR-->>VUC: Tunnel.State changes
+  VUC-->>HVM: ObserveVpnStateUseCase(): StateFlow of VpnTunnelState
+  HVM->>HVM: combine(prefs, orientation, focus, vpnState)
+  HVM-->>HR: HomeUiState.Loading until VpnTunnelState.CONNECTED
+
+  Note over HR,SRV: 2. Render the grid and open one WHEP session per visible stream
+  HVM-->>HR: HomeUiState.Ready(streams, grid, orientation, focusedStream)
+  HR->>PL: composes one player per visible cell<br/>(movableContentOf keeps it alive across focus toggles)
+  PL->>PL: DisposableEffect -> creates SurfaceViewRenderer (a VideoSink)
+  PL->>HVM: connectStream(streamUrl, videoSink)
+  HVM->>SCR: connect(streamUrl, videoSink, onError)
+  SCR->>WC: whepClientProvider.get().connect(...)
+  WC->>WC: createPeerConnection, addTransceiver(VIDEO, RECV_ONLY)
+  WC->>WC: createOffer -> setLocalDescription -> await ICE gathering
+  WC->>DS: postOffer(streamUrl, localSdp)
+  DS->>SRV: POST {streamUrl}/whep<br/>Content-Type: application/sdp
+  SRV-->>DS: 201 Created + answer SDP
+  DS-->>WC: answer SDP
+  WC->>WC: setRemoteDescription(ANSWER)
+  SRV-->>WC: SRTP video track (through the WireGuard tunnel)
+  WC->>PL: onAddTrack -> videoTrack.addSink(renderer)
+  PL->>PL: RendererEvents.onFrameResolutionChanged
+  PL->>HR: StreamResolutionRegistry.onFrameResolutionChanged(url, w, h, rotation)
+  Note right of HR: the real aspect ratio re-measures the grid<br/>(FixedGridLayout / 16:9 until the first frame)
+
+  Note over U,SRV: 3. Tear down
+  U->>HR: leaves the cell / changes page / leaves Home (ON_PAUSE)
+  PL->>HVM: disconnectStream(streamUrl) then renderer.release()
+  HVM->>SCR: disconnect(streamUrl) - cancels the job, closes the client
+  HR->>HVM: disconnectVpn()
+  HVM->>VUC: DisconnectVpnUseCase()
+  VUC->>VR: backend.setState(tunnel, DOWN, null)
+  VUC->>SVC: VpnLifecycleController.stop()
+  Note over HVM: onCleared() -> streamConnectionRepository.closeAll()<br/>terminal: cancels the manager scope, so the binding is unscoped

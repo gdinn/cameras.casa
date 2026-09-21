@@ -1,0 +1,51 @@
+---
+title: "Data flow - persisted preferences (read path and write path)"
+---
+flowchart TB
+  classDef source fill:#eceff1,stroke:#455a64,color:#263238
+  classDef data fill:#cfd8dc,stroke:#37474f,color:#263238
+  classDef domainPkg fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
+  classDef vm fill:#fff3e0,stroke:#ef6c00,color:#e65100
+  classDef view fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
+
+  subgraph READ["READ PATH - source to screen (reactive, Flow)"]
+    direction TB
+    R1["Disk: files/datastore/<br/>user-preferences | stream-preferences<br/>Base64 of AES-CBC ciphertext"]
+    R2["EncryptedPreferencesSerializer.readFrom()<br/>Base64 decode - KeystoreCryptoEngine.decrypt - JSON decode<br/>any failure returns defaultValue"]
+    R3["DataStoreManager / StreamPreferencesDataStoreManager<br/>exposes dataStore.data as Flow"]
+    R4["UserPreferencesRepositoryImpl / StreamPreferencesRepositoryImpl<br/>@Singleton, bound via Hilt @Binds<br/>StreamPreferences impl logs and rethrows read failures"]
+    R5["Use cases<br/>GetStreamPreferencesUseCase: map { reconciled() } + catch -> empty<br/>GetVpnConfigStatusUseCase: map to VpnCredentialsStatus<br/>GetVpnConfigUseCase: first() + toVpnConfigOrNull()"]
+    R6["ViewModel<br/>combine(...).stateIn(viewModelScope, Eagerly)<br/>-> HomeUiState / ConfigUiState / StreamURLsUiState"]
+    R7["Composable Route<br/>collectAsStateWithLifecycle() -> recomposition"]
+    R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7
+  end
+
+  subgraph WRITE["WRITE PATH - user action to disk"]
+    direction TB
+    W1["User action in a Composable<br/>(add URL, remove, load defaults, save,<br/>drag and drop reorder, scan QR code)"]
+    W2["ViewModel method<br/>onAddUrlConfirmed / onSaveUrlsConfirmed /<br/>onSaveGridConfirmed / onStreamsReordered /<br/>onQrCodeScanned"]
+    W3["Validation before persisting<br/>validateStreamUrl() - core.storage.domain<br/>validateGridPreferences() - feature.streamurls.logic<br/>ParseUserPreferencesFromQrCodeUseCase"]
+    W4["Use case returns Result<br/>SaveStreamUrlsUseCase | SaveGridPreferencesUseCase<br/>UpdateStreamOrderUseCase | SaveUserPreferencesUseCase"]
+    W5["Repository.updateStreamPreferences { current -> ... }<br/>transform receives the value persisted at write time,<br/>so each use case rewrites only its own scope"]
+    W6["DataStore.updateData - atomic read/modify/write"]
+    W7["EncryptedPreferencesSerializer.writeTo()<br/>JSON encode (encodeDefaults) - AES encrypt - Base64"]
+    W8["Disk"]
+    W1 --> W2 --> W3 --> W4 --> W5 --> W6 --> W7 --> W8
+  end
+
+  W8 -.->|"new value re-emitted on the read Flow:<br/>every collector updates, no manual refresh"| R1
+  W4 -.->|"Result.onFailure -> showToast(...)<br/>the UI learns about the failure, the draft is kept"| R6
+
+  Draft["StreamURLs screen exception:<br/>the draft (MutableStateFlow of StreamPreferences) is seeded ONCE with first()<br/>and then owned by the screen. Later storage changes do not overwrite it,<br/>and nothing reaches disk before an explicit Save."]
+  Draft -.-> W2
+
+  class R1,R2,R8 source
+  class R3,R4 data
+  class R5 domainPkg
+  class R6 vm
+  class R7 view
+  class W1 view
+  class W2,Draft vm
+  class W3,W4 domainPkg
+  class W5,W6,W7 data
+  class W8 source

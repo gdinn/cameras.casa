@@ -1,0 +1,47 @@
+---
+title: "MVVM - Init route (NavigationRoute.Loading)"
+---
+flowchart LR
+  classDef view fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
+  classDef vm fill:#fff3e0,stroke:#ef6c00,color:#e65100
+  classDef model fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
+  classDef data fill:#eceff1,stroke:#455a64,color:#263238
+
+  subgraph V["VIEW - Composables"]
+    direction TB
+    Nav["NavigationRoot<br/>app/navigation/NavigationRoot.kt"]
+    Route["InitRoute<br/>feature/init/InitRoute.kt"]
+    Screen["InitScreen<br/>feature/init/components/"]
+    Toast["ToastDisplayer<br/>core/components/"]
+    Nav -->|"composable NavigationRoute.Loading"| Route
+    Route -->|"renders"| Screen
+    Route -->|"renders"| Toast
+  end
+
+  subgraph VMG["VIEWMODEL"]
+    direction TB
+    VM["InitViewModel : ToastEventViewModel<br/>feature/init/InitViewModel.kt"]
+    NoInput["This route sends no UI events:<br/>the screen has no user input.<br/>The decision is taken in init { }"]
+  end
+
+  subgraph M["MODEL - domain and data"]
+    direction TB
+    UC["GetVpnConfigStatusUseCase"]
+    Repo["UserPreferencesRepository"]
+    Store["DataStore: user-preferences<br/>encrypted, core/storage/data/"]
+    UC -->|"maps to VpnCredentialsStatus"| Repo
+    Repo -->|"reads"| Store
+  end
+
+  Route -->|"hiltViewModel()"| VM
+  VM -->|"STATE OUT: navigateUiEvent<br/>Flow of NavigateUiEvent (Channel)<br/>collected in LaunchedEffect"| Route
+  VM -->|"STATE OUT: uiEvent<br/>Flow of ToastUiEvent"| Toast
+  Route -->|"onNavigateToConfig() / onNavigateToHome()"| Nav
+  VM -->|"invoke()"| UC
+  UC -->|"Flow of VpnCredentialsStatus"| VM
+  NoInput -.-> VM
+
+  class Nav,Route,Screen,Toast view
+  class VM,NoInput vm
+  class UC,Repo model
+  class Store data

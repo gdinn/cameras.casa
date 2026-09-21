@@ -1,0 +1,44 @@
+---
+title: "MVVM - QrCode route (NavigationRoute.QrCode)"
+---
+flowchart LR
+  classDef view fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
+  classDef vm fill:#fff3e0,stroke:#ef6c00,color:#e65100
+  classDef model fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
+  classDef data fill:#eceff1,stroke:#455a64,color:#263238
+
+  subgraph V["VIEW - Composables"]
+    direction TB
+    Nav["NavigationRoot<br/>writes result into previousBackStackEntry"]
+    Route["QrCodeRoute<br/>core/components/QrCodeRoute.kt"]
+    Screen["QrCodeScreen<br/>CameraX PreviewView + ImageAnalysis"]
+    Toast["ToastDisplayer"]
+    Nav --> Route
+    Route --> Screen
+    Route --> Toast
+  end
+
+  subgraph VMG["VIEWMODEL"]
+    direction TB
+    VM["QrCodeViewModel : ToastEventViewModel<br/>core/components/QrCodeViewModel.kt"]
+    Flag["hasScanned: Boolean<br/>plain field, not exposed as state:<br/>this route has no UiState"]
+    Flag -.-> VM
+  end
+
+  subgraph M["MODEL - no domain dependency"]
+    direction TB
+    None["QrCodeViewModel injects nothing.<br/>Decoding and persistence happen in<br/>ConfigViewModel, after the result<br/>travels back through navigation."]
+    Analyzer["QrCodeAnalyzer<br/>core/utils/ - ML Kit BarcodeScanning"]
+  end
+
+  Route -->|"EVENTS IN: resetScan(), onBackPressed()"| VM
+  Screen -->|"EVENTS IN: onQrCodeScanned(rawValue),<br/>onCameraInitError(throwable)"| VM
+  Analyzer -->|"rawValue per analyzed frame"| Screen
+
+  VM -->|"EVENTS OUT: qrCodeScannedEvent Flow of String<br/>navigateBackEvent (Channel)"| Route
+  VM -->|"uiEvent: ToastUiEvent"| Toast
+  Route -->|"onCodeScanned(rawJson) / onNavigateBack()"| Nav
+
+  class Nav,Route,Screen,Toast view
+  class VM,Flag vm
+  class None,Analyzer model
