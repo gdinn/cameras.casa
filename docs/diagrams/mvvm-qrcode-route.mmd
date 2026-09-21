@@ -10,8 +10,8 @@ flowchart LR
   subgraph V["VIEW - Composables"]
     direction TB
     Nav["NavigationRoot<br/>writes result into previousBackStackEntry"]
-    Route["QrCodeRoute<br/>core/components/QrCodeRoute.kt"]
-    Screen["QrCodeScreen<br/>CameraX PreviewView + ImageAnalysis"]
+    Route["QrCodeRoute<br/>feature/qrcode/QrCodeRoute.kt"]
+    Screen["QrCodeScreen<br/>feature/qrcode/components/QrCodeScreen.kt<br/>CameraX PreviewView + ImageAnalysis"]
     Toast["ToastDisplayer"]
     Nav --> Route
     Route --> Screen
@@ -20,7 +20,7 @@ flowchart LR
 
   subgraph VMG["VIEWMODEL"]
     direction TB
-    VM["QrCodeViewModel : ToastEventViewModel<br/>core/components/QrCodeViewModel.kt"]
+    VM["QrCodeViewModel : ToastEventViewModel<br/>feature/qrcode/QrCodeViewModel.kt"]
     Flag["hasScanned: Boolean<br/>plain field, not exposed as state:<br/>this route has no UiState"]
     Flag -.-> VM
   end
@@ -28,7 +28,7 @@ flowchart LR
   subgraph M["MODEL - no domain dependency"]
     direction TB
     None["QrCodeViewModel injects nothing.<br/>Decoding and persistence happen in<br/>ConfigViewModel, after the result<br/>travels back through navigation."]
-    Analyzer["QrCodeAnalyzer<br/>core/utils/ - ML Kit BarcodeScanning"]
+    Analyzer["QrCodeAnalyzer<br/>feature/qrcode/components/ - ML Kit BarcodeScanning"]
   end
 
   Route -->|"EVENTS IN: resetScan(), onBackPressed()"| VM

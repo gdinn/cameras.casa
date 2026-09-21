@@ -97,7 +97,7 @@ top-level package groups live under `com.gdisys.cameras`:
 |---|---|
 | `app/*` | Composition root and navigation: `MainActivity`, `CamerasApp`, `app.navigation` |
 | `feature/*` | One package per screen. Route + ViewModel + UiState + `components/` + optional `logic/` |
-| `core/*` | Everything shared: `storage`, `vpn`, `webrtc`, `permission`, `network`, `utils`, `components`, plus the presentation base classes at the package root |
+| `core/*` | Everything shared: `storage`, `vpn`, `webrtc`, `permission`, `network`, `components`, plus the presentation base classes at the package root |
 | `ui/*` | `ui.theme` only — `CamerasTheme`, color and typography |
 
 ### 3.1 The layering rule
@@ -156,13 +156,9 @@ inter-screen wiring, including passing the QR-code result back through
 |---|---|---|---|
 | `Loading` (start) | `InitRoute` | `feature/init/InitRoute.kt` | `InitViewModel` |
 | `Config` | `ConfigRoute` | `feature/config/ConfigRoute.kt` | `ConfigViewModel` |
-| `QrCode` | `QrCodeRoute` | `core/components/QrCodeRoute.kt` | `QrCodeViewModel` |
+| `QrCode` | `QrCodeRoute` | `feature/qrcode/QrCodeRoute.kt` | `QrCodeViewModel` |
 | `StreamURLs` | `StreamURLsRoute` | `feature/streamurls/StreamURLsRoute.kt` | `StreamURLsViewModel` |
 | `Home` | `HomeRoute` | `feature/cameras/HomeRoute.kt` | `HomeViewModel` |
-
-> One of these is worth flagging now and is detailed in
-> [§9](#9-architectural-consistency-notes): the QR-code route lives under `core/components` rather
-> than in a feature package.
 
 **Navigation shape.** The flow is gated, not linear. `InitRoute` decides between `Config` and
 `Home` based on stored credentials. `ConfigRoute` refuses to leave for `Home` until three
@@ -241,7 +237,7 @@ Points of interest:
 - `refreshCameraPermissionState()` runs on `ON_RESUME` because the user can grant camera access
   from system settings while the screen is backgrounded.
 
-### 5.3 QR code scanner (`core/components`)
+### 5.3 `feature/qrcode` — QR code scanner
 
 ![MVVM — QrCode route](images/mvvm-qrcode-route.png)
 
@@ -250,10 +246,15 @@ payload it reads.
 
 | Role | Type |
 |---|---|
-| View | `QrCodeRoute.kt`, `QrCodeScreen.kt` |
+| View | `QrCodeRoute.kt`, `components/QrCodeScreen.kt` |
 | ViewModel | `QrCodeViewModel.kt` |
-| Analyzer | `core/utils/QrCodeAnalyzer.kt` (`ImageAnalysis.Analyzer`) |
+| Analyzer | `components/QrCodeAnalyzer.kt` (`ImageAnalysis.Analyzer`) |
 | Messages | `QrCodeToastMessage` |
+
+The analyzer sits under `components/`, not under a `data/` sub-package: it is an
+`ImageAnalysis.Analyzer` handed straight to CameraX by the screen, so it is a platform/UI concern
+rather than a repository. Filing it under `data/` would also trip the Konsist rule that forbids any
+`feature.*` file from importing a name containing `.data.`.
 
 This ViewModel **injects nothing**: it is pure UI arbitration. Decoding, validation and persistence
 of the payload are `ConfigViewModel`'s job, after the string travels back through navigation. It
@@ -460,8 +461,8 @@ device into a build failure.
 - `ToastEventViewModel` — abstract base owning the toast `Channel`; every ViewModel extends it.
 - `ToastMessage` — `@StringRes` interface implemented by per-feature enums.
 - `Constants.kt` — `DEBUG_TAG`.
-- `core/components/` — `ToastDisplayer`, `LoadingScreen`, `LaunchActivityResultOnEvent`, and the
-  whole QR-code route (see [§9](#9-architectural-consistency-notes)).
+- `core/components/` — exactly three genuinely shared widgets: `ToastDisplayer`, `LoadingScreen` and
+  `LaunchActivityResultOnEvent`. Anything that is a screen of its own belongs in `feature/`.
 
 ### 6.7 `ui/theme`
 
@@ -622,19 +623,6 @@ The layering is well enforced where the Konsist test reaches. The items below ar
 against a strict Clean Architecture + MVVM reading of the tree at `6fdf1ce`. They are observations
 for an incoming developer, ordered roughly by how likely they are to cause confusion or a real
 defect — not a work plan.
-
-### 9.1 Naming and placement
-
-2. **The QR-code screen lives in `core/components`, not `feature/qrcode`.** `QrCodeRoute`,
-   `QrCodeScreen`, `QrCodeViewModel` and `QrCodeToastMessage` are a complete MVVM feature with its
-   own navigation destination, yet they sit beside genuinely shared widgets like `ToastDisplayer`.
-   A side effect is that the Konsist rule *"a feature does not import another feature"* does not
-   apply to it: `feature/config` reaches the scanner through navigation, but any feature could
-   import it directly without failing a test.
-
-3. **`core/components` mixes two concerns** — reusable primitives (`ToastDisplayer`,
-   `LoadingScreen`, `LaunchActivityResultOnEvent`) and one full screen. `core/utils/QrCodeAnalyzer`
-   is the same feature's data source, filed elsewhere again.
 
 ### 9.2 Layering
 

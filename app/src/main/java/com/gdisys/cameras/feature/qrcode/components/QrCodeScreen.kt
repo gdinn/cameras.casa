@@ -1,4 +1,4 @@
-package com.gdisys.cameras.core.components
+package com.gdisys.cameras.feature.qrcode.components
 
 import android.Manifest
 import android.content.pm.PackageManager
@@ -17,7 +17,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import com.gdisys.cameras.core.utils.QrCodeAnalyzer
 import java.util.concurrent.Executors
 
 @Composable

@@ -13,11 +13,11 @@ import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
-import com.gdisys.cameras.core.components.QrCodeRoute
 import com.gdisys.cameras.feature.cameras.HomeRoute
 import com.gdisys.cameras.feature.config.ConfigRoute
 import com.gdisys.cameras.feature.config.QR_CODE_RESULT_KEY
 import com.gdisys.cameras.feature.init.InitRoute
+import com.gdisys.cameras.feature.qrcode.QrCodeRoute
 import com.gdisys.cameras.feature.streamurls.StreamURLsRoute
 import org.webrtc.EglBase
 

@@ -1,4 +1,4 @@
-package com.gdisys.cameras.core.components
+package com.gdisys.cameras.feature.qrcode
 
 import android.util.Log
 import androidx.lifecycle.viewModelScope
