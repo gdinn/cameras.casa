@@ -54,6 +54,20 @@ jobs:
       - name: Run unit tests and build the coverage report
         run: ./gradlew :app:testDebugUnitTest :app:jacocoTestReport --stacktrace
 
+      # Plugin resolution reports "not found in any of the following sources" for a 403 or a 503
+      # just as it does for a genuine 404, and the HTTP detail is only printed at --info level. So
+      # when a run fails, record what the runner actually gets back from the plugin repositories:
+      # a 200 here means the build failed for some other reason, anything else names the culprit.
+      - name: Probe the plugin repositories
+        if: failure()
+        run: |
+          kotlin=$(sed -n 's/^kotlin = "\(.*\)"/\1/p' gradle/libs.versions.toml)
+          marker="org/jetbrains/kotlin/plugin/compose/org.jetbrains.kotlin.plugin.compose.gradle.plugin"
+          for base in https://repo1.maven.org/maven2 https://plugins.gradle.org/m2; do
+            url="$base/$marker/$kotlin/org.jetbrains.kotlin.plugin.compose.gradle.plugin-$kotlin.pom"
+            echo "$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$url")  $url"
+          done
+
       - name: Upload the test reports
         if: always()
         uses: actions/upload-artifact@v4
