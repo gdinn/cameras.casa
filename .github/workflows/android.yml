@@ -37,8 +37,14 @@ jobs:
           # The app itself still compiles against Java 17 (compileOptions in app/build.gradle.kts).
           java-version: '21'
 
+      # v4 and the explicit package list are both deliberate: the obsolete `tools` package no
+      # longer exists in the SDK repository, and v3 installs it by default, which fails the job
+      # with "Failed to find package 'tools'". Everything else the build needs (platform 36,
+      # build-tools) is downloaded by AGP itself, since this step accepts the SDK licenses.
       - name: Set up the Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
 
       # Also validates the checksum of the committed Gradle wrapper (validate-wrappers defaults to
       # true), which is what stops a tampered gradle-wrapper.jar from running here.
@@ -87,7 +93,9 @@ jobs:
           java-version: '21'
 
       - name: Set up the Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
