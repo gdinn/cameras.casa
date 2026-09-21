@@ -1,0 +1,84 @@
+---
+title: "Package diagram - com.gdisys.cameras (single :app Gradle module)"
+---
+flowchart TD
+  classDef appPkg fill:#f3e5f5,stroke:#6a1b9a,color:#4a148c
+  classDef featPkg fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
+  classDef domainPkg fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
+  classDef dataPkg fill:#eceff1,stroke:#455a64,color:#263238
+  classDef diPkg fill:#fff8e1,stroke:#f9a825,color:#f57f17
+  classDef uiPkg fill:#fce4ec,stroke:#ad1457,color:#880e4f
+  classDef sharedPkg fill:#fff3e0,stroke:#ef6c00,color:#e65100
+
+  subgraph APP["app - composition root"]
+    direction TB
+    Root["MainActivity, CamerasApp<br/>(package root)"]
+    NavPkg["app.navigation<br/>NavigationRoot, NavigationRoute"]
+    Root --> NavPkg
+  end
+
+  subgraph UI["ui"]
+    Theme["ui.theme<br/>CamerasTheme, Color, Type"]
+  end
+
+  subgraph FEATURE["feature - one package per screen, siblings never import each other"]
+    direction LR
+    FInit["feature.init<br/>InitRoute, InitViewModel"]
+    FConfig["feature.config<br/>ConfigRoute, ConfigViewModel, ConfigUiState"]
+    FUrls["feature.streamurls<br/>+ .logic (GridPreferencesValidation)"]
+    FCam["feature.cameras<br/>+ .components + .logic<br/>(StreamPaging, FixedGridLayout)"]
+  end
+
+  subgraph CORESHARED["core - shared presentation helpers"]
+    direction LR
+    CBase["core<br/>ToastEventViewModel, ToastMessage, Constants"]
+    CComp["core.components<br/>ToastDisplayer, LoadingScreen,<br/>QrCodeRoute/Screen/ViewModel"]
+    CNet["core.network<br/>STREAM_HOST, STREAM_URL_HOST_PREFIX"]
+    CUtils["core.utils<br/>QrCodeAnalyzer"]
+  end
+
+  subgraph COREDOMAIN["core.*.domain - abstractions, pure Kotlin"]
+    direction LR
+    SDom["core.storage.domain<br/>repositories, models, 8 use cases,<br/>StreamUrlValidation"]
+    VDom["core.vpn.domain<br/>VpnRepository, VpnLifecycleController,<br/>VpnConfig, 4 use cases"]
+    PDom["core.permission.domain<br/>Camera/VpnPermissionRepository,<br/>2 use cases"]
+    WDom["core.webrtc (contracts)<br/>StreamConnectionRepository, WhepClient"]
+  end
+
+  subgraph COREDATA["core.*.data - implementations"]
+    direction LR
+    SData["core.storage.data<br/>DataStore, Crypto,<br/>EncryptedPreferencesSerializer,<br/>RepositoryImpls"]
+    VData["core.vpn.data<br/>VpnRepositoryImpl (GoBackend),<br/>VpnLifecycleService"]
+    PData["core.permission.data<br/>RepositoryImpls"]
+    WData["core.webrtc.data<br/>WhepConnectionManager, WhepClientImpl,<br/>WhepRemoteDataSourceImpl"]
+  end
+
+  subgraph COREDI["core.*.di - Hilt modules (bind domain to data)"]
+    DI["storage.di | vpn.di | permission.di | webrtc.di"]
+  end
+
+  APP --> FEATURE
+  APP --> UI
+  APP --> CComp
+  FEATURE --> UI
+  FEATURE --> CORESHARED
+  FEATURE --> COREDOMAIN
+  CComp --> CBase
+  CORESHARED --> CBase
+
+  COREDATA -->|"implements"| COREDOMAIN
+  CNet -.->|"host constant used by"| SDom
+  DI -.->|"@Binds / @Provides"| COREDOMAIN
+  DI -.-> COREDATA
+  APP -.->|"@HiltAndroidApp builds the graph"| DI
+
+  Forbidden["FORBIDDEN, enforced by LayerDependencyTest (Konsist):<br/>feature -x-> core.*.data | domain -x-> data<br/>domain -x-> feature | domain -x-> androidx.compose<br/>feature.A -x-> feature.B"]
+
+  class Root,NavPkg appPkg
+  class FInit,FConfig,FUrls,FCam featPkg
+  class SDom,VDom,PDom,WDom domainPkg
+  class SData,VData,PData,WData dataPkg
+  class DI diPkg
+  class Theme uiPkg
+  class CBase,CComp,CNet,CUtils sharedPkg
+  class Forbidden dataPkg

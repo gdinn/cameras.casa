@@ -1,0 +1,798 @@
+# Cameras App — Technical Architecture
+
+Onboarding reference for Android developers joining this project.
+
+| | |
+|---|---|
+| **Reference commit** | `6fdf1ce3b46a59a2091c951845815a362e897061` |
+| **Branch** | `main` |
+| **Commit date** | 2026-09-21 |
+| **Subject** | `Merge pull request #3 from gdinn/feat/refactor_2` |
+| **Application ID** | `com.gdisys.cameras` |
+| **Gradle modules** | a single `:app` module |
+
+Everything described below reflects the tree at that commit. Paths are given relative to the
+repository root.
+
+---
+
+## Table of contents
+
+1. [What the app does](#1-what-the-app-does)
+2. [Stack and build configuration](#2-stack-and-build-configuration)
+3. [Architecture: layers and packages](#3-architecture-layers-and-packages)
+4. [Navigation and route inventory](#4-navigation-and-route-inventory)
+5. [Features and their MVVM organization](#5-features-and-their-mvvm-organization)
+6. [Core packages](#6-core-packages)
+7. [Data flow](#7-data-flow)
+8. [External resources](#8-external-resources)
+9. [Architectural consistency notes](#9-architectural-consistency-notes)
+10. [Testing and quality gates](#10-testing-and-quality-gates)
+11. [Where to start reading](#11-where-to-start-reading)
+12. [Regenerating the diagrams](#12-regenerating-the-diagrams)
+
+---
+
+## 1. What the app does
+
+The app is a native Android client for remotely watching IP cameras hosted on a private home
+network, with no third-party cloud in the video path.
+
+The end-to-end setup (only the Android client lives in this repository):
+
+- IP cameras publish **RTSP** on the local network.
+- A **Raspberry Pi** on that network ingests RTSP and re-publishes it as **WebRTC / WHEP**.
+- A **WireGuard VPN over IPv6** gives the phone direct point-to-point access to that network.
+- This app reads the WireGuard credentials from a **QR code**, brings the tunnel up **only while
+  it is in the foreground**, and renders one WebRTC video per camera in a configurable grid.
+
+Three product decisions shape most of the code:
+
+1. **The tunnel is foreground-only.** It is raised on `Lifecycle.Event.ON_RESUME` of the Home route
+   and dropped on `ON_PAUSE`, with `VpnLifecycleService` as the safety net for task removal. The
+   tunnel is IPv6-only and routes `::/0`, so leaving it up would degrade unrelated apps.
+2. **Everything persisted is encrypted at rest.** Both DataStore files are AES-encrypted with a
+   key held in the Android Keystore, because one of them holds WireGuard private key material.
+3. **The stream set is user-configurable.** URLs, display order (per orientation) and grid geometry
+   (per orientation) are all editable in-app and persisted.
+
+---
+
+## 2. Stack and build configuration
+
+| Concern | Choice |
+|---|---|
+| Language | Kotlin 2.3.20 |
+| UI | Jetpack Compose (BOM 2026.03.01), Material 3 |
+| Architecture | MVVM + Clean-Architecture-style layering (`domain` / `data`) |
+| DI | Hilt 2.59.2 + KSP |
+| Navigation | `navigation-compose` 2.9.8, type-safe routes via `kotlinx.serialization` |
+| Async | Coroutines + `Flow` / `StateFlow` / `Channel` |
+| Persistence | Jetpack DataStore (typed, custom serializer) + Android Keystore |
+| VPN | `com.wireguard.android:tunnel` (`GoBackend`) |
+| Video | `io.getstream:stream-webrtc-android` (WHEP over plain `HttpURLConnection`) |
+| QR scanning | CameraX + ML Kit Barcode Scanning |
+| Build | Gradle KTS + version catalog (`gradle/libs.versions.toml`) |
+| Coverage | JaCoCo 0.8.12, custom `:app:jacocoTestReport` task |
+| Arch enforcement | Konsist 0.17.3 (`LayerDependencyTest`) |
+
+**SDK levels:** `minSdk 26`, `targetSdk 36`, `compileSdk 36`, Java 17.
+
+The build file also defines a bespoke `jacocoTestReport` task that narrows coverage to the
+"unit-testable" surface — it excludes generated code, DI, Compose UI, bootstrap, theme, and
+anything backed by a native/hardware stack (WebRTC native, `GoBackend`, AndroidKeyStore, Android
+`Service`) — and injects a LINE-coverage banner into the HTML report, since JaCoCo's own headline
+figure is instruction coverage.
+
+---
+
+## 3. Architecture: layers and packages
+
+![Package diagram](images/package-diagram.png)
+
+The project is **one Gradle module**, so package structure alone carries the layering. Four
+top-level package groups live under `com.gdisys.cameras`:
+
+| Group | Role |
+|---|---|
+| `app/*` | Composition root and navigation: `MainActivity`, `CamerasApp`, `app.navigation` |
+| `feature/*` | One package per screen. Route + ViewModel + UiState + `components/` + optional `logic/` |
+| `core/*` | Everything shared: `storage`, `vpn`, `webrtc`, `permission`, `network`, `utils`, `components`, plus the presentation base classes at the package root |
+| `ui/*` | `ui.theme` only — `CamerasTheme`, color and typography |
+
+### 3.1 The layering rule
+
+Inside each `core/<area>` the split is the classic Clean Architecture one:
+
+```
+core/<area>/domain   <-- abstractions, models, use cases. Pure Kotlin.
+core/<area>/data     --> implementations. Knows domain; domain never knows it.
+core/<area>/di       --> Hilt modules that bind one to the other.
+```
+
+Consumers (`feature/*`, `app/*`) depend on `domain` and receive the implementation by injection.
+
+### 3.2 The rule is enforced by a test, not by the compiler
+
+Because there is only one module, nothing stops a bad import at compile time. That job is done by
+`app/src/test/java/com/gdisys/cameras/architecture/LayerDependencyTest.kt`, which uses Konsist to
+fail the build on any of these:
+
+| Forbidden | Rationale as stated in the test |
+|---|---|
+| `feature.*` importing anything matching `.data.` | A feature may only depend on the domain layer |
+| `core..domain..` importing `.data.` | The dependency rule points inwards |
+| `core..domain..` importing `com.gdisys.cameras.feature.*` | The domain is shared; single-screen rules belong in `feature/<screen>/logic` |
+| `core..domain..` importing `androidx.compose.*` | The domain is plain Kotlin, JVM-testable |
+| `feature.A` importing `feature.B` | Features are siblings; what they share moves up to `core`, and wiring is navigation's job |
+
+This test is the single most useful thing to read before making a structural change: it tells you
+exactly which arrows are allowed.
+
+### 3.3 Where "pure logic" lives
+
+Two kinds of pure, JVM-testable logic coexist:
+
+- **Shared rules → `core/<area>/domain`.** Example: `StreamUrlValidation.kt` (port + stream-name
+  validation and URL assembly), `StreamPreferencesExtensions.kt` (`reconciled()`, `orderFor()`,
+  `gridFor()`).
+- **Single-screen rules → `feature/<screen>/logic`.** Example:
+  `feature/cameras/logic/StreamPaging.kt` and `FixedGridLayout.kt` (paging math and row-height
+  fitting), `feature/streamurls/logic/GridPreferencesValidation.kt`.
+
+The distinction is deliberate and matches the Konsist rule above: a rule that only serves one
+screen must not be promoted into the shared domain.
+
+---
+
+## 4. Navigation and route inventory
+
+`app/navigation/NavigationRoute.kt` declares five type-safe destinations as `@Serializable` objects
+inside a `sealed interface`. `NavigationRoot.kt` maps each to a route composable and owns all
+inter-screen wiring, including passing the QR-code result back through
+`previousBackStackEntry.savedStateHandle`.
+
+| Destination | Route composable | File | ViewModel |
+|---|---|---|---|
+| `Loading` (start) | `InitRoute` | `feature/init/InitRoute.kt` | `InitViewModel` |
+| `Config` | `ConfigRoute` | `feature/config/ConfigRoute.kt` | `ConfigViewModel` |
+| `QrCode` | `QrCodeRoute` | `core/components/QrCodeRoute.kt` | `QrCodeViewModel` |
+| `StreamURLs` | `StreamURLsRoute` | `feature/streamurls/StreamURLsRoute.kt` | `StreamURLsViewModel` |
+| `Home` | `HomeRoute` | `feature/cameras/LoadingScreen.kt` | `HomeViewModel` |
+
+> Two of these are worth flagging now and are detailed in
+> [§9](#9-architectural-consistency-notes): `HomeRoute` is declared in a file called
+> `LoadingScreen.kt`, and the QR-code route lives under `core/components` rather than in a feature
+> package.
+
+**Navigation shape.** The flow is gated, not linear. `InitRoute` decides between `Config` and
+`Home` based on stored credentials. `ConfigRoute` refuses to leave for `Home` until three
+requirements are met (credentials, VPN permission, at least one stream URL) and consumes the system
+back press with a toast otherwise. `navigateToHome()` pops back to an existing `Home` entry when
+there is one, instead of stacking duplicates.
+
+### 4.1 Conventions shared by every route
+
+All five routes follow the same contract, which makes them easy to read once you know the pattern:
+
+- The route composable is the **only** place that touches navigation lambdas, `BackHandler`,
+  lifecycle effects and Activity-result launchers. Screens below it are pure and previewable.
+- State arrives as `StateFlow` collected with `collectAsStateWithLifecycle()`.
+- One-shot effects (navigate, launch an `Intent`, show a toast) arrive as `Channel`-backed `Flow`s
+  consumed in `LaunchedEffect`. They are never modeled as state, so they cannot replay on
+  recomposition.
+- Toasts are centralized: every ViewModel extends `ToastEventViewModel` (`core/ToastEventViewModel.kt`),
+  which owns a `Channel<ToastUiEvent>`; every route renders `ToastDisplayer(viewModel.uiEvent)`.
+  Message catalogues are per-feature enums implementing `ToastMessage` (`@StringRes`), e.g.
+  `HomeToastMessage`, `ConfigToastMessage`.
+
+---
+
+## 5. Features and their MVVM organization
+
+### 5.1 `feature/init` — startup gate
+
+![MVVM — Init route](images/mvvm-init-route.png)
+
+**What it does.** Decides, on launch, whether the user already has valid VPN credentials, and
+routes to `Home` or `Config` accordingly.
+
+| Role | Type |
+|---|---|
+| View | `InitRoute.kt`, `components/InitScreen.kt` |
+| ViewModel | `InitViewModel.kt` (`ToastEventViewModel`) |
+| Model | `GetVpnConfigStatusUseCase` → `UserPreferencesRepository` |
+| Messages | `InitToastMessage` |
+
+This is the only route with **no inbound UI events** — the screen has no input. The decision runs
+in the ViewModel's `init { }` block, which collects `GetVpnConfigStatusUseCase()`, ignores
+`VpnCredentialsStatus.Loading`, and emits `NavigateUiEvent.ToHome` or (after a toast)
+`NavigateUiEvent.ToConfig`.
+
+### 5.2 `feature/config` — configuration checklist
+
+![MVVM — Config route](images/mvvm-config-route.png)
+
+**What it does.** Presents the four setup steps as buttons with a shared `ConfigButtonState`
+(`Loading` / `Ready` / `Done` / `Error`): grant camera permission, scan the QR code, grant VPN
+permission, configure stream URLs. It then gates navigation to `Home`.
+
+| Role | Type |
+|---|---|
+| View | `ConfigRoute.kt`, `components/ConfigScreen.kt`, `components/ConfigurationStepButton.kt` |
+| ViewModel | `ConfigViewModel.kt` |
+| State | `ConfigUiState.kt` — four button states + `canNavigateBackToHome`; derives `missingRequirement`, `canNavigateToHome`, `isQrCodeButtonEnabled` |
+| Model | 7 use cases across `storage`, `permission` and `vpn` domains |
+
+Points of interest:
+
+- **State derivation.** `qrCodeButtonState` and `streamURLsButtonState` are each derived as their
+  own `Flow` *before* the final `combine`, because the typed `combine` overload tops out at five
+  sources and there would otherwise be six. `stateIn` uses `SharingStarted.Eagerly` because the
+  navigation gate reads `uiState.value` synchronously at click time.
+- **Gating logic lives in the state class, not the ViewModel.** `ConfigUiState.missingRequirement`
+  returns the first unmet requirement in feedback order (credentials → VPN permission → URLs), and
+  both the "Navigate to Home" click and the blocked back press map it to a toast.
+- **Platform round-trips are events, not state.** VPN consent and the camera permission request are
+  emitted as `Channel` events and launched by the reusable
+  `LaunchActivityResultOnEvent` composable (`core/components/ActivityResultEventEffect.kt`).
+- **QR result arrives via navigation, not a shared ViewModel.** `QrCodeRoute` writes the raw JSON
+  into `previousBackStackEntry.savedStateHandle[QR_CODE_RESULT_KEY]`; `ConfigRoute` observes it,
+  hands it to `onQrCodeScanned`, then clears it through `onQrCodeResultConsumed`.
+- `refreshCameraPermissionState()` runs on `ON_RESUME` because the user can grant camera access
+  from system settings while the screen is backgrounded.
+
+### 5.3 QR code scanner (`core/components`)
+
+![MVVM — QrCode route](images/mvvm-qrcode-route.png)
+
+**What it does.** Runs a CameraX preview with an ML Kit barcode analyzer and emits the first QR
+payload it reads.
+
+| Role | Type |
+|---|---|
+| View | `QrCodeRoute.kt`, `QrCodeScreen.kt` |
+| ViewModel | `QrCodeViewModel.kt` |
+| Analyzer | `core/utils/QrCodeAnalyzer.kt` (`ImageAnalysis.Analyzer`) |
+| Messages | `QrCodeToastMessage` |
+
+This ViewModel **injects nothing**: it is pure UI arbitration. Decoding, validation and persistence
+of the payload are `ConfigViewModel`'s job, after the string travels back through navigation. It
+holds a plain `hasScanned` boolean (deliberately not state) to make the scan single-shot, and
+`QrCodeRoute` calls `resetScan()` in a `LaunchedEffect(Unit)` because the ViewModel survives
+between scanner visits. `QrCodeAnalyzer` keeps its own `isScanned` guard, so debouncing exists at
+both levels.
+
+### 5.4 `feature/streamurls` — stream and grid configuration
+
+![MVVM — StreamURLs route](images/mvvm-streamurls-route.png)
+
+**What it does.** Lets the user add, remove and reset camera URLs, and configure grid geometry
+(columns, rows, dynamic-rows toggle) independently for portrait and landscape. Two independently
+saveable sections: URLs (A) and grid (B).
+
+| Role | Type |
+|---|---|
+| View | `StreamURLsRoute.kt`, `components/StreamURLsScreen.kt`, `AddStreamUrlForm.kt`, `StreamUrlRow.kt`, `GridPreferencesSection.kt` |
+| ViewModel | `StreamURLsViewModel.kt` |
+| State | `StreamURLsUiState.kt` (+ `GridInput`, `StreamURLsDialog`) |
+| Logic | `logic/GridPreferencesValidation.kt` |
+| Model | `GetStreamPreferencesUseCase`, `SaveStreamUrlsUseCase`, `SaveGridPreferencesUseCase`, `validateStreamUrl()`, `StreamDefaults` |
+
+This is the most state-heavy screen, and its design is worth understanding:
+
+- **Draft-based editing.** `draft: MutableStateFlow<StreamPreferences>` is seeded **once** via
+  `getStreamPreferencesUseCase().first()` and then owned by the screen. Later storage changes do
+  not overwrite it (that would destroy in-progress edits), and nothing is written to disk until an
+  explicit, dialog-confirmed save.
+- **Two state holders, one projection.** `draft` holds what is persistable; a private
+  `StreamURLsScreenState` holds what is not (form text, open dialog, per-section dirty flags).
+  `uiState` is `combine(draft, screenState)`. The URL list therefore has exactly one owner — there
+  is no mirrored copy to keep in sync.
+- **The draft carries more than the screen shows** (both orders and both grids) so that saving
+  section A can rewrite the orders without clobbering what section A does not edit.
+- **Grid input is text until save.** `GridInput` holds raw strings; `validated()` converts to
+  `GridPreferences` or `null`, which is what disables the save button. After a successful grid save
+  the validated grids are written back into `draft`, so a later URL save cannot persist stale grids.
+- **The draft is intentionally not restored across process death** — the discard dialog already
+  covers accidental loss, and resurrecting unsaved edits would confuse more than help.
+- Adding a URL appends it to the canonical set **and** to the end of both orders; removing strips
+  it from all three.
+
+### 5.5 `feature/cameras` — the Home / video grid
+
+![MVVM — Home route](images/mvvm-home-route.png)
+
+**What it does.** The main screen: raises the tunnel, renders one WebRTC player per visible stream,
+supports drag-and-drop reordering, tap-to-focus, paging in fixed-grid mode, and a route back to
+configuration.
+
+| Role | Type |
+|---|---|
+| View | `HomeRoute` (in `LoadingScreen.kt`) + 15 files in `components/` |
+| ViewModel | `HomeViewModel.kt` |
+| State | `HomeUiState.kt` — `Loading` \| `Empty` \| `Ready(streams, focusedStream, grid, orientation)` |
+| Logic | `logic/StreamPaging.kt`, `logic/FixedGridLayout.kt` |
+| Model | 6 use cases + `StreamConnectionRepository` |
+
+**State composition.** `HomeUiState` is a single `combine` of four sources — persisted preferences,
+orientation, focused stream, and VPN tunnel state — collected into a `MutableStateFlow`. The
+precedence matters: an empty URL list yields `Empty` *before* the VPN state is considered, because
+waiting for a tunnel with nothing to connect to would show a permanent spinner.
+
+**Orientation is pushed down, not read up.** Only the UI can see the real device configuration, so
+`HomeRoute` derives `StreamOrientation` from `LocalConfiguration` and calls
+`onOrientationChanged()`. The ViewModel then picks the matching order and grid via
+`preferences.orderFor(orientation)` / `gridFor(orientation)`.
+
+**Two rendering modes**, both in `HomeScreen.kt`:
+
+| Mode | Condition | Behaviour |
+|---|---|---|
+| Dynamic | `grid.dynamicRows == true` | `ReorderableStreamGrid` in a scrolling `LazyVerticalGrid`; the "Reconfigure" button is revealed by overscrolling past the end (`OverscrollReconfigure.kt`) |
+| Fixed | `grid.dynamicRows == false` | `PagedStreamGrid`: no scroll, `rows × columns` per page in a `HorizontalPager`; the "Reconfigure" button floats and is draggable (`DraggableReconfigureButton.kt`), since without scroll there is no other way to move it off a stream |
+
+**Notable UI mechanics:**
+
+- **`movableContentOf` per stream URL.** `HomeScreen` memoizes one movable composable per URL, so
+  the same `WebRtcVideoPlayer` instance (renderer + WHEP session) moves between the grid and the
+  focused view without being disposed. Toggling focus therefore does not restart the video.
+- **Aspect ratio is discovered, not assumed.** `StreamResolutionRegistry` is a `mutableStateMap`
+  fed by `RendererCommon.RendererEvents.onFrameResolutionChanged` (handling 90°/270° rotation). It
+  returns 16:9 until the first frame arrives, and the grid re-measures itself once the real value
+  appears. `FixedGridLayout.fixedGridRowHeights()` then sizes each row by its tallest video and
+  scales all rows uniformly if they overflow — no cropping, no distortion, no scrolling.
+- **Drag state is View state.** `PagedDragState` holds touch coordinates and cell bounds and is
+  explicitly documented as *not* belonging in the ViewModel. The pure reordering math it calls
+  (`reorderedTo`, `movedToPage`) lives in `logic/StreamPaging.kt` and is unit-tested.
+- **Reorder persists on drop, per orientation.** `onStreamsReordered` calls
+  `UpdateStreamOrderUseCase(orientation, newOrder)`, which rewrites only the current orientation's
+  order.
+- **Back press is a two-stage exit.** The first press toasts "press back again"; a second press
+  within a 2 s window emits `ExitApp` and the route calls `activity.finish()`.
+- `onCleared()` calls `streamConnectionRepository.closeAll()`.
+
+---
+
+## 6. Core packages
+
+### 6.1 `core/storage` — encrypted preferences
+
+Two independent, typed DataStore instances, each with its own Keystore alias so that losing one
+key does not invalidate the other:
+
+| Store | File | Model | Alias |
+|---|---|---|---|
+| User preferences | `user-preferences` | `UserPreferences` (VPN credentials) | `gdi-sys-storage` |
+| Stream preferences | `stream-preferences` | `StreamPreferences` (URLs, orders, grids) | `gdi-sys-stream-preferences` |
+
+**Encryption.** `KeystoreCryptoEngine` (`Crypto.kt`) does AES/CBC/PKCS7 with a randomized IV
+prepended to the ciphertext, keyed from `AndroidKeyStore`.
+`EncryptedPreferencesSerializer` wraps it: `JSON → encrypt → Base64` on write, the reverse on read.
+Any read failure (bad Base64, `BadPaddingException`, malformed JSON) falls back to `defaultValue`
+rather than crashing.
+
+Because that fallback silently discards user data, the `Json` instance is deliberately configured:
+`encodeDefaults = true` (so a field such as `schemaVersion` actually reaches disk instead of being
+skipped for matching its default) and `ignoreUnknownKeys = true` (so an older build can read a file
+written by a newer one instead of wiping it).
+
+**Schema safety.** Every `StreamPreferences` / `GridPreferences` property carries an explicit
+`@SerialName`, so a Kotlin rename cannot orphan the stored key. `STREAM_PREFERENCES_SCHEMA_VERSION`
+is persisted as a hook for future migrations; nothing migrates on it yet.
+
+**The canonical-set invariant.** `streamUrls` is the source of truth for *which* URLs exist;
+`portraitOrder` / `landscapeOrder` only say in *what order*. `StreamPreferences.reconciled()`
+(applied on read, and only on read) drops orphans and appends missing URLs, so a divergence can
+never become a silent bug.
+
+**Use cases (8):** `GetStreamPreferencesUseCase`, `SaveStreamUrlsUseCase`,
+`SaveGridPreferencesUseCase`, `UpdateStreamOrderUseCase`, `GetVpnConfigUseCase`,
+`GetVpnConfigStatusUseCase`, `SaveUserPreferencesUseCase`, `ParseUserPreferencesFromQrCodeUseCase`.
+
+**Error-handling split.** `StreamPreferencesRepositoryImpl` logs a read failure and rethrows —
+reporting is a data concern. `GetStreamPreferencesUseCase` then decides what the app shows,
+`catch`ing into empty preferences so a corrupt file degrades to the "no URLs configured" screen
+instead of cancelling every collector's `combine` and freezing the UI.
+
+**Scoped writes.** `StreamPreferencesRepository.updateStreamPreferences { current -> ... }` takes a
+transform receiving the value persisted at write time, which is what lets three different use cases
+each rewrite only their own slice of the same file atomically.
+
+### 6.2 `core/vpn` — WireGuard tunnel
+
+| Piece | Responsibility |
+|---|---|
+| `VpnRepository` / `VpnRepositoryImpl` | Wraps `GoBackend`; exposes `StateFlow<VpnTunnelState>`; provides the consent `Intent` via `VpnService.prepare()` |
+| `VpnLifecycleController` / `Impl` | Starts and stops `VpnLifecycleService` |
+| `VpnLifecycleService` | `START_STICKY` service whose only job is to drop the tunnel on `onTaskRemoved` / `onDestroy` |
+| `VpnConfig` | Domain model, plus `isValid()` |
+| Use cases (4) | `ConnectVpnUseCase`, `DisconnectVpnUseCase`, `ObserveVpnStateUseCase`, `RequestVpnPermissionUseCase` |
+
+`VpnConfig.toWireGuardConfig()` is a **free function extracted deliberately** from
+`VpnRepositoryImpl.connect()` so the `VpnConfig → com.wireguard.config.Config` mapping can be
+unit-tested on the JVM without instantiating the native `GoBackend`.
+
+`ConnectVpnUseCase` validates the config, calls `connect`, and only then starts the lifecycle
+service — so the watchdog exists exactly as long as the tunnel does.
+
+### 6.3 `core/webrtc` — WHEP streaming
+
+| Piece | Responsibility |
+|---|---|
+| `StreamConnectionRepository` (contract) | `connect(url, sink, onError)` / `disconnect(url)` / `closeAll()` |
+| `WhepClient` (contract) | Negotiates one WHEP session |
+| `WhepConnectionManager` | Implements `StreamConnectionRepository`; owns a per-URL map of jobs and clients, guarded by a lock |
+| `WhepClientImpl` | `PeerConnection`, recv-only video transceiver, offer/answer, ICE gathering |
+| `WhepRemoteDataSource(Impl)` | `POST {streamUrl}/whep` with `Content-Type: application/sdp`, expects `201` |
+
+Both contracts sit **directly in `core/webrtc`, not in a `domain` sub-package**, and the KDoc says
+why: `VideoSink` is a WebRTC SDK type and the sink is the renderer the UI itself creates. Wrapping
+it in a project type would only be unwrapped again in the same frame, so the contract owns the
+dependency instead of pretending to be pure domain.
+
+**DI scoping is load-bearing here.** `WhepConnectionModule` binds
+`StreamConnectionRepository` in `ViewModelComponent` and leaves it **unscoped**, because
+`closeAll()` cancels the manager's `CoroutineScope` permanently — a shared instance would be dead
+for every screen opened after the first was destroyed. `WhepClientImpl` is likewise
+`ViewModelComponent`-bound because it holds a mutable `peerConnection`. Only the stateless
+`WhepRemoteDataSource` and the `PeerConnectionFactory` / `EglBase` are singletons.
+
+### 6.4 `core/permission`
+
+Thin repositories over two platform calls — `ContextCompat.checkSelfPermission(CAMERA)` and
+`VpnService.prepare(context) == null` — behind `CameraPermissionRepository` /
+`VpnPermissionRepository` and two use cases. The value is testability: `ConfigViewModel` can be
+unit-tested without a `Context`.
+
+### 6.5 `core/network`
+
+A single file holding `STREAM_HOST = "[fd00:20::cafe]"` and
+`STREAM_URL_HOST_PREFIX = "http://$STREAM_HOST:"`. Every URL the app builds, validates or ships as
+a default derives from it, and it doubles as the on-screen label in the "add URL" form so the text
+cannot drift from the URL actually assembled.
+
+Because `network_security_config.xml` cannot reference a Kotlin constant, `StreamHostTest` reads
+the XML and asserts the two stay in sync — turning what would be a runtime cleartext failure on
+device into a build failure.
+
+### 6.6 `core` (root) and `core/components`
+
+- `ToastEventViewModel` — abstract base owning the toast `Channel`; every ViewModel extends it.
+- `ToastMessage` — `@StringRes` interface implemented by per-feature enums.
+- `Constants.kt` — `DEBUG_TAG`.
+- `core/components/` — `ToastDisplayer`, `LoadingScreen`, `LaunchActivityResultOnEvent`, and the
+  whole QR-code route (see [§9](#9-architectural-consistency-notes)).
+
+### 6.7 `ui/theme`
+
+`CamerasTheme` with Material 3 dynamic color on API 31+, defaulting to `darkTheme = true`.
+
+---
+
+## 7. Data flow
+
+### 7.1 Persisted preferences
+
+![Data flow — preferences](images/data-flow-preferences.png)
+
+**Read path (reactive).** Disk → `EncryptedPreferencesSerializer.readFrom()` → DataStore manager →
+repository → use case (`reconciled()`, mapping, failure policy) → ViewModel
+(`combine(...).stateIn(Eagerly)`) → route (`collectAsStateWithLifecycle`). It is a `Flow` end to
+end, so a write anywhere re-emits to every collector with no manual refresh.
+
+**Write path.** UI callback → ViewModel method → validation → use case returning `Result` →
+`repository.updateStreamPreferences { current -> ... }` → `DataStore.updateData` (atomic) →
+serializer → disk. Failures surface as `Result.onFailure { showToast(...) }`; the in-memory draft
+is kept so the user does not lose edits.
+
+**The one exception** is the StreamURLs screen's draft, described in [§5.4](#54-featurestreamurls--stream-and-grid-configuration):
+seeded once with `first()`, then decoupled from the read path until an explicit save.
+
+A concrete round trip — reordering a camera on Home:
+
+1. User drops a dragged cell. `PagedDragState` / `ReorderableStreamGrid` computes the new list via
+   `reorderedTo()`.
+2. `HomeScreen` calls `onStreamsReordered(newOrder)` → `HomeViewModel.onStreamsReordered`.
+3. `UpdateStreamOrderUseCase(_orientation.value, newOrder)` rewrites only that orientation's order.
+4. DataStore persists; the read `Flow` re-emits.
+5. `HomeViewModel`'s `combine` produces a new `HomeUiState.Ready`, and the grid recomposes from
+   persisted truth.
+
+### 7.2 Streaming and connection
+
+![Data flow — streaming](images/data-flow-streaming.png)
+
+The sequence diagram above covers the full lifecycle in three phases:
+
+**1. Tunnel up.** `ON_RESUME` → `HomeViewModel.connectVpn()` → `GetVpnConfigUseCase` (reads and maps
+`UserPreferences` to `VpnConfig` via `toVpnConfigOrNull()`) → `ConnectVpnUseCase` →
+`backend.setState(tunnel, UP, config)` and `VpnLifecycleController.start()`. Tunnel state flows back
+through `ObserveVpnStateUseCase`, and `HomeUiState` stays `Loading` until `CONNECTED`. Any failure
+toasts and emits `HomeNavigateUiEvent.ToConfig`.
+
+**2. Streams up.** For each visible cell, `WebRtcVideoPlayer`'s `DisposableEffect` creates a
+`SurfaceViewRenderer` (which *is* the `VideoSink`) and calls `connectStream(url, sink)`.
+`WhepConnectionManager` launches a job; `WhepClientImpl` creates the peer connection, adds a
+`RECV_ONLY` video transceiver, creates the offer, sets it locally, waits for ICE gathering to
+complete, and `POST`s the SDP to `{streamUrl}/whep`. The `201` response body is the answer SDP;
+`onAddTrack` then attaches the video track to the sink. The first frame triggers
+`onFrameResolutionChanged`, which feeds `StreamResolutionRegistry` and re-measures the grid.
+
+Note the dependency direction: the ViewModel talks only to `StreamConnectionRepository`, never to
+`WhepConnectionManager` — this is what keeps the Konsist `feature → .data.` rule satisfied and makes
+swapping WHEP for RTSP/HLS a change that stops at that boundary.
+
+**3. Tear down.** Leaving a cell or changing page disposes the player, which disconnects the stream
+*before* releasing the renderer (order matters: the stream must stop writing to the sink first).
+`ON_PAUSE` drops the tunnel and stops the lifecycle service. `onCleared()` calls `closeAll()`.
+
+---
+
+## 8. External resources
+
+### 8.1 External services and data sources
+
+| Resource | Protocol / transport | Entry point in code |
+|---|---|---|
+| **WHEP media server** (MediaMTX on a Raspberry Pi) | HTTP `POST {streamUrl}/whep`, `application/sdp`, then SRTP | `WhepRemoteDataSourceImpl`, `WhepClientImpl` |
+| **WireGuard peer** (home gateway) | WireGuard over UDP/IPv6, endpoint from `pEndpoint` | `VpnRepositoryImpl` (`GoBackend`) |
+| **QR-code provisioning payload** | JSON blob scanned from screen/paper, carrying `[Interface]`/`[Peer]` fields | `ParseUserPreferencesFromQrCodeUseCase` |
+| **Android Keystore** | Hardware-backed key storage | `KeystoreCryptoEngine` |
+| **Device camera** | CameraX + ML Kit (on-device, no network) | `QrCodeScreen`, `QrCodeAnalyzer` |
+
+**Network reachability is tightly constrained.** All stream traffic is cleartext HTTP to a
+ULA IPv6 literal, reachable only through the tunnel. `network_security_config.xml` whitelists that
+host for cleartext; `STREAM_HOST` is the single Kotlin source of truth; `StreamHostTest` pins the
+two together. Default URLs ship as `http://[fd00:20::cafe]:8889/cam_160..163` (`StreamDefaults`).
+
+**Credential shape.** `UserPreferences` splits the WireGuard config in two, mirroring the
+`[Interface]` / `[Peer]` sections (prefix `i` = interface, `p` = peer):
+
+- `VpnConfigDefaults` — shared by every device: `iDns`, `iMtu`, `pPuk`, `pAllowedips`, `pEndpoint`,
+  `pPersistentKeepAlive`.
+- `VpnConfigTokens` — unique per device: `iPrk` (private key), `iAddr`, `pPsk`.
+
+Both must pass `isValid()` (all fields non-null) before the payload is accepted, and
+`toVpnConfigOrNull()` performs a second null-check pass when building the connection config.
+
+### 8.2 Gradle dependencies
+
+Declared in `gradle/libs.versions.toml` and consumed via the version catalog.
+
+**UI and platform**
+
+| Library | Version | Used for |
+|---|---|---|
+| `androidx.compose:compose-bom` | 2026.03.01 | Compose version alignment |
+| `androidx.compose.material3` | via BOM | Material 3 components |
+| `androidx.compose.material:material-icons-extended` | via BOM | `DragHandle` and other icons |
+| `androidx.navigation:navigation-compose` | 2.9.8 | Type-safe navigation graph |
+| `androidx.activity:activity-compose` | 1.13.0 | `setContent`, `BackHandler`, result contracts |
+| `androidx.lifecycle:lifecycle-runtime-ktx` | 2.10.0 | `collectAsStateWithLifecycle`, `LifecycleEventEffect` |
+| `androidx.lifecycle:lifecycle-process` | 2.10.0 | Process-level lifecycle |
+| `androidx.core:core-ktx` | 1.18.0 | `ContextCompat`, `WindowCompat` |
+
+**Architecture and data**
+
+| Library | Version | Used for |
+|---|---|---|
+| `com.google.dagger:hilt-android` + `hilt-compiler` | 2.59.2 | DI graph, KSP-generated |
+| `androidx.hilt:hilt-navigation-compose` / `hilt-lifecycle-viewmodel-compose` | 1.3.0 | `hiltViewModel()` in routes |
+| `androidx.datastore:datastore-preferences` | 1.2.1 | Typed DataStore backing both stores |
+| `org.jetbrains.kotlinx:kotlinx-serialization-json` | 1.10.0 | Route args, QR payload, on-disk schema |
+
+**Domain-specific**
+
+| Library | Version | Used for |
+|---|---|---|
+| `io.getstream:stream-webrtc-android` | 1.3.8 | `PeerConnection`, `SurfaceViewRenderer`, `EglBase` |
+| `com.wireguard.android:tunnel` | 1.0.20260102 | `GoBackend` tunnel |
+| `androidx.camera:camera-camera2` / `camera-lifecycle` / `camera-view` | 1.6.0 | QR scanner preview and analysis |
+| `com.google.mlkit:barcode-scanning` | 17.3.0 | On-device QR decoding |
+| `sh.calvin.reorderable:reorderable` | 3.1.0 | Drag-and-drop reordering in `LazyVerticalGrid` (dynamic mode only) |
+
+> `sh.calvin.reorderable` backs `ReorderableStreamGrid` in **dynamic** mode. Fixed/paged mode does
+> **not** use it — `PagedStreamGrid` + `PagedDragState` implement dragging by hand, because the
+> gesture has to cross `HorizontalPager` page boundaries, which the library does not model.
+
+**Testing**
+
+| Library | Version | Used for |
+|---|---|---|
+| `junit` | 4.13.2 | Test runner |
+| `io.mockk` | 1.14.11 | Mocking |
+| `app.cash.turbine` | 1.2.1 | `Flow` assertions |
+| `org.jetbrains.kotlinx:kotlinx-coroutines-test` | 1.9.0 | `MainDispatcherRule`, virtual time |
+| `com.squareup.okhttp3:mockwebserver` | 4.12.0 | `WhepRemoteDataSourceImplTest` |
+| `com.lemonappdev:konsist` | 0.17.3 | `LayerDependencyTest` |
+| `androidx.compose.ui:ui-test-junit4`, `androidx.test.ext:junit`, `espresso-core` | — | Wired for instrumented tests |
+
+### 8.3 Non-Gradle external asset
+
+`qr-code-gen/` holds a small Python utility (with its own virtualenv checked in) that turns a
+`vpn.json` file into a scannable QR code. It is not part of the Android build. **`vpn.json` and the
+QR codes it produces contain WireGuard private key material** and must never be committed with real
+values.
+
+---
+
+## 9. Architectural consistency notes
+
+The layering is well enforced where the Konsist test reaches. The items below are the gaps found
+against a strict Clean Architecture + MVVM reading of the tree at `6fdf1ce`. They are observations
+for an incoming developer, ordered roughly by how likely they are to cause confusion or a real
+defect — not a work plan.
+
+### 9.1 Naming and placement
+
+1. **`HomeRoute` is declared in `feature/cameras/LoadingScreen.kt`.** There is no `HomeRoute.kt`.
+   The file name describes neither its main content (the Home route composable, ~80 lines) nor the
+   `LoadingScreen` it merely *calls* from `core/components`. This is the single most disorienting
+   thing in the tree for a newcomer, and it has a measurable side effect — see 9.4.
+
+2. **The QR-code screen lives in `core/components`, not `feature/qrcode`.** `QrCodeRoute`,
+   `QrCodeScreen`, `QrCodeViewModel` and `QrCodeToastMessage` are a complete MVVM feature with its
+   own navigation destination, yet they sit beside genuinely shared widgets like `ToastDisplayer`.
+   A side effect is that the Konsist rule *"a feature does not import another feature"* does not
+   apply to it: `feature/config` reaches the scanner through navigation, but any feature could
+   import it directly without failing a test.
+
+3. **`core/components` mixes two concerns** — reusable primitives (`ToastDisplayer`,
+   `LoadingScreen`, `LaunchActivityResultOnEvent`) and one full screen. `core/utils/QrCodeAnalyzer`
+   is the same feature's data source, filed elsewhere again.
+
+4. **Two `LoadingScreen` composables exist** (`core/components/LoadingScreen.kt` and the file of
+   that name in `feature/cameras`), which is why `feature/cameras/LoadingScreen.kt` has to import
+   the other one by name.
+
+### 9.2 Layering
+
+5. **`core/webrtc` contracts sit at the package root rather than in `core/webrtc/domain`.** This is
+   *documented and deliberate* — `VideoSink` is an SDK type — but it has a consequence worth
+   knowing: `LayerDependencyTest` scopes its domain rules to `core..domain..`, so none of them
+   apply to `core/webrtc`. What actually protects the boundary there is the separate
+   `feature → .data.` rule.
+
+6. **`EglBase` is threaded through the navigation layer.** `MainActivity` injects it, passes it to
+   `NavigationRoot`, which passes it to `HomeRoute`, which passes it to `HomeScreen`. A WebRTC SDK
+   type therefore appears in the signature of the app's navigation graph. Injecting it where it is
+   used (or exposing it through the existing `LocalWebRtcConnection`) would keep the SDK out of
+   `app/navigation`.
+
+7. **`ConfigViewModel` exposes an `android.content.Intent`** in `VpnPermissionUiEvent.RequestPermission`.
+   Pragmatic — it is what `VpnService.prepare()` returns and what the launcher consumes — but it is
+   a platform type crossing the ViewModel boundary.
+
+8. **`DataStoreManager.updateUserPreferences` ignores the current value** (`updateData { userPreferences }`),
+   unlike its stream-preferences sibling, which takes a transform. User preferences can therefore
+   only be replaced wholesale, never partially updated. This is invisible today because
+   `ConfigViewModel` always writes a complete object, but it is an asymmetry waiting to surprise
+   the next writer of a partial update.
+
+### 9.3 Configuration drift
+
+9. **`network_security_config.xml` declares two cleartext domains** — `cameras.casa` and
+   `[fd00:20::cafe]` — while `StreamHost.kt`'s KDoc states that the host it defines is "the only
+   host allowed by" that file. `cameras.casa` appears nowhere in Kotlin code. `StreamHostTest` only
+   asserts that `STREAM_HOST` is *present* among the declared domains, so the stale entry passes.
+
+10. **`composeOptions { kotlinCompilerExtensionVersion = "1.5.1" }`** is still set in
+    `app/build.gradle.kts` while the project uses the Compose Compiler Gradle plugin on Kotlin 2.3.
+    The setting is obsolete in that configuration and does not reflect the compiler actually in use.
+
+11. **`android:allowBackup="true"` with template backup rules.** Both `backup_rules.xml` and
+    `data_extraction_rules.xml` are the unmodified AGP samples with every rule commented out, so
+    the DataStore files are eligible for cloud backup and device transfer. Their contents are
+    encrypted with a **device-bound** Keystore key that does not travel, so a restore on a new
+    device yields ciphertext that cannot be decrypted —
+    `EncryptedPreferencesSerializer` catches the failure and silently returns `defaultValue`. The
+    user's cameras and credentials appear to have vanished with no error. Excluding both DataStore
+    files from backup would make the outcome honest.
+
+12. **Release builds have `isMinifyEnabled = false`**, so `proguard-rules.pro` is inert.
+
+### 9.4 Coverage configuration
+
+13. **Two JaCoCo exclusion patterns match nothing**, because they name classes that do not exist:
+
+    | Pattern in `jacocoTestReport` | Class actually produced |
+    |---|---|
+    | `com/gdisys/cameras/feature/cameras/HomeRouteKt*.class` | `feature/cameras/LoadingScreenKt` |
+    | `com/gdisys/cameras/core/components/LoadingStorageScreenKt*.class` | `core/components/LoadingScreenKt` |
+
+    Both files are Compose UI that the task's own KDoc says is deliberately out of unit-test scope,
+    yet both are currently **counted** in the coverage denominator. Fixing item 9.1.1 (renaming the
+    file to `HomeRoute.kt`) would make the first pattern correct by construction.
+
+14. **`androidTest/` contains only the generated `ExampleInstrumentedTest`.** The JaCoCo comment
+    justifies excluding Compose UI on the grounds that it is "tested via Compose UI Test", and the
+    dependencies are wired, but no such tests exist yet.
+
+### 9.5 Language policy
+
+15. **The codebase is bilingual.** `CLAUDE.md` mandates en-US for code and comments. Recently
+    refactored files follow it (`StreamHost.kt`, `StreamPreferences.kt`, `LayerDependencyTest.kt`,
+    `StreamConnectionRepository.kt`, parts of `StreamURLsViewModel.kt`), while much of the rest —
+    including most `core/vpn`, `core/webrtc` and the Gradle task documentation — is in pt-BR. Some
+    single files mix both languages in adjacent KDoc blocks. Error messages passed to
+    `IllegalArgumentException` are also in pt-BR.
+
+    Two build-file comments also reference `relatorio_tested_expandido.md`, a document not present
+    in the repository.
+
+---
+
+## 10. Testing and quality gates
+
+**43 test files** under `app/src/test/`, mirroring the production package structure. Coverage is
+concentrated where the project decided it belongs: ViewModels, use cases, repository
+implementations, pure logic and serialization.
+
+| Area | Representative tests |
+|---|---|
+| ViewModels (all 5) | `HomeViewModelTest`, `ConfigViewModelTest`, `StreamURLsViewModelTest`, `InitViewModelTest`, `QrCodeViewModelTest` |
+| Pure logic | `StreamPagingTest`, `FixedGridLayoutTest`, `GridPreferencesValidationTest`, `StreamUrlValidationTest` |
+| Storage | `EncryptedPreferencesSerializerTest`, `StreamPreferencesSerializationTest`, `DataStoreManagerTest`, repository and all 8 use-case tests |
+| VPN | `VpnRepositoryImplTest`, `VpnConfigTest`, `VpnLifecycleControllerImplTest`, 4 use-case tests |
+| WebRTC | `WhepConnectionManagerTest`, `WhepRemoteDataSourceImplTest` (MockWebServer) |
+| Architecture | `LayerDependencyTest` (Konsist) |
+| Config drift | `StreamHostTest` (Kotlin constant vs. XML) |
+
+`MainDispatcherRule` provides the standard `Dispatchers.Main` replacement for coroutine tests.
+
+Useful commands:
+
+```bash
+./gradlew :app:testDebugUnitTest     # unit tests, including the architecture assertions
+./gradlew :app:jacocoTestReport      # coverage → app/build/reports/jacoco/jacocoTestReport/html/index.html
+./gradlew :app:assembleDebug
+```
+
+Note that `LayerDependencyTest` and `StreamHostTest` are ordinary unit tests, so a layering
+violation or a host/XML mismatch fails `testDebugUnitTest` like any other regression.
+
+---
+
+## 11. Where to start reading
+
+A suggested path through the code for a new contributor:
+
+1. `app/navigation/NavigationRoute.kt` and `NavigationRoot.kt` — the whole screen graph on one page.
+2. `architecture/LayerDependencyTest.kt` — the rules you must not break, stated as assertions.
+3. `feature/init/` — the smallest complete route; the MVVM pattern in ~40 lines.
+4. `core/storage/domain/model/StreamPreferences.kt` + `StreamPreferencesExtensions.kt` — the central
+   data model and its canonical-set invariant.
+5. `feature/cameras/LoadingScreen.kt` → `HomeViewModel.kt` → `components/HomeScreen.kt` — the main
+   feature, top-down.
+6. `core/webrtc/` — the streaming contract and its WHEP implementation.
+
+---
+
+## 12. Regenerating the diagrams
+
+Diagram sources are Mermaid text files under `docs/diagrams/`, kept in version control so the PNGs
+in `docs/images/` are reproducible from source.
+
+```bash
+# requires Node.js; no global install needed
+for f in docs/diagrams/*.mmd; do
+  npx --yes @mermaid-js/mermaid-cli \
+    -i "$f" \
+    -o "docs/images/$(basename "$f" .mmd).png" \
+    -b white -w 2400
+done
+```
+
+| Source | Output |
+|---|---|
+| `docs/diagrams/mvvm-init-route.mmd` | `docs/images/mvvm-init-route.png` |
+| `docs/diagrams/mvvm-config-route.mmd` | `docs/images/mvvm-config-route.png` |
+| `docs/diagrams/mvvm-qrcode-route.mmd` | `docs/images/mvvm-qrcode-route.png` |
+| `docs/diagrams/mvvm-streamurls-route.mmd` | `docs/images/mvvm-streamurls-route.png` |
+| `docs/diagrams/mvvm-home-route.mmd` | `docs/images/mvvm-home-route.png` |
+| `docs/diagrams/package-diagram.mmd` | `docs/images/package-diagram.png` |
+| `docs/diagrams/data-flow-preferences.mmd` | `docs/images/data-flow-preferences.png` |
+| `docs/diagrams/data-flow-streaming.mmd` | `docs/images/data-flow-streaming.png` |
+
+Diagrams were generated with `@mermaid-js/mermaid-cli` 11.17.0.

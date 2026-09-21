@@ -1,0 +1,90 @@
+---
+title: "MVVM - Home route (NavigationRoute.Home)"
+---
+flowchart LR
+  classDef view fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
+  classDef vm fill:#fff3e0,stroke:#ef6c00,color:#e65100
+  classDef model fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
+  classDef data fill:#eceff1,stroke:#455a64,color:#263238
+  classDef logic fill:#fce4ec,stroke:#ad1457,color:#880e4f
+
+  subgraph V["VIEW - Composables"]
+    direction TB
+    Nav["NavigationRoot"]
+    Route["HomeRoute<br/>declared in feature/cameras/LoadingScreen.kt"]
+    Loading["LoadingScreen"]
+    Empty["EmptyStreamsScreen"]
+    Screen["HomeScreen<br/>DynamicStreamGrid | FixedStreamGrid | FocusedStreamView"]
+    Player["WebRtcVideoPlayer<br/>SurfaceViewRenderer (VideoSink)"]
+    Nav --> Route
+    Route --> Loading
+    Route --> Empty
+    Route --> Screen
+    Screen --> Player
+  end
+
+  subgraph VMG["VIEWMODEL"]
+    direction TB
+    VM["HomeViewModel : ToastEventViewModel"]
+    Inputs["_orientation, _focusedStream<br/>MutableStateFlow, UI-driven inputs"]
+    State["HomeUiState = Loading | Empty | Ready<br/>combine(prefs, orientation, focus, vpnState)"]
+    Inputs --> State
+    VM --> Inputs
+    VM --> State
+  end
+
+  subgraph L["FEATURE LOGIC - pure, View-side"]
+    Paging["StreamPaging.kt: itemsPerPage, pageCount,<br/>streamsOnPage, reorderedTo, movedToPage"]
+    Layout["FixedGridLayout.kt: fixedGridRowHeights,<br/>fittedCellSize"]
+  end
+
+  subgraph M["MODEL - domain"]
+    direction TB
+    UCprefs["GetStreamPreferencesUseCase"]
+    UCorder["UpdateStreamOrderUseCase"]
+    UCvpnState["ObserveVpnStateUseCase"]
+    UCvpnCfg["GetVpnConfigUseCase"]
+    UCconn["ConnectVpnUseCase"]
+    UCdisc["DisconnectVpnUseCase"]
+    StreamRepo["StreamConnectionRepository<br/>core/webrtc/ (contract)"]
+  end
+
+  subgraph D["DATA / EXTERNAL"]
+    direction TB
+    Store["DataStore: stream-preferences"]
+    VpnRepo["VpnRepository -> WireGuard GoBackend"]
+    Whep["WhepConnectionManager -> WhepClient<br/>POST offer to streamUrl/whep"]
+  end
+
+  Route -->|"EVENTS IN: onOrientationChanged, connectVpn/disconnectVpn<br/>(ON_RESUME / ON_PAUSE), onBackPressed"| VM
+  Screen -->|"EVENTS IN: focusStream(url), clearFocusedStream(),<br/>onStreamsReordered(newOrder)"| VM
+  Player -->|"EVENTS IN: connectStream(url, videoSink),<br/>disconnectStream(url)"| VM
+
+  State -->|"STATE OUT: uiState StateFlow of HomeUiState<br/>collectAsStateWithLifecycle"| Route
+  VM -->|"EVENT OUT: navigateUiEvent<br/>ToConfig | ExitApp (Channel)"| Route
+  VM -->|"uiEvent: ToastUiEvent"| Route
+  Route -->|"onNavigateToConfig() / activity.finish()"| Nav
+
+  Screen --> Paging
+  Screen --> Layout
+
+  VM --> UCprefs
+  VM --> UCorder
+  VM --> UCvpnState
+  VM --> UCvpnCfg
+  VM --> UCconn
+  VM --> UCdisc
+  VM -->|"connect / disconnect / closeAll"| StreamRepo
+
+  UCprefs --> Store
+  UCorder --> Store
+  UCvpnState --> VpnRepo
+  UCconn --> VpnRepo
+  UCdisc --> VpnRepo
+  StreamRepo --> Whep
+
+  class Nav,Route,Loading,Empty,Screen,Player view
+  class VM,Inputs,State vm
+  class UCprefs,UCorder,UCvpnState,UCvpnCfg,UCconn,UCdisc,StreamRepo model
+  class Paging,Layout logic
+  class Store,VpnRepo,Whep data

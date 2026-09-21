@@ -1,0 +1,72 @@
+---
+title: "MVVM - StreamURLs route (NavigationRoute.StreamURLs)"
+---
+flowchart LR
+  classDef view fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
+  classDef vm fill:#fff3e0,stroke:#ef6c00,color:#e65100
+  classDef model fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
+  classDef data fill:#eceff1,stroke:#455a64,color:#263238
+  classDef logic fill:#fce4ec,stroke:#ad1457,color:#880e4f
+
+  subgraph V["VIEW - Composables"]
+    direction TB
+    Nav["NavigationRoot"]
+    Route["StreamURLsRoute<br/>feature/streamurls/StreamURLsRoute.kt"]
+    Screen["StreamURLsScreen<br/>AddStreamUrlForm, StreamUrlRow,<br/>gridPreferencesSection, dialogs"]
+    Toast["ToastDisplayer"]
+    Nav --> Route
+    Route --> Screen
+    Route --> Toast
+  end
+
+  subgraph VMG["VIEWMODEL"]
+    direction TB
+    VM["StreamURLsViewModel : ToastEventViewModel"]
+    Draft["draft: MutableStateFlow of StreamPreferences<br/>in-memory only, seeded once via first()"]
+    Screen2["screenState: StreamURLsScreenState<br/>form text, open dialog, dirty flags"]
+    State["StreamURLsUiState<br/>combine(draft, screenState).stateIn(Eagerly)"]
+    VM --> Draft
+    VM --> Screen2
+    Draft --> State
+    Screen2 --> State
+  end
+
+  subgraph L["FEATURE LOGIC - pure functions"]
+    Valid["validateGridPreferences()<br/>showsAllStreams()<br/>feature/streamurls/logic/"]
+  end
+
+  subgraph M["MODEL - domain"]
+    direction TB
+    UCget["GetStreamPreferencesUseCase"]
+    UCurls["SaveStreamUrlsUseCase"]
+    UCgrid["SaveGridPreferencesUseCase"]
+    Validate["validateStreamUrl()<br/>core/storage/domain/StreamUrlValidation.kt"]
+    Defaults["StreamDefaults.CAMERA_STREAM_URLS"]
+    Repo["StreamPreferencesRepository"]
+    UCget --> Repo
+    UCurls --> Repo
+    UCgrid --> Repo
+  end
+
+  Store["DataStore: stream-preferences<br/>encrypted JSON"]
+
+  Route -->|"EVENTS IN: onShowAddUrlForm, onPortChanged,<br/>onStreamNameChanged, onAddUrlConfirmed, onRemoveUrl,<br/>onLoadDefaultsRequested/Confirmed, onSaveUrlsRequested/Confirmed,<br/>onGridColumnsChanged, onGridRowsChanged, onGridDynamicRowsChanged,<br/>onSaveGridRequested/Confirmed, onBackRequested,<br/>onDiscardChangesConfirmed, onDialogDismissed"| VM
+
+  State -->|"STATE OUT: uiState StateFlow<br/>collectAsStateWithLifecycle"| Route
+  VM -->|"EVENT OUT: navigateBackEvent (Channel)"| Route
+  VM -->|"uiEvent: ToastUiEvent"| Toast
+  Route -->|"onNavigateBack()"| Nav
+
+  VM --> Validate
+  VM --> Defaults
+  VM --> Valid
+  VM -->|"first() - seed only"| UCget
+  VM -->|"on Save URLs"| UCurls
+  VM -->|"on Save grid"| UCgrid
+  Repo --> Store
+
+  class Nav,Route,Screen,Toast view
+  class VM,Draft,Screen2,State vm
+  class UCget,UCurls,UCgrid,Validate,Defaults,Repo model
+  class Valid logic
+  class Store data

@@ -1,0 +1,75 @@
+---
+title: "MVVM - Config route (NavigationRoute.Config)"
+---
+flowchart LR
+  classDef view fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
+  classDef vm fill:#fff3e0,stroke:#ef6c00,color:#e65100
+  classDef model fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
+  classDef data fill:#eceff1,stroke:#455a64,color:#263238
+
+  subgraph V["VIEW - Composables"]
+    direction TB
+    Nav["NavigationRoot<br/>QR result via savedStateHandle"]
+    Route["ConfigRoute<br/>feature/config/ConfigRoute.kt"]
+    Screen["ConfigScreen + ConfigButton<br/>feature/config/components/"]
+    Toast["ToastDisplayer"]
+    Launcher["LaunchActivityResultOnEvent<br/>core/components/"]
+    Nav --> Route
+    Route --> Screen
+    Route --> Toast
+    Route --> Launcher
+  end
+
+  subgraph VMG["VIEWMODEL"]
+    direction TB
+    VM["ConfigViewModel : ToastEventViewModel"]
+    State["ConfigUiState<br/>4 x ConfigButtonState + canNavigateBackToHome<br/>derived: missingRequirement, canNavigateToHome"]
+    VM -->|"combine(5 flows).stateIn(Eagerly)"| State
+  end
+
+  subgraph M["MODEL - domain"]
+    direction TB
+    UCqr["ParseUserPreferencesFromQrCodeUseCase"]
+    UCsave["SaveUserPreferencesUseCase"]
+    UCstatus["GetVpnConfigStatusUseCase"]
+    UCstream["GetStreamPreferencesUseCase"]
+    UCcam["HasCameraPermissionUseCase"]
+    UCvpnp["HasVpnPermissionUseCase"]
+    UCreq["RequestVpnPermissionUseCase"]
+  end
+
+  subgraph D["DATA"]
+    direction TB
+    Store1["DataStore: user-preferences"]
+    Store2["DataStore: stream-preferences"]
+    Perm["Android: VpnService.prepare()<br/>ContextCompat.checkSelfPermission()"]
+  end
+
+  Route -->|"EVENTS IN: onShowScanner, acceptVpnPermission,<br/>onRequestCameraPermission, onQrCodeScanned(rawJson),<br/>onNavigateToHomeRequested, onBackPressedBlocked,<br/>refreshCameraPermissionState, setCanNavigateBackToHome"| VM
+  Launcher -->|"EVENTS IN: onVpnPermissionAccepted/Denied,<br/>onCameraPermissionResult(granted, rationale)"| VM
+
+  State -->|"STATE OUT: uiState StateFlow<br/>collectAsStateWithLifecycle"| Route
+  VM -->|"EVENTS OUT: navigateToScannerEvent,<br/>navigateToHomeEvent (Channel)"| Route
+  VM -->|"EVENTS OUT: vpnPermissionUiEvent,<br/>requestCameraPermissionEvent"| Launcher
+  VM -->|"uiEvent: ToastUiEvent"| Toast
+  Route -->|"onNavigateToScanner / ToStreamURLs / ToHome"| Nav
+
+  VM --> UCqr
+  VM --> UCsave
+  VM --> UCstatus
+  VM --> UCstream
+  VM --> UCcam
+  VM --> UCvpnp
+  VM --> UCreq
+
+  UCsave --> Store1
+  UCstatus --> Store1
+  UCstream --> Store2
+  UCcam --> Perm
+  UCvpnp --> Perm
+  UCreq --> Perm
+
+  class Nav,Route,Screen,Toast,Launcher view
+  class VM,State vm
+  class UCqr,UCsave,UCstatus,UCstream,UCcam,UCvpnp,UCreq model
+  class Store1,Store2,Perm data
