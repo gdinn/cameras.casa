@@ -9,7 +9,7 @@ class ParseUserPreferencesFromQrCodeUseCase @Inject constructor() {
   operator fun invoke(rawJson: String): Result<UserPreferences?> {
     val sanitizedJson = rawJson
       .trim()
-      .replace("﻿", "")
+      .replace("\uFEFF", "")
     return try {
       val decoded = Json.decodeFromString<UserPreferences>(sanitizedJson)
       val userPreferences = if (decoded.vpnConfigDefaults?.isValid() == true && decoded.vpnConfigTokens?.isValid() == true) {

@@ -5,13 +5,19 @@ import app.cash.turbine.test
 import app.cash.turbine.turbineScope
 import com.gdisys.cameras.MainDispatcherRule
 import com.gdisys.cameras.core.components.ToastUiEvent
+import com.gdisys.cameras.core.storage.domain.model.GridPreferences
+import com.gdisys.cameras.core.storage.domain.model.StreamOrientation
+import com.gdisys.cameras.core.storage.domain.model.StreamPreferences
+import com.gdisys.cameras.core.storage.domain.usecase.GetStreamPreferencesUseCase
 import com.gdisys.cameras.core.storage.domain.usecase.GetVpnConfigUseCase
+import com.gdisys.cameras.core.storage.domain.usecase.UpdateStreamOrderUseCase
 import com.gdisys.cameras.core.vpn.domain.VpnTunnelState
 import com.gdisys.cameras.core.vpn.domain.model.VpnConfig
 import com.gdisys.cameras.core.vpn.domain.usecase.ConnectVpnUseCase
 import com.gdisys.cameras.core.vpn.domain.usecase.DisconnectVpnUseCase
 import com.gdisys.cameras.core.vpn.domain.usecase.ObserveVpnStateUseCase
-import com.gdisys.cameras.core.webrtc.data.WhepConnectionManager
+import com.gdisys.cameras.core.webrtc.StreamConnectionRepository
+import com.gdisys.cameras.feature.cameras.logic.movedToPage
 import io.mockk.Runs
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -37,10 +43,12 @@ class HomeViewModelTest {
   private val vpnState = MutableStateFlow(VpnTunnelState.DISCONNECTED)
 
   private val observeVpnStateUseCase = mockk<ObserveVpnStateUseCase>()
+  private val getStreamPreferencesUseCase = mockk<GetStreamPreferencesUseCase>()
+  private val updateStreamOrderUseCase = mockk<UpdateStreamOrderUseCase>()
   private val connectVpnUseCase = mockk<ConnectVpnUseCase>()
   private val disconnectVpnUseCase = mockk<DisconnectVpnUseCase>()
   private val getVpnConfigUseCase = mockk<GetVpnConfigUseCase>()
-  private val whepConnectionManager = mockk<WhepConnectionManager>(relaxed = true)
+  private val streamConnectionRepository = mockk<StreamConnectionRepository>(relaxed = true)
 
   private lateinit var viewModel: HomeViewModel
 
@@ -49,6 +57,20 @@ class HomeViewModelTest {
     "http://[fd00:20::cafe]:8889/cam_161",
     "http://[fd00:20::cafe]:8889/cam_162",
     "http://[fd00:20::cafe]:8889/cam_163"
+  )
+
+  private val portraitGrid = GridPreferences(columns = 1, rows = 1, dynamicRows = true)
+  private val landscapeGrid = GridPreferences(columns = 2, rows = 1, dynamicRows = true)
+
+  /** Ordens deliberadamente diferentes: é o que prova que a orientação escolhe a lista certa. */
+  private val streamPreferences = MutableStateFlow(
+    StreamPreferences(
+      streamUrls = defaultStreams,
+      portraitOrder = defaultStreams,
+      landscapeOrder = defaultStreams.reversed(),
+      portraitGrid = portraitGrid,
+      landscapeGrid = landscapeGrid
+    )
   )
 
   private val validConfig = VpnConfig(
@@ -66,14 +88,30 @@ class HomeViewModelTest {
   @Before
   fun setUp() {
     every { observeVpnStateUseCase() } returns vpnState
+    every { getStreamPreferencesUseCase() } returns streamPreferences
+    coEvery { updateStreamOrderUseCase(any(), any()) } returns Result.success(Unit)
     viewModel = HomeViewModel(
       observeVpnStateUseCase,
+      getStreamPreferencesUseCase,
+      updateStreamOrderUseCase,
       connectVpnUseCase,
       disconnectVpnUseCase,
       getVpnConfigUseCase,
-      whepConnectionManager
+      streamConnectionRepository
     )
   }
+
+  private fun readyState(
+    streams: List<String> = defaultStreams,
+    focusedStream: String? = null,
+    grid: GridPreferences = portraitGrid,
+    orientation: StreamOrientation = StreamOrientation.PORTRAIT
+  ) = HomeUiState.Ready(
+    streams = streams,
+    focusedStream = focusedStream,
+    grid = grid,
+    orientation = orientation
+  )
 
   @Test
   fun `uiState is Loading while vpn is not connected`() = runTest {
@@ -81,15 +119,71 @@ class HomeViewModelTest {
   }
 
   @Test
-  fun `uiState becomes Ready with the default streams once vpn connects`() = runTest {
+  fun `uiState becomes Ready with the stored streams once vpn connects`() = runTest {
     viewModel.uiState.test {
       assertEquals(HomeUiState.Loading, awaitItem())
 
       vpnState.value = VpnTunnelState.CONNECTED
-      assertEquals(HomeUiState.Ready(streams = defaultStreams, focusedStream = null), awaitItem())
+      assertEquals(readyState(), awaitItem())
 
       vpnState.value = VpnTunnelState.DISCONNECTED
       assertEquals(HomeUiState.Loading, awaitItem())
+    }
+  }
+
+  @Test
+  fun `uiState is Empty when there is no stream url configured`() = runTest {
+    streamPreferences.value = StreamPreferences()
+
+    viewModel.uiState.test {
+      assertEquals(HomeUiState.Empty, awaitItem())
+
+      vpnState.value = VpnTunnelState.CONNECTED
+      expectNoEvents()
+    }
+  }
+
+  @Test
+  fun `uiState follows a dynamic number of stream urls`() = runTest {
+    vpnState.value = VpnTunnelState.CONNECTED
+
+    viewModel.uiState.test {
+      assertEquals(readyState(), awaitItem())
+
+      listOf(2, 7).forEach { count ->
+        val urls = List(count) { "http://[fd00:20::cafe]:8889/cam_$it" }
+        streamPreferences.value = StreamPreferences(
+          streamUrls = urls,
+          portraitOrder = urls,
+          landscapeOrder = urls,
+          portraitGrid = portraitGrid,
+          landscapeGrid = landscapeGrid
+        )
+
+        assertEquals(readyState(streams = urls), awaitItem())
+      }
+    }
+  }
+
+  @Test
+  fun `changing the orientation swaps the order and the grid`() = runTest {
+    vpnState.value = VpnTunnelState.CONNECTED
+
+    viewModel.uiState.test {
+      assertEquals(readyState(), awaitItem())
+
+      viewModel.onOrientationChanged(StreamOrientation.LANDSCAPE)
+      assertEquals(
+        readyState(
+          streams = defaultStreams.reversed(),
+          grid = landscapeGrid,
+          orientation = StreamOrientation.LANDSCAPE
+        ),
+        awaitItem()
+      )
+
+      viewModel.onOrientationChanged(StreamOrientation.PORTRAIT)
+      assertEquals(readyState(), awaitItem())
     }
   }
 
@@ -111,76 +205,85 @@ class HomeViewModelTest {
   }
 
   @Test
-  fun `moveStreamUp swaps the stream with the previous one`() = runTest {
-    viewModel.uiState.test {
-      awaitItem()
-      vpnState.value = VpnTunnelState.CONNECTED
-      awaitItem()
+  fun `onStreamsReordered persists only the current orientation`() = runTest {
+    val newOrder = defaultStreams.reversed()
 
-      viewModel.moveStreamUp(2)
-      val moved = awaitItem() as HomeUiState.Ready
+    viewModel.onStreamsReordered(newOrder)
+
+    coVerify(exactly = 1) {
+      updateStreamOrderUseCase(StreamOrientation.PORTRAIT, newOrder)
+    }
+    coVerify(exactly = 0) {
+      updateStreamOrderUseCase(StreamOrientation.LANDSCAPE, any())
+    }
+  }
+
+  @Test
+  fun `onStreamsReordered persists against the orientation in effect`() = runTest {
+    val newOrder = defaultStreams.reversed()
+
+    viewModel.onOrientationChanged(StreamOrientation.LANDSCAPE)
+    viewModel.onStreamsReordered(newOrder)
+
+    coVerify(exactly = 1) {
+      updateStreamOrderUseCase(StreamOrientation.LANDSCAPE, newOrder)
+    }
+    coVerify(exactly = 0) {
+      updateStreamOrderUseCase(StreamOrientation.PORTRAIT, any())
+    }
+  }
+
+  @Test
+  fun `a drag across pages persists the whole order of the current orientation`() = runTest {
+    // Grade fixa de 2 itens por página: o primeiro stream é arrastado até a borda direita e cai
+    // no início da página seguinte. O que é persistido é a ordem completa, não só a da página.
+    val newOrder = movedToPage(
+      order = defaultStreams,
+      url = defaultStreams[0],
+      page = 1,
+      itemsPerPage = 2,
+      atStart = true
+    )
+    assertEquals(
+      listOf(defaultStreams[1], defaultStreams[2], defaultStreams[0], defaultStreams[3]),
+      newOrder
+    )
+
+    viewModel.onStreamsReordered(newOrder)
+
+    coVerify(exactly = 1) { updateStreamOrderUseCase(StreamOrientation.PORTRAIT, newOrder) }
+  }
+
+  @Test
+  fun `onStreamsReordered shows a toast when persisting fails`() = runTest {
+    coEvery { updateStreamOrderUseCase(any(), any()) } returns
+      Result.failure(RuntimeException("boom"))
+
+    viewModel.uiEvent.test {
+      viewModel.onStreamsReordered(defaultStreams.reversed())
+
       assertEquals(
-        listOf(defaultStreams[0], defaultStreams[2], defaultStreams[1], defaultStreams[3]),
-        moved.streams
+        ToastUiEvent.Show(HomeToastMessage.STREAM_ORDER_SAVE_ERROR.resId),
+        awaitItem()
       )
-    }
-  }
-
-  @Test
-  fun `moveStreamUp at index 0 does not change the order`() = runTest {
-    viewModel.uiState.test {
-      awaitItem()
-      vpnState.value = VpnTunnelState.CONNECTED
-      awaitItem()
-
-      viewModel.moveStreamUp(0)
-      expectNoEvents()
-    }
-  }
-
-  @Test
-  fun `moveStreamDown swaps the stream with the next one`() = runTest {
-    viewModel.uiState.test {
-      awaitItem()
-      vpnState.value = VpnTunnelState.CONNECTED
-      awaitItem()
-
-      viewModel.moveStreamDown(0)
-      val moved = awaitItem() as HomeUiState.Ready
-      assertEquals(
-        listOf(defaultStreams[1], defaultStreams[0], defaultStreams[2], defaultStreams[3]),
-        moved.streams
-      )
-    }
-  }
-
-  @Test
-  fun `moveStreamDown at the last index does not change the order`() = runTest {
-    viewModel.uiState.test {
-      awaitItem()
-      vpnState.value = VpnTunnelState.CONNECTED
-      awaitItem()
-
-      viewModel.moveStreamDown(defaultStreams.lastIndex)
-      expectNoEvents()
     }
   }
 
   @Test
   fun `connectStream delegates to WhepConnectionManager`() {
     val videoSink = mockk<VideoSink>()
-    every { whepConnectionManager.connect(any(), any(), any()) } just Runs
+    every { streamConnectionRepository.connect(any(), any(), any()) } just Runs
 
     viewModel.connectStream("stream-url", videoSink)
 
-    verify(exactly = 1) { whepConnectionManager.connect("stream-url", videoSink, any()) }
+    verify(exactly = 1) { streamConnectionRepository.connect("stream-url", videoSink, any()) }
   }
 
   @Test
   fun `connectStream shows a toast when the connection fails`() = runTest {
     val videoSink = mockk<VideoSink>()
     val onErrorSlot = slot<(Throwable) -> Unit>()
-    every { whepConnectionManager.connect(any(), any(), capture(onErrorSlot)) } just Runs
+    every { streamConnectionRepository.connect(any(), any(), capture(onErrorSlot)) } just Runs
 
     viewModel.uiEvent.test {
       viewModel.connectStream("stream-url", videoSink)
@@ -197,7 +300,7 @@ class HomeViewModelTest {
   fun `disconnectStream delegates to WhepConnectionManager`() {
     viewModel.disconnectStream("stream-url")
 
-    verify(exactly = 1) { whepConnectionManager.disconnect("stream-url") }
+    verify(exactly = 1) { streamConnectionRepository.disconnect("stream-url") }
   }
 
   @Test
@@ -279,6 +382,6 @@ class HomeViewModelTest {
 
     viewModelStore.clear()
 
-    verify(exactly = 1) { whepConnectionManager.closeAll() }
+    verify(exactly = 1) { streamConnectionRepository.closeAll() }
   }
 }

@@ -13,12 +13,13 @@ interface CryptoEngine {
   fun decrypt(bytes: ByteArray): ByteArray
 }
 
-object Crypto : CryptoEngine {
-  private const val STORAGE_KEY_ALIAS = "gdi-sys-storage"
-  private const val ALGORITHM = KeyProperties.KEY_ALGORITHM_AES
-  private const val BLOCK_MODE = KeyProperties.BLOCK_MODE_CBC
-  private const val PADDING = KeyProperties.ENCRYPTION_PADDING_PKCS7
-  private const val TRANSFORMATION = "$ALGORITHM/$BLOCK_MODE/$PADDING"
+/**
+ * Cifra AES/CBC/PKCS7 com a chave guardada no Android Keystore sob [alias].
+ *
+ * Cada storage instancia o seu próprio engine com um alias distinto, de modo que a perda ou a
+ * invalidação da chave de um storage não afeta os demais.
+ */
+class KeystoreCryptoEngine(private val alias: String) : CryptoEngine {
 
   private val keyStore = KeyStore
     .getInstance("AndroidKeyStore")
@@ -28,7 +29,7 @@ object Crypto : CryptoEngine {
 
   private fun getKey(): SecretKey {
     val existingKey = keyStore
-      .getEntry(STORAGE_KEY_ALIAS, null) as? KeyStore.SecretKeyEntry
+      .getEntry(alias, null) as? KeyStore.SecretKeyEntry
     return existingKey?.secretKey ?: createKey()
   }
 
@@ -36,7 +37,7 @@ object Crypto : CryptoEngine {
     val keyGenerator = KeyGenerator.getInstance(ALGORITHM, "AndroidKeyStore")
     keyGenerator.init(
       KeyGenParameterSpec.Builder(
-        STORAGE_KEY_ALIAS,
+        alias,
         KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
       )
         .setBlockModes(BLOCK_MODE)
@@ -67,5 +68,12 @@ object Crypto : CryptoEngine {
     val data = bytes.copyOfRange(ivSize, bytes.size)
     cipher.init(Cipher.DECRYPT_MODE, getKey(), IvParameterSpec(iv))
     return cipher.doFinal(data)
+  }
+
+  private companion object {
+    const val ALGORITHM = KeyProperties.KEY_ALGORITHM_AES
+    const val BLOCK_MODE = KeyProperties.BLOCK_MODE_CBC
+    const val PADDING = KeyProperties.ENCRYPTION_PADDING_PKCS7
+    const val TRANSFORMATION = "$ALGORITHM/$BLOCK_MODE/$PADDING"
   }
 }

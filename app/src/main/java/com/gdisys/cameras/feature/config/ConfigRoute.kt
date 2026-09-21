@@ -1,40 +1,92 @@
 package com.gdisys.cameras.feature.config
 
+import android.Manifest
 import android.app.Activity.RESULT_OK
-import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.core.app.ActivityCompat
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.gdisys.cameras.core.components.QrCodeRoute
+import com.gdisys.cameras.core.components.LaunchActivityResultOnEvent
 import com.gdisys.cameras.core.components.ToastDisplayer
 import com.gdisys.cameras.feature.config.components.ConfigScreen
+import kotlinx.coroutines.flow.filterIsInstance
+import kotlinx.coroutines.flow.map
 
 @Composable
 fun ConfigRoute(
-  viewModel: ConfigViewModel,
+  viewModel: ConfigViewModel = hiltViewModel(),
+  qrCodeRawJsonResult: String?,
+  canNavigateBackToHome: Boolean,
+  onQrCodeResultConsumed: () -> Unit,
+  onNavigateToScanner: () -> Unit,
+  onNavigateToStreamURLs: () -> Unit,
   onNavigateToHome: () -> Unit,
-  onQrCodeScanned: (String) -> Unit
 ) {
   val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+  val activity = LocalActivity.current
 
-  val vpnLauncher = rememberLauncherForActivityResult(
-    ActivityResultContracts.StartActivityForResult()
-  ) { result ->
-    if (result.resultCode == RESULT_OK) {
-      viewModel.showToast(ConfigToastMessage.VPN_PERMISSION_ACCEPTED)
+  // A permissão de câmera pode ser concedida externamente, pelas configurações
+  // do sistema, enquanto esta tela está em segundo plano.
+  LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+    viewModel.refreshCameraPermissionState()
+  }
+
+  LaunchedEffect(canNavigateBackToHome) {
+    viewModel.setCanNavigateBackToHome(canNavigateBackToHome)
+  }
+
+  // O back só sai desta tela quando há Home na pilha de navegação *e* a configuração está
+  // completa; caso contrário ele é consumido aqui e vira toast.
+  BackHandler(enabled = !uiState.canNavigateBackToHome || !uiState.canNavigateToHome) {
+    viewModel.onBackPressedBlocked()
+  }
+
+  LaunchedEffect(qrCodeRawJsonResult) {
+    if (qrCodeRawJsonResult != null) {
+      viewModel.onQrCodeScanned(qrCodeRawJsonResult)
+      onQrCodeResultConsumed()
     }
   }
 
-  LaunchedEffect(viewModel) {
-    viewModel.vpnPermissionUiEvent.collect { event ->
-      when(event) {
-        is VpnPermissionUiEvent.RequestPermission -> {
-          vpnLauncher.launch(event.intent)
-        }
-      }
+  LaunchedEffect(Unit) {
+    viewModel.navigateToScannerEvent.collect {
+      onNavigateToScanner()
     }
+  }
+
+  LaunchedEffect(Unit) {
+    viewModel.navigateToHomeEvent.collect {
+      onNavigateToHome()
+    }
+  }
+
+  LaunchActivityResultOnEvent(
+    events = viewModel.vpnPermissionUiEvent
+      .filterIsInstance<VpnPermissionUiEvent.RequestPermission>()
+      .map { it.intent },
+    contract = ActivityResultContracts.StartActivityForResult()
+  ) { result ->
+    if (result.resultCode == RESULT_OK) {
+      viewModel.onVpnPermissionAccepted()
+    } else {
+      viewModel.onVpnPermissionDenied()
+    }
+  }
+
+  LaunchActivityResultOnEvent(
+    events = viewModel.requestCameraPermissionEvent.map { Manifest.permission.CAMERA },
+    contract = ActivityResultContracts.RequestPermission()
+  ) { granted ->
+    val shouldShowRationale = activity != null &&
+      ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.CAMERA)
+    viewModel.onCameraPermissionResult(granted, shouldShowRationale)
   }
 
   ToastDisplayer(
@@ -44,14 +96,9 @@ fun ConfigRoute(
   ConfigScreen(
     uiState = uiState,
     onShowScanner = viewModel::onShowScanner,
-    acceptVpnPermission = {
-      viewModel.acceptVpnPermission()
-    },
-    onNavigateToHome = onNavigateToHome,
-    qrCodeScanner = {
-      QrCodeRoute(
-        onCodeScanned = onQrCodeScanned
-      )
-    }
+    acceptVpnPermission = viewModel::acceptVpnPermission,
+    onRequestCameraPermission = viewModel::onRequestCameraPermission,
+    onNavigateToStreamURLs = onNavigateToStreamURLs,
+    onNavigateToHome = viewModel::onNavigateToHomeRequested
   )
 }
