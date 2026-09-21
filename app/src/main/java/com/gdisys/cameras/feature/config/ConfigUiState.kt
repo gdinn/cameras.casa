@@ -11,8 +11,8 @@ data class ConfigUiState(
     get() = cameraPermissionButtonState == ConfigButtonState.Done
 
   /**
-   * Primeiro requisito ainda não satisfeito para a Home funcionar, ou `null` quando todos estão.
-   * A ordem é a do feedback esperado: credenciais → permissão de VPN → URLs.
+   * First requirement Home still needs, or `null` when they are all met. The order is the one the
+   * feedback should follow: credentials -> VPN permission -> URLs.
    */
   val missingRequirement: ConfigRequirement?
     get() = when {
@@ -26,7 +26,7 @@ data class ConfigUiState(
     get() = missingRequirement == null
 }
 
-/** Requisitos que a Home precisa ter satisfeitos para ser exibida. */
+/** Requirements Home needs met before it can be shown. */
 enum class ConfigRequirement {
   VPN_CREDENTIALS,
   VPN_PERMISSION,

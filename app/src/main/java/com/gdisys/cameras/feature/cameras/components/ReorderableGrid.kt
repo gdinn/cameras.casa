@@ -18,15 +18,14 @@ import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyGridState
 
 /**
- * Grade de streams reordenável por arraste.
+ * Stream grid reorderable by dragging.
  *
- * O item só é persistido ao ser **solto**: durante o arraste a nova ordem vive em [localOrder], o
- * que faz o item acompanhar o dedo sem esperar o round-trip pelo storage. O auto-scroll vertical
- * ao segurar o item nas bordas vem pronto da lib (decisão P5/P6).
+ * The order is only persisted on **drop**: during the drag the new order lives in [localOrder], so
+ * the item follows the finger without waiting for a round-trip through storage. Vertical
+ * auto-scrolling when the item is held against an edge comes from the library.
  *
- * O conteúdo de cada célula recebe o `Modifier` do *handle* de arraste em vez do escopo da lib, de
- * modo que os composables de item não dependem dela. É também onde a etapa 4 vai pendurar o
- * auto-avanço de página nas bordas horizontais.
+ * Each cell's content receives the drag *handle*'s `Modifier` rather than the library's own scope,
+ * so the item composables carry no dependency on the library.
  */
 @Composable
 fun ReorderableStreamGrid(
@@ -41,7 +40,7 @@ fun ReorderableStreamGrid(
   var localOrder by remember { mutableStateOf(streams) }
   var isDragging by remember { mutableStateOf(false) }
 
-  // Fora do arraste a fonte de verdade é o storage; durante ele, o que o usuário está montando.
+  // Outside a drag, storage is the source of truth; during one, what the user is arranging is.
   LaunchedEffect(streams) {
     if (!isDragging) localOrder = streams
   }

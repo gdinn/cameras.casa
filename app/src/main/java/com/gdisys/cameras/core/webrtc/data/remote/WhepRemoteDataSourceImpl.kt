@@ -27,7 +27,7 @@ class WhepRemoteDataSourceImpl @Inject constructor() : WhepRemoteDataSource {
         connection.outputStream.use { it.write(offerSdp.toByteArray()) }
 
         check(connection.responseCode == HTTP_CREATED) {
-          "Servidor WHEP retornou ${connection.responseCode} para $streamUrl"
+          "WHEP server returned ${connection.responseCode} for $streamUrl"
         }
         connection.inputStream.bufferedReader().readText()
       } finally {

@@ -15,11 +15,11 @@ import com.gdisys.cameras.feature.cameras.logic.movedToPage
 import com.gdisys.cameras.feature.cameras.logic.reorderedTo
 
 /**
- * Identifica uma célula pela página em que está.
+ * Identifies a cell by the page it is on.
  *
- * A URL sozinha não serve: ao cruzar a fronteira de página a mesma URL é composta na página nova
- * antes de a antiga ser descartada, e a limpeza tardia da antiga apagaria os limites recém
- * registrados pela nova.
+ * The URL alone will not do: when a drag crosses a page boundary the same URL is composed on the
+ * new page before the old one is discarded, and the old page's late cleanup would erase the bounds
+ * the new one just registered.
  */
 internal data class CellKey(val page: Int, val url: String)
 
@@ -50,7 +50,7 @@ internal class PagedDragState(initialStreams: List<String>) {
 
   private var orderChanged = false
 
-  /** Fora do arraste a fonte de verdade é o storage; durante ele, o que o usuário está montando. */
+  /** Outside a drag, storage is the source of truth; during one, what the user is arranging is. */
   fun syncFromStorage(streams: List<String>) {
     if (draggedUrl == null) localOrder = streams
   }
@@ -89,7 +89,7 @@ internal class PagedDragState(initialStreams: List<String>) {
     }
   }
 
-  /** Segurar o item na borda esquerda/direita avança a página e leva o item junto (D13). */
+  /** Holding the item against the left/right edge advances the page and takes the item along. */
   fun advanceToPage(targetPage: Int, itemsPerPage: Int, atStart: Boolean) {
     val url = draggedUrl ?: return
     localOrder = movedToPage(localOrder, url, targetPage, itemsPerPage, atStart = atStart)
@@ -101,7 +101,7 @@ internal class PagedDragState(initialStreams: List<String>) {
     draggedUrl = null
     edgeDirection = 0
     draggedSize = Size.Zero
-    // Um toque no handle, sem arrastar nada, não deve gerar escrita no storage.
+    // A tap on the handle that drags nothing must not write to storage.
     if (orderChanged) onReordered(localOrder)
     orderChanged = false
   }

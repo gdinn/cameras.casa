@@ -15,6 +15,6 @@ class UserPreferencesRepositoryImpl @Inject constructor(
   override val userPreferences: Flow<UserPreferences> = dataStoreManager.userPrefsState
 
   override suspend fun updateUserPreferences(userPreferences: UserPreferences) {
-    dataStoreManager.updateUserPreferences(userPreferences)
+    dataStoreManager.updateUserPreferences { userPreferences }
   }
 }

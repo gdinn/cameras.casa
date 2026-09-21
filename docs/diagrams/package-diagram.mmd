@@ -27,14 +27,14 @@ flowchart TD
     FConfig["feature.config<br/>ConfigRoute, ConfigViewModel, ConfigUiState"]
     FUrls["feature.streamurls<br/>+ .logic (GridPreferencesValidation)"]
     FCam["feature.cameras<br/>+ .components + .logic<br/>(StreamPaging, FixedGridLayout)"]
+    FQr["feature.qrcode<br/>QrCodeRoute, QrCodeViewModel<br/>+ .components (QrCodeScreen, QrCodeAnalyzer)"]
   end
 
   subgraph CORESHARED["core - shared presentation helpers"]
     direction LR
     CBase["core<br/>ToastEventViewModel, ToastMessage, Constants"]
-    CComp["core.components<br/>ToastDisplayer, LoadingScreen,<br/>QrCodeRoute/Screen/ViewModel"]
+    CComp["core.components<br/>ToastDisplayer, LoadingScreen,<br/>LaunchActivityResultOnEvent"]
     CNet["core.network<br/>STREAM_HOST, STREAM_URL_HOST_PREFIX"]
-    CUtils["core.utils<br/>QrCodeAnalyzer"]
   end
 
   subgraph COREDOMAIN["core.*.domain - abstractions, pure Kotlin"]
@@ -42,7 +42,7 @@ flowchart TD
     SDom["core.storage.domain<br/>repositories, models, 8 use cases,<br/>StreamUrlValidation"]
     VDom["core.vpn.domain<br/>VpnRepository, VpnLifecycleController,<br/>VpnConfig, 4 use cases"]
     PDom["core.permission.domain<br/>Camera/VpnPermissionRepository,<br/>2 use cases"]
-    WDom["core.webrtc (contracts)<br/>StreamConnectionRepository, WhepClient"]
+    WDom["core.webrtc (contracts)<br/>StreamConnectionRepository, WhepClient,<br/>LocalEglBase"]
   end
 
   subgraph COREDATA["core.*.data - implementations"]
@@ -59,7 +59,7 @@ flowchart TD
 
   APP --> FEATURE
   APP --> UI
-  APP --> CComp
+  APP -->|"provides LocalEglBase"| WDom
   FEATURE --> UI
   FEATURE --> CORESHARED
   FEATURE --> COREDOMAIN
@@ -75,10 +75,10 @@ flowchart TD
   Forbidden["FORBIDDEN, enforced by LayerDependencyTest (Konsist):<br/>feature -x-> core.*.data | domain -x-> data<br/>domain -x-> feature | domain -x-> androidx.compose<br/>feature.A -x-> feature.B"]
 
   class Root,NavPkg appPkg
-  class FInit,FConfig,FUrls,FCam featPkg
+  class FInit,FConfig,FUrls,FCam,FQr featPkg
   class SDom,VDom,PDom,WDom domainPkg
   class SData,VData,PData,WData dataPkg
   class DI diPkg
   class Theme uiPkg
-  class CBase,CComp,CNet,CUtils sharedPkg
+  class CBase,CComp,CNet sharedPkg
   class Forbidden dataPkg

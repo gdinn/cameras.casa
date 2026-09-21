@@ -19,8 +19,8 @@ fun WebRtcVideoPlayer(
   val connection = LocalWebRtcConnection.current
   val resolutions = LocalStreamResolutions.current
 
-  // O segundo parâmetro do init é o RendererEvents: é por ele que a resolução real do vídeo chega,
-  // e é dela que sai o aspect ratio usado para dimensionar as células.
+  // init's second parameter is the RendererEvents: it is how the video's real resolution arrives,
+  // and that resolution is what the cell-sizing aspect ratio is derived from.
   val rendererEvents = remember(streamUrl, resolutions) {
     object : RendererCommon.RendererEvents {
       override fun onFirstFrameRendered() = Unit
@@ -43,9 +43,9 @@ fun WebRtcVideoPlayer(
     }
   }
 
-  // Com paginação os players entram e saem da composição a cada troca de página, então os recursos
-  // de EGL do renderer também precisam ser devolvidos — não basta encerrar a conexão WHEP. A ordem
-  // importa: primeiro o stream deixa de escrever no sink, depois o renderer é liberado.
+  // With paging, players enter and leave the composition on every page change, so the renderer's
+  // EGL resources have to be released too — closing the WHEP connection is not enough. The order
+  // matters: the stream must stop writing to the sink before the renderer is released.
   DisposableEffect(streamUrl, renderer) {
     connection.connect(streamUrl, renderer)
     onDispose {

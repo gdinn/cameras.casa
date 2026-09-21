@@ -4,8 +4,7 @@ import com.gdisys.cameras.core.storage.domain.StreamPreferencesRepository
 import javax.inject.Inject
 
 /**
- * Sobrescreve o conjunto canônico de URLs e as duas ordens de exibição, preservando a configuração
- * das grades.
+ * Overwrites the canonical set of URLs and both display orders, preserving the grid configuration.
  */
 class SaveStreamUrlsUseCase @Inject constructor(
   private val streamPreferencesRepository: StreamPreferencesRepository

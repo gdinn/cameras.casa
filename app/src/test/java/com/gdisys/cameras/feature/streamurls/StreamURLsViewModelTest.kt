@@ -41,7 +41,7 @@ class StreamURLsViewModelTest {
 
   private val storedPreferences = StreamPreferences(
     streamUrls = listOf(camA, camB),
-    // Ordem de Portrait invertida de propósito: o salvar precisa preservá-la.
+    // Portrait's order is reversed on purpose: saving has to preserve it.
     portraitOrder = listOf(camB, camA),
     landscapeOrder = listOf(camA, camB),
     portraitGrid = portraitGrid,
@@ -375,7 +375,7 @@ class StreamURLsViewModelTest {
     assertFalse(viewModel.uiState.value.isDirty)
   }
 
-  // --- Seção B: configuração do grid ---
+  // --- Section B: grid configuration ---
 
   @Test
   fun `grid inputs are seeded from storage`() = runTest {
@@ -494,7 +494,7 @@ class StreamURLsViewModelTest {
   fun `saving a grid smaller than the stream list also shows the informative toast`() = runTest {
     val viewModel = createViewModel()
 
-    // 1x1 fixo com duas URLs cadastradas: válido, mas não exibe todos os streams.
+    // Fixed 1x1 with two URLs registered: valid, but it does not show every stream.
     viewModel.onGridDynamicRowsChanged(StreamOrientation.PORTRAIT, false)
     viewModel.onGridRowsChanged(StreamOrientation.PORTRAIT, "1")
     viewModel.onSaveGridRequested()

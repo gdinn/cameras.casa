@@ -9,8 +9,8 @@ import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 
 /**
- * Observa as preferências de stream já reconciliadas — quem lê nunca vê uma ordem divergente do
- * conjunto canônico de URLs.
+ * Observes the stream preferences already reconciled — a collector never sees an order that has
+ * diverged from the canonical set of URLs.
  *
  * A read failure emits empty preferences instead of propagating: collectors combine this flow into
  * their UI state, so an exception would cancel that collection and freeze the screen on its

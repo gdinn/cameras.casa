@@ -1,22 +1,22 @@
 package com.gdisys.cameras.feature.cameras.logic
 
-/** Proporção usada enquanto o primeiro frame do stream não chega. */
+/** Ratio used until the stream's first frame arrives. */
 const val DEFAULT_STREAM_ASPECT_RATIO = 16f / 9f
 
-/** Tamanho de um vídeo dentro da célula, já respeitando a proporção real. */
+/** Size of a video inside its cell, already respecting the real aspect ratio. */
 data class StreamCellSize(val width: Float, val height: Float)
 
 /**
  * Altura de cada linha da grade fixa.
  *
- * A largura da célula é fixa (a tela dividida pelas colunas), então a altura que cada vídeo pede é
- * `largura / proporção`; a linha usa a **maior** delas, que é a da maior resolução da linha. Se a
- * soma das alturas não couber em [availableHeight], todas são **escaladas uniformemente** — o vídeo
- * encolhe, mas não é cortado nem distorcido, e não há scroll.
+ * Cell width is fixed (the screen divided by the column count), so the height each video asks for
+ * is `width / ratio`; the row takes the **largest** of those, which is its tallest video. If the
+ * heights do not add up to fit [availableHeight], all of them are **scaled uniformly** — the video
+ * shrinks, but it is never cropped or distorted, and nothing scrolls.
  *
- * As unidades são livres (px ou dp), desde que todas as entradas usem a mesma.
+ * Units are up to the caller (px or dp), as long as every input uses the same one.
  *
- * @param aspectRatios proporção de cada stream da página, em *row-major*
+ * @param aspectRatios each stream's ratio on the page, in *row-major* order
  */
 fun fixedGridRowHeights(
   aspectRatios: List<Float>,
@@ -41,10 +41,10 @@ fun fixedGridRowHeights(
 }
 
 /**
- * Maior tamanho com a proporção [aspectRatio] que cabe numa célula de [cellWidth] × [cellHeight].
+ * Largest size with ratio [aspectRatio] that fits a [cellWidth] x [cellHeight] cell.
  *
- * É o que garante "sem distorção e sem corte": a célula pode sobrar nas laterais ou em cima/embaixo,
- * o vídeo nunca é esticado.
+ * This is what guarantees "no distortion and no cropping": the cell may have space left over at the
+ * sides or above and below, but the video is never stretched.
  */
 fun fittedCellSize(cellWidth: Float, cellHeight: Float, aspectRatio: Float): StreamCellSize {
   val ratio = aspectRatio.coerceAtLeast(MIN_ASPECT_RATIO)

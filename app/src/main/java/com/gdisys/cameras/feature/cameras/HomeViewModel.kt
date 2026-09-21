@@ -45,7 +45,7 @@ class HomeViewModel @Inject constructor(
 
   private val _focusedStream = MutableStateFlow<String?>(null)
 
-  /** Alimentada pela UI, que é quem enxerga a orientação real do dispositivo. */
+  /** Fed by the UI, which is the only layer that can see the real device orientation. */
   private val _orientation = MutableStateFlow(StreamOrientation.PORTRAIT)
 
   private val _navigateUiEvent = Channel<HomeNavigateUiEvent>()
@@ -62,7 +62,8 @@ class HomeViewModel @Inject constructor(
         observeVpnStateUseCase()
       ) { preferences, orientation, focusedStream, vpn ->
         when {
-          // Sem URLs não há nada a conectar: esperar pela VPN só mostraria um spinner perpétuo.
+          // With no URLs there is nothing to connect to, and waiting on the VPN would show a
+          // spinner that never resolves. This case therefore comes before the tunnel state.
           preferences.streamUrls.isEmpty() -> HomeUiState.Empty
 
           vpn != VpnTunnelState.CONNECTED -> HomeUiState.Loading
@@ -103,8 +104,8 @@ class HomeViewModel @Inject constructor(
   }
 
   /**
-   * Persiste a nova ordem — **somente** a da orientação corrente; a da outra permanece intacta.
-   * Chamada quando o item é solto, não a cada movimento do arraste.
+   * Persists the new order — **only** the current orientation's; the other one is left intact.
+   * Called when the item is dropped, not on every movement of the drag.
    */
   fun onStreamsReordered(newOrder: List<String>) {
     viewModelScope.launch {

@@ -13,9 +13,17 @@ class DataStoreManager @Inject constructor(
 ) {
   val userPrefsState: Flow<UserPreferences> = dataStore.data
 
-  suspend fun updateUserPreferences(userPreferences: UserPreferences) {
+  /**
+   * Rewrites the stored preferences through [transform], which receives the value persisted at
+   * write time.
+   *
+   * Mirrors `StreamPreferencesDataStoreManager.updateStreamPreferences`. Taking a transform rather
+   * than a finished object is what makes a partial update possible: the caller can rewrite one
+   * slice of the file without having to read it first and race another writer.
+   */
+  suspend fun updateUserPreferences(transform: (UserPreferences) -> UserPreferences) {
     dataStore.updateData {
-      userPreferences
+      transform(it)
     }
   }
 }

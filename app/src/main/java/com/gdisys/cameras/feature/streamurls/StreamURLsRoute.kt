@@ -16,7 +16,7 @@ fun StreamURLsRoute(
 ) {
   val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
-  // O back do sistema segue o mesmo caminho do botão da TopBar: com pendências, pede descarte.
+  // System back takes the same path as the TopBar button: with unsaved edits, it asks to discard.
   BackHandler {
     viewModel.onBackRequested()
   }

@@ -1,33 +1,34 @@
 package com.gdisys.cameras.feature.cameras.logic
 
 /**
- * Paginação do modo fixo: a grade não tem scroll, então o que não cabe em `linhas × colunas` vai
- * para as páginas seguintes, preenchidas em *row-major* seguindo a ordem da orientação atual.
+ * Paging for fixed mode: the grid does not scroll, so whatever does not fit in `rows x columns`
+ * moves to the following pages, filled *row-major* in the current orientation's order.
  *
- * Tudo aqui é função pura sobre a lista de URLs — é o que torna a etapa testável sem emulador.
+ * Everything here is a pure function over the list of URLs, which is what makes it testable on the
+ * JVM with no emulator.
  */
 
-/** Quantidade de streams por página. Nunca menor que 1, para não dividir por zero. */
+/** Number of streams per page. Never below 1, so nothing divides by zero. */
 fun itemsPerPage(rows: Int, columns: Int): Int = (rows * columns).coerceAtLeast(1)
 
-/** Número de páginas necessárias para [streamCount] streams; no mínimo uma (página vazia). */
+/** Pages needed for [streamCount] streams; at least one, which may be empty. */
 fun pageCount(streamCount: Int, itemsPerPage: Int): Int {
   if (itemsPerPage <= 0) return 1
   val pages = (streamCount + itemsPerPage - 1) / itemsPerPage
   return pages.coerceAtLeast(1)
 }
 
-/** Streams da página [page]; a última pode vir incompleta. */
+/** Streams on page [page]; the last page may be partial. */
 fun streamsOnPage(streams: List<String>, page: Int, itemsPerPage: Int): List<String> {
   if (itemsPerPage <= 0 || page < 0) return emptyList()
   return streams.drop(page * itemsPerPage).take(itemsPerPage)
 }
 
 /**
- * Move [url] para [targetIndex] da lista completa, preservando o resto da ordem.
+ * Moves [url] to [targetIndex] of the complete list, preserving the rest of the order.
  *
- * O índice é o da lista **antes** da remoção — é o que a UI conhece ao passar o item arrastado por
- * cima de outra célula.
+ * The index is the one in the list **before** the removal — that is what the UI knows when it
+ * drags an item over another cell.
  */
 fun reorderedTo(order: List<String>, url: String, targetIndex: Int): List<String> {
   val without = order.filterNot { it == url }
@@ -37,11 +38,11 @@ fun reorderedTo(order: List<String>, url: String, targetIndex: Int): List<String
 }
 
 /**
- * Move [url] para a página [page] — o que acontece quando o item arrastado é segurado na borda e a
- * página avança sozinha.
+ * Moves [url] to page [page] — what happens when a dragged item is held against an edge and the
+ * page advances by itself.
  *
- * @param atStart `true` quando o item entra pela esquerda (avanço para a próxima página); `false`
- *   quando entra pela direita (volta para a anterior).
+ * @param atStart `true` when the item enters from the left (advancing to the next page); `false`
+ *   when it enters from the right (going back to the previous one).
  */
 fun movedToPage(
   order: List<String>,

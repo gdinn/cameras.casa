@@ -2,7 +2,7 @@ package com.gdisys.cameras.core.storage.domain.model
 
 import com.gdisys.cameras.core.network.STREAM_URL_HOST_PREFIX
 
-/** Configuração de fábrica oferecida ao usuário quando ele ainda não cadastrou URLs. */
+/** Factory configuration offered to the user before they have registered any URL. */
 object StreamDefaults {
 
   private const val DEFAULT_PORT = 8889

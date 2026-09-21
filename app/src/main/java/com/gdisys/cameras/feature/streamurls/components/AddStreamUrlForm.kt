@@ -23,8 +23,8 @@ import com.gdisys.cameras.R
 import com.gdisys.cameras.core.network.STREAM_URL_HOST_PREFIX
 
 /**
- * Formulário de uma nova URL. O host é fixo, então só porta e nome do stream são editáveis; a
- * validação acontece no ViewModel, ao confirmar, e o erro volta como toast.
+ * Form for a new URL. The host is fixed, so only the port and the stream name are editable;
+ * validation happens in the ViewModel on confirm, and the error comes back as a toast.
  */
 @Composable
 fun AddStreamUrlForm(
@@ -41,7 +41,8 @@ fun AddStreamUrlForm(
       modifier = Modifier.padding(12.dp),
       verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-      // Prefixo fixo, exibido a partir da mesma constante usada para montar a URL.
+      // Fixed prefix, rendered from the same constant the URL is assembled with, so the label on
+      // screen cannot drift from the URL actually built.
       Text(
         text = STREAM_URL_HOST_PREFIX,
         style = MaterialTheme.typography.bodyMedium

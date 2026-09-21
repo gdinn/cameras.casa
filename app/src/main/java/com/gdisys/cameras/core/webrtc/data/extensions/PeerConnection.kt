@@ -13,11 +13,11 @@ suspend fun PeerConnection.createOfferSuspend(): SessionDescription =
     createOffer(object : SdpObserver {
       override fun onCreateSuccess(sdp: SessionDescription?) {
         if (sdp != null) cont.resume(sdp)
-        else cont.resumeWithException(IllegalStateException("Offer criado sem SDP"))
+        else cont.resumeWithException(IllegalStateException("Offer created without an SDP"))
       }
       override fun onSetSuccess() {}
       override fun onCreateFailure(error: String?) {
-        cont.resumeWithException(IllegalStateException("Falha ao criar offer: $error"))
+        cont.resumeWithException(IllegalStateException("Failed to create the offer: $error"))
       }
       override fun onSetFailure(error: String?) {}
     }, MediaConstraints())
@@ -32,7 +32,7 @@ suspend fun PeerConnection.setLocalDescriptionSuspend(sdp: SessionDescription): 
       }
       override fun onCreateFailure(error: String?) {}
       override fun onSetFailure(error: String?) {
-        cont.resumeWithException(IllegalStateException("Falha ao definir SDP local: $error"))
+        cont.resumeWithException(IllegalStateException("Failed to set the local SDP: $error"))
       }
     }, sdp)
   }
@@ -46,7 +46,7 @@ suspend fun PeerConnection.setRemoteDescriptionSuspend(sdp: SessionDescription):
       }
       override fun onCreateFailure(error: String?) {}
       override fun onSetFailure(error: String?) {
-        cont.resumeWithException(IllegalStateException("Falha ao definir SDP remoto: $error"))
+        cont.resumeWithException(IllegalStateException("Failed to set the remote SDP: $error"))
       }
     }, sdp)
   }

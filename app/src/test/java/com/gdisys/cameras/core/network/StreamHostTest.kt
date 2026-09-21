@@ -1,5 +1,6 @@
 package com.gdisys.cameras.core.network
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -17,7 +18,7 @@ class StreamHostTest {
   private val networkSecurityConfig = File("src/main/res/xml/network_security_config.xml")
 
   @Test
-  fun `network security config allows the stream host`() {
+  fun `network security config allows the stream host and nothing else`() {
     assertTrue(
       "network_security_config.xml not found at ${networkSecurityConfig.absolutePath}",
       networkSecurityConfig.isFile
@@ -27,10 +28,15 @@ class StreamHostTest {
       .map { it.groupValues[1].trim() }
       .toList()
 
-    assertTrue(
-      "network_security_config.xml must declare $STREAM_HOST as a cleartext domain, " +
-        "but only declares $declaredDomains",
-      STREAM_HOST in declaredDomains
+    // Equality, not containment: every cleartext domain must derive from STREAM_HOST. Asserting
+    // only that the host is present lets a stale extra domain survive forever, which is what makes
+    // StreamHost.kt's claim that it is "the only host allowed" true by convention instead of by
+    // construction. Cleartext is an exception granted to one host, so the list is the whitelist.
+    assertEquals(
+      "network_security_config.xml must declare exactly one cleartext domain, $STREAM_HOST. " +
+        "Every host permitted here has to come from that constant.",
+      listOf(STREAM_HOST),
+      declaredDomains
     )
   }
 

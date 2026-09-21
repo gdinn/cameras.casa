@@ -19,9 +19,9 @@ class VpnLifecycleControllerImplTest {
 
   @Before
   fun setUp() {
-    // A construção real de Intent(context, Class) não popula seus campos sob o android.jar
-    // de teste (mockable jar), então validamos o componente alvo via mockkConstructor
-    // em vez de inspecionar o Intent retornado.
+    // Really constructing Intent(context, Class) does not populate its fields under the test
+    // android.jar (the mockable jar), so the target component is verified through
+    // mockkConstructor rather than by inspecting the returned Intent.
     mockkConstructor(Intent::class)
     controller = VpnLifecycleControllerImpl(context)
   }

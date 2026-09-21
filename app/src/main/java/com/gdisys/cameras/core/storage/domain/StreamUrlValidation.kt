@@ -7,27 +7,27 @@ private const val MAX_PORT = 65535
 
 private val STREAM_NAME_REGEX = Regex("^[A-Za-z0-9_-]+$")
 
-/** Resultado da validação de uma nova URL de stream. */
+/** Outcome of validating a new stream URL. */
 sealed interface StreamUrlValidationResult {
-  /** URL válida e ainda não cadastrada, já montada a partir da porta e do nome. */
+  /** Valid, not yet registered, and already assembled from the port and the name. */
   data class Valid(val url: String) : StreamUrlValidationResult
 
-  /** Porta ausente, não numérica ou fora da faixa [1, 65535]. */
+  /** Port missing, non-numeric, or outside the 1..65535 range. */
   data object InvalidPort : StreamUrlValidationResult
 
-  /** Nome vazio ou com caracteres fora de `^[A-Za-z0-9_-]+$`. */
+  /** Name empty, or holding characters outside `^[A-Za-z0-9_-]+$`. */
   data object InvalidStreamName : StreamUrlValidationResult
 
-  /** URL já presente na lista, comparada sem diferenciar maiúsculas de minúsculas. */
+  /** URL already in the list, compared case-insensitively. */
   data object DuplicateUrl : StreamUrlValidationResult
 }
 
 /**
- * Valida porta e nome do stream e monta a URL completa.
+ * Validates the port and the stream name, and assembles the full URL.
  *
- * A porta é normalizada para a sua forma numérica (`"0080"` → `"80"`), o que também evita
- * duplicatas que difeririam apenas por zeros à esquerda. O nome é preservado exatamente como
- * digitado; a checagem de duplicidade contra [existingUrls], no entanto, ignora a caixa.
+ * The port is normalized to its numeric form (`"0080"` -> `"80"`), which also rules out duplicates
+ * that would differ only by leading zeros. The name is kept exactly as typed; the duplicate check
+ * against [existingUrls] is case-insensitive all the same.
  */
 fun validateStreamUrl(
   port: String,

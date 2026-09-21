@@ -4,10 +4,10 @@ import com.gdisys.cameras.core.storage.domain.model.GridPreferences
 import com.gdisys.cameras.feature.streamurls.logic.validateGridPreferences
 
 /**
- * Estado da tela de Stream URLs.
+ * State of the Stream URLs screen.
  *
- * Toda a edição é feita em memória: [streamUrls] e os dois [GridInput] refletem o rascunho do
- * usuário, não o que está persistido. Nada chega ao storage antes do salvar.
+ * All editing happens in memory: [streamUrls] and both [GridInput]s reflect the user's draft, not
+ * what is persisted. Nothing reaches storage before an explicit save.
  */
 data class StreamURLsUiState(
   val isLoading: Boolean = true,
@@ -21,50 +21,50 @@ data class StreamURLsUiState(
   val isGridSectionDirty: Boolean = false,
   val dialog: StreamURLsDialog? = null
 ) {
-  /** Somente uma URL por vez: o `+` fica travado enquanto o formulário está aberto. */
+  /** One URL at a time: `+` stays locked while the form is open. */
   val isAddUrlButtonEnabled: Boolean
     get() = !isAddFormVisible
 
-  /** Salvar a grade só é possível com as duas orientações válidas. */
+  /** Saving the grid is only possible when both orientations are valid. */
   val isSaveGridButtonEnabled: Boolean
     get() = portraitGridInput.validated() != null && landscapeGridInput.validated() != null
 
-  /** União das pendências de todas as seções da tela — é o que dispara o diálogo de descarte. */
+  /** Union of every section's unsaved edits — this is what triggers the discard dialog. */
   val isDirty: Boolean
     get() = isUrlsSectionDirty || isGridSectionDirty
 }
 
 /**
- * Campos da grade de uma orientação, como texto — é o que o usuário digita, incluindo valores
- * incompletos ou inválidos. A conversão para o modelo acontece em [validated].
+ * One orientation's grid fields, as text — what the user types, incomplete or invalid values
+ * included. Conversion to the model happens in [validated].
  */
 data class GridInput(
   val columns: String = "",
   val rows: String = "",
   val dynamicRows: Boolean = true
 ) {
-  /** [GridPreferences] correspondente, ou `null` quando a configuração ainda é inválida. */
+  /** The matching [GridPreferences], or `null` while the configuration is still invalid. */
   fun validated(): GridPreferences? = validateGridPreferences(columns, rows, dynamicRows)
 }
 
-/** Campos de edição correspondentes a uma grade persistida. */
+/** Edit fields matching a persisted grid. */
 fun GridPreferences.toInput(): GridInput = GridInput(
   columns = columns.toString(),
   rows = rows.toString(),
   dynamicRows = dynamicRows
 )
 
-/** Diálogos de confirmação da tela; apenas um pode estar visível por vez. */
+/** The screen's confirmation dialogs; only one can be visible at a time. */
 sealed interface StreamURLsDialog {
-  /** Salvar sobrescreve o que está persistido. */
+  /** Saving overwrites what is persisted. */
   data object ConfirmSaveUrls : StreamURLsDialog
 
-  /** Salvar a grade sobrescreve as duas grades persistidas. */
+  /** Saving the grid overwrites both persisted grids. */
   data object ConfirmSaveGrid : StreamURLsDialog
 
-  /** A configuração padrão substitui a lista atual (só em memória). */
+  /** The default configuration replaces the current list, in memory only. */
   data object ConfirmLoadDefaults : StreamURLsDialog
 
-  /** Voltar com alterações pendentes. */
+  /** Going back with unsaved changes. */
   data object ConfirmDiscard : StreamURLsDialog
 }

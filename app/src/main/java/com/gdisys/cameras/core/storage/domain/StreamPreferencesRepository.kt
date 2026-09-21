@@ -7,8 +7,8 @@ interface StreamPreferencesRepository {
   val streamPreferences: Flow<StreamPreferences>
 
   /**
-   * Atualiza as preferências atomicamente. O [transform] recebe o valor persistido no momento da
-   * escrita, o que permite que cada use case altere apenas o seu escopo sem sobrescrever o resto.
+   * Updates the preferences atomically. [transform] receives the value persisted at write time,
+   * which is what lets each use case rewrite only its own slice without clobbering the rest.
    */
   suspend fun updateStreamPreferences(transform: (StreamPreferences) -> StreamPreferences)
 }

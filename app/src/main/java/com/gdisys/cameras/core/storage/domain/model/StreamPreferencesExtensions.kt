@@ -1,26 +1,26 @@
 package com.gdisys.cameras.core.storage.domain.model
 
 /**
- * Devolve as preferências com [StreamPreferences.portraitOrder] e
- * [StreamPreferences.landscapeOrder] alinhadas ao conjunto canônico
- * [StreamPreferences.streamUrls]: URLs que não existem mais são descartadas e as que faltam entram
- * no fim, na ordem em que aparecem no canônico.
+ * Returns the preferences with [StreamPreferences.portraitOrder] and
+ * [StreamPreferences.landscapeOrder] aligned to the canonical set [StreamPreferences.streamUrls]:
+ * URLs that no longer exist are dropped, and missing ones are appended in the order they appear in
+ * the canonical set.
  *
- * Aplicada na leitura (e só nela), é o ponto único que impede divergência silenciosa entre o
- * conjunto e as ordens.
+ * Applied on read, and only on read, this is the single point that keeps the set and the orders
+ * from diverging silently.
  */
 fun StreamPreferences.reconciled(): StreamPreferences = copy(
   portraitOrder = streamUrls.reconcile(portraitOrder),
   landscapeOrder = streamUrls.reconcile(landscapeOrder)
 )
 
-/** Ordem de exibição da orientação [orientation]. */
+/** Display order for [orientation]. */
 fun StreamPreferences.orderFor(orientation: StreamOrientation): List<String> = when (orientation) {
   StreamOrientation.PORTRAIT -> portraitOrder
   StreamOrientation.LANDSCAPE -> landscapeOrder
 }
 
-/** Configuração de grade da orientação [orientation]. */
+/** Grid configuration for [orientation]. */
 fun StreamPreferences.gridFor(orientation: StreamOrientation): GridPreferences =
   when (orientation) {
     StreamOrientation.PORTRAIT -> portraitGrid

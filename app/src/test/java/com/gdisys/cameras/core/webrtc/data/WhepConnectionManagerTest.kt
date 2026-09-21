@@ -28,8 +28,8 @@ class WhepConnectionManagerTest {
 
   @Before
   fun setUp() {
-    // WhepConnectionManager cria seu CoroutineScope com Dispatchers.Main.immediate no
-    // construtor, então só pode ser instanciado depois que MainDispatcherRule já rodou.
+    // WhepConnectionManager builds its CoroutineScope with Dispatchers.Main.immediate in the
+    // constructor, so it can only be instantiated after MainDispatcherRule has run.
     manager = WhepConnectionManager(whepClientProvider)
   }
 

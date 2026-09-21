@@ -14,23 +14,26 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gdisys.cameras.R
-import com.gdisys.cameras.core.components.ToastDisplayer
 import com.gdisys.cameras.core.components.LoadingScreen
+import com.gdisys.cameras.core.components.ToastDisplayer
 import com.gdisys.cameras.core.storage.domain.model.StreamOrientation
+import com.gdisys.cameras.core.webrtc.LocalEglBase
 import com.gdisys.cameras.feature.cameras.components.EmptyStreamsScreen
 import com.gdisys.cameras.feature.cameras.components.HomeScreen
-import org.webrtc.EglBase
 
 @Composable
 fun HomeRoute(
   viewModel: HomeViewModel = hiltViewModel(),
-  eglBase: EglBase,
   onNavigateToConfig: () -> Unit
 ) {
   val activity = LocalActivity.current
 
-  // Decisão P1: a orientação vem da Configuration e é empurrada para o ViewModel, que escolhe a
-  // ordem e a grade correspondentes.
+  // HomeScreen keeps EglBase as an explicit parameter so it stays previewable; the route is the
+  // layer that reads it off the composition.
+  val eglBase = LocalEglBase.current
+
+  // Only the UI can see the real device configuration, so orientation is read here and pushed
+  // down to the ViewModel, which picks the matching order and grid.
   val configuration = LocalConfiguration.current
   val orientation = remember(configuration.orientation) {
     if (configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) {

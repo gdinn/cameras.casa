@@ -11,8 +11,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 
 /**
- * @param aspectRatio proporção aplicada ao card; `null` quando o tamanho já vem medido de fora
- *   (modo fixo, onde a altura da linha é calculada pela [FixedGrid]).
+ * @param aspectRatio ratio applied to the card; `null` when the size already arrives measured from
+ *   outside (fixed mode, where [FixedGrid] computes the row height).
  */
 @Composable
 fun VideoStreamCard(

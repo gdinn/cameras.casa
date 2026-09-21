@@ -3,16 +3,16 @@ package com.gdisys.cameras.core.storage.domain.model
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
-/** Esquema corrente do storage de preferências de stream. */
+/** Current schema of the stream preferences store. */
 const val STREAM_PREFERENCES_SCHEMA_VERSION = 1
 
 /**
- * Preferências de exibição dos streams.
+ * Display preferences for the streams.
  *
- * [streamUrls] é a fonte de verdade sobre *quais* URLs existem; [portraitOrder] e [landscapeOrder]
- * dizem apenas *em que ordem* elas aparecem em cada orientação e devem ser permutações de
- * [streamUrls]. A leitura reconcilia as duas ordens (ver `StreamPreferences.reconciled`), de modo
- * que uma divergência nunca vira bug silencioso.
+ * [streamUrls] is the source of truth for *which* URLs exist; [portraitOrder] and [landscapeOrder]
+ * only say in *what order* they appear in each orientation, and must be permutations of
+ * [streamUrls]. Reads reconcile both orders (see `StreamPreferences.reconciled`), so a divergence
+ * can never become a silent bug.
  *
  * This class doubles as the on-disk schema, so every property carries an explicit [SerialName].
  * Renaming a property in Kotlin then leaves the stored name untouched — without it, a rename makes
@@ -41,13 +41,13 @@ data class StreamPreferences(
 )
 
 /**
- * Configuração da grade de uma orientação.
+ * Grid configuration for one orientation.
  *
- * Os nomes de serialização são explícitos pelo mesmo motivo de [StreamPreferences].
+ * The serial names are explicit for the same reason as in [StreamPreferences].
  *
- * @property columns número de colunas exibidas
- * @property rows número de linhas exibidas; ignorado quando [dynamicRows] é `true`
- * @property dynamicRows `true` = a grade cresce com scroll; `false` = linhas fixas com paginação
+ * @property columns number of columns displayed
+ * @property rows number of rows displayed; ignored when [dynamicRows] is `true`
+ * @property dynamicRows `true` = the grid grows and scrolls; `false` = fixed rows with paging
  */
 @Serializable
 data class GridPreferences(
@@ -56,7 +56,7 @@ data class GridPreferences(
   @SerialName("dynamicRows") val dynamicRows: Boolean
 )
 
-/** Orientação da tela, usada para escolher a ordem e a grade correspondentes. */
+/** Screen orientation, used to pick the matching order and grid. */
 enum class StreamOrientation {
   PORTRAIT,
   LANDSCAPE

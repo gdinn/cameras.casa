@@ -65,8 +65,8 @@ class StreamURLsViewModel @Inject constructor(
 
   init {
     viewModelScope.launch {
-      // A partir daqui a tela é dona do rascunho: mudanças posteriores no storage não o
-      // sobrescrevem, ou o usuário perderia o que está editando.
+      // From here on the screen owns the draft: later storage changes do not overwrite it, or
+      // the user would lose edits in progress.
       val storedPreferences = getStreamPreferencesUseCase().first()
       draft.value = storedPreferences
       screenState.update {
@@ -106,7 +106,7 @@ class StreamURLsViewModel @Inject constructor(
 
     when (result) {
       is StreamUrlValidationResult.Valid -> {
-        // A URL entra no conjunto canônico e no fim das duas ordens.
+        // The URL joins the canonical set and the end of both orders.
         updateStreamUrls { preferences ->
           preferences.copy(
             streamUrls = preferences.streamUrls + result.url,
@@ -144,7 +144,7 @@ class StreamURLsViewModel @Inject constructor(
 
   fun onLoadDefaultsConfirmed() {
     dismissDialog()
-    // Substituição só em memória: as duas ordens reiniciam na sequência do padrão.
+    // Replaced in memory only: both orders restart in the defaults' own sequence.
     updateStreamUrls { preferences ->
       preferences.copy(
         streamUrls = StreamDefaults.CAMERA_STREAM_URLS,
@@ -198,7 +198,7 @@ class StreamURLsViewModel @Inject constructor(
     val screen = screenState.value
     val portraitGrid = screen.portraitGridInput.validated()
     val landscapeGrid = screen.landscapeGridInput.validated()
-    // O botão já fica desabilitado com configuração inválida; a checagem aqui é a rede de proteção.
+    // The button is already disabled on an invalid configuration; this check is the safety net.
     if (portraitGrid == null || landscapeGrid == null) {
       showToast(StreamURLsToastMessage.INVALID_GRID)
       return
@@ -206,7 +206,7 @@ class StreamURLsViewModel @Inject constructor(
     val streamCount = draft.value.streamUrls.size
 
     viewModelScope.launch {
-      // Escopo restrito às duas grades: o conjunto de URLs e as ordens não são tocados.
+      // Scoped to the two grids: the URL set and the orders are left untouched.
       saveGridPreferencesUseCase(
         portraitGrid = portraitGrid,
         landscapeGrid = landscapeGrid
@@ -217,7 +217,7 @@ class StreamURLsViewModel @Inject constructor(
         screenState.update { it.copy(isGridSectionDirty = false) }
         showToast(StreamURLsToastMessage.GRID_SAVED)
 
-        // Grade menor que o número de streams é válido — só merece um aviso não bloqueante.
+        // A grid smaller than the stream count is valid — it only warrants a non-blocking warning.
         if (!portraitGrid.showsAllStreams(streamCount) ||
           !landscapeGrid.showsAllStreams(streamCount)
         ) {
@@ -230,7 +230,7 @@ class StreamURLsViewModel @Inject constructor(
     }
   }
 
-  /** Acionado tanto pelo botão de voltar da TopBar quanto pelo back do sistema. */
+  /** Triggered by both the TopBar back button and the system back press. */
   fun onBackRequested() {
     if (screenState.value.isDirty) {
       showDialog(StreamURLsDialog.ConfirmDiscard)
@@ -276,9 +276,9 @@ class StreamURLsViewModel @Inject constructor(
   }
 
   /**
-   * Ponto único de escrita nos campos da grade. O rascunho da seção B vive em [screenState]
-   * (e não em [draft]) porque os campos são texto livre enquanto o usuário digita — só viram
-   * [com.gdisys.cameras.core.storage.domain.model.GridPreferences] no salvar.
+   * Single write point for the grid fields. Section B's draft lives in [screenState] rather than
+   * in [draft] because the fields are free text while the user types — they only become
+   * [com.gdisys.cameras.core.storage.domain.model.GridPreferences] on save.
    */
   private fun updateGridInput(
     orientation: StreamOrientation,

@@ -3,19 +3,19 @@ package com.gdisys.cameras.core.webrtc
 import org.webrtc.VideoSink
 
 /**
- * Contrato para o cliente WHEP.
+ * Contract for the WHEP client.
  *
- * Fica fora de `domain` de propósito: o tipo do sink é do SDK WebRTC,
- * então este contrato já assume a dependência em vez de fingir ser domínio puro.
+ * It sits outside `domain` on purpose: the sink type comes from the WebRTC SDK, so this contract
+ * owns that dependency openly instead of pretending to be pure domain.
  */
 interface WhepClient {
   /**
-   * Negocia uma sessão de recepção de vídeo via WHEP (WebRTC-HTTP Egress Protocol).
+   * Negotiates one video-receiving session over WHEP (WebRTC-HTTP Egress Protocol).
    */
   suspend fun connect(streamUrl: String, videoSink: VideoSink)
 
   /**
-   * Encerra a conexão atual.
+   * Closes the current connection.
    */
   fun close()
 }

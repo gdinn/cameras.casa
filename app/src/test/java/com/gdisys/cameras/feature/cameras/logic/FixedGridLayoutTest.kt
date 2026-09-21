@@ -28,7 +28,7 @@ class FixedGridLayoutTest {
 
   @Test
   fun `the row height is the one of its tallest video`() {
-    // 4:3 é mais alto que 16:9 na mesma largura, então é ele quem define a linha.
+    // At the same width 4:3 is taller than 16:9, so it is the one that sets the row height.
     val heights = fixedGridRowHeights(
       aspectRatios = listOf(wide, squareish),
       columns = 2,
@@ -70,7 +70,7 @@ class FixedGridLayoutTest {
     )
 
     assertEquals(3, heights.size)
-    // Escala uniforme: as três linhas continuam iguais entre si e o conjunto cabe na tela.
+    // Uniform scaling: the three rows stay equal to each other and the set fits the screen.
     assertEquals(heights[0], heights[1], tolerance)
     assertEquals(heights[1], heights[2], tolerance)
     assertEquals(availableHeight, heights.sum() + spacing * 2, tolerance)
@@ -86,7 +86,7 @@ class FixedGridLayoutTest {
       verticalSpacing = 5f
     )
 
-    // Naturais: 50.625 e 160 — a razão entre elas sobrevive ao encolhimento.
+    // Natural heights: 50.625 and 160 — the ratio between them survives the shrinking.
     assertEquals(160f / 50.625f, heights[1] / heights[0], tolerance)
     assertEquals(105f, heights.sum() + 5f, tolerance)
   }

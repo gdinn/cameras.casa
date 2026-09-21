@@ -24,18 +24,18 @@ import com.gdisys.cameras.feature.cameras.logic.fittedCellSize
 import com.gdisys.cameras.feature.cameras.logic.fixedGridRowHeights
 
 /**
- * Grade de linhas fixas: **sem scroll** e com medição própria.
+ * Fixed-row grid: **no scrolling**, and it measures itself.
  *
- * A largura da célula é a tela dividida pelas colunas; a altura de cada linha é a do vídeo de maior
- * resolução da linha, e o conjunto é escalado uniformemente quando não cabe na altura disponível
- * (ver `fixedGridRowHeights`). Sobra de espaço é esperada: em **Portrait** o conteúdo fica à
- * esquerda e ao topo; em **Landscape**, centralizado nos dois eixos.
+ * Cell width is the screen divided by the column count; each row's height is that of its
+ * highest-resolution video, and the whole set is scaled uniformly when it does not fit the
+ * available height (see `fixedGridRowHeights`). Leftover space is expected: in **Portrait** the
+ * content sits to the left and to the top; in **Landscape** it is centred on both axes.
  *
- * As células que sobram quando `linhas × colunas` é maior que o número de streams simplesmente não
- * são emitidas — como o preenchimento é *row-major*, elas estão sempre no fim.
+ * Cells left over when `rows x columns` exceeds the number of streams are simply not emitted —
+ * filling is *row-major*, so they are always at the end.
  *
- * @param streams streams desta página, já na ordem da orientação corrente
- * @param onCellBounds posição de cada célula **na raiz**, usada pelo arraste da [PagedStreamGrid]
+ * @param streams the streams on this page, already in the current orientation's order
+ * @param onCellBounds each cell's position **in the root**, used by [PagedStreamGrid]'s drag
  */
 @Composable
 fun FixedGrid(

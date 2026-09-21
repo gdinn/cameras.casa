@@ -4,10 +4,10 @@ Onboarding reference for Android developers joining this project.
 
 | | |
 |---|---|
-| **Reference commit** | `6fdf1ce3b46a59a2091c951845815a362e897061` |
-| **Branch** | `main` |
+| **Reference commit** | `51092384ff1b2b13670e8876e7c1c85ecf751fb7` |
+| **Branch** | `refactor/adjustments_1` |
 | **Commit date** | 2026-09-21 |
-| **Subject** | `Merge pull request #3 from gdinn/feat/refactor_2` |
+| **Subject** | `docs: record the deliberate core/webrtc exception and the open gaps` |
 | **Application ID** | `com.gdisys.cameras` |
 | **Gradle modules** | a single `:app` module |
 
@@ -78,11 +78,28 @@ Three product decisions shape most of the code:
 
 **SDK levels:** `minSdk 26`, `targetSdk 36`, `compileSdk 36`, Java 17.
 
+Compose is configured by the Compose Compiler Gradle plugin (`libs.plugins.compose.compiler`), the
+only supported mechanism on Kotlin 2.x — there is no `composeOptions` block, and adding one back
+would be inert.
+
+**Release builds are not minified.** `isMinifyEnabled = false`, so `proguard-rules.pro` has no
+effect. This is a recorded decision, not an oversight: the keep rules this stack needs
+(`kotlinx.serialization` serializers, `org.webrtc.**` and `com.wireguard.**` JNI entry points) fail
+at *runtime* when they are wrong, so a green `assembleRelease` would not tell you the APK works.
+`app/build.gradle.kts` carries the checklist to work through before turning it on, which ends in
+smoke-testing a minified build on a real device.
+
 The build file also defines a bespoke `jacocoTestReport` task that narrows coverage to the
 "unit-testable" surface — it excludes generated code, DI, Compose UI, bootstrap, theme, and
 anything backed by a native/hardware stack (WebRTC native, `GoBackend`, AndroidKeyStore, Android
 `Service`) — and injects a LINE-coverage banner into the HTML report, since JaCoCo's own headline
 figure is instruction coverage.
+
+Those exclusions are plain strings with no link to the code, so a rename or a package move would
+leave them matching nothing and silently pull the excluded code back into the denominator.
+`JacocoExclusionsTest` reads the patterns back out of `app/build.gradle.kts` and resolves each one
+against the compiled classes, which turns that drift into a failing test. The build script is
+declared as an input of the test task so editing a pattern actually re-runs the guard.
 
 ---
 
@@ -97,7 +114,7 @@ top-level package groups live under `com.gdisys.cameras`:
 |---|---|
 | `app/*` | Composition root and navigation: `MainActivity`, `CamerasApp`, `app.navigation` |
 | `feature/*` | One package per screen. Route + ViewModel + UiState + `components/` + optional `logic/` |
-| `core/*` | Everything shared: `storage`, `vpn`, `webrtc`, `permission`, `network`, `utils`, `components`, plus the presentation base classes at the package root |
+| `core/*` | Everything shared: `storage`, `vpn`, `webrtc`, `permission`, `network`, `components`, plus the presentation base classes at the package root |
 | `ui/*` | `ui.theme` only — `CamerasTheme`, color and typography |
 
 ### 3.1 The layering rule
@@ -156,14 +173,9 @@ inter-screen wiring, including passing the QR-code result back through
 |---|---|---|---|
 | `Loading` (start) | `InitRoute` | `feature/init/InitRoute.kt` | `InitViewModel` |
 | `Config` | `ConfigRoute` | `feature/config/ConfigRoute.kt` | `ConfigViewModel` |
-| `QrCode` | `QrCodeRoute` | `core/components/QrCodeRoute.kt` | `QrCodeViewModel` |
+| `QrCode` | `QrCodeRoute` | `feature/qrcode/QrCodeRoute.kt` | `QrCodeViewModel` |
 | `StreamURLs` | `StreamURLsRoute` | `feature/streamurls/StreamURLsRoute.kt` | `StreamURLsViewModel` |
-| `Home` | `HomeRoute` | `feature/cameras/LoadingScreen.kt` | `HomeViewModel` |
-
-> Two of these are worth flagging now and are detailed in
-> [§9](#9-architectural-consistency-notes): `HomeRoute` is declared in a file called
-> `LoadingScreen.kt`, and the QR-code route lives under `core/components` rather than in a feature
-> package.
+| `Home` | `HomeRoute` | `feature/cameras/HomeRoute.kt` | `HomeViewModel` |
 
 **Navigation shape.** The flow is gated, not linear. `InitRoute` decides between `Config` and
 `Home` based on stored credentials. `ConfigRoute` refuses to leave for `Home` until three
@@ -236,13 +248,17 @@ Points of interest:
 - **Platform round-trips are events, not state.** VPN consent and the camera permission request are
   emitted as `Channel` events and launched by the reusable
   `LaunchActivityResultOnEvent` composable (`core/components/ActivityResultEventEffect.kt`).
+  `VpnPermissionUiEvent.RequestPermission` is deliberately payload-free: the ViewModel decides
+  *whether* consent is needed (`RequestVpnPermissionUseCase() != null`) and `ConfigRoute` builds the
+  `Intent` with `VpnService.prepare(context)`. No `android.content.Intent` crosses the ViewModel
+  boundary, and a `null` from `prepare` simply launches nothing.
 - **QR result arrives via navigation, not a shared ViewModel.** `QrCodeRoute` writes the raw JSON
   into `previousBackStackEntry.savedStateHandle[QR_CODE_RESULT_KEY]`; `ConfigRoute` observes it,
   hands it to `onQrCodeScanned`, then clears it through `onQrCodeResultConsumed`.
 - `refreshCameraPermissionState()` runs on `ON_RESUME` because the user can grant camera access
   from system settings while the screen is backgrounded.
 
-### 5.3 QR code scanner (`core/components`)
+### 5.3 `feature/qrcode` — QR code scanner
 
 ![MVVM — QrCode route](images/mvvm-qrcode-route.png)
 
@@ -251,10 +267,15 @@ payload it reads.
 
 | Role | Type |
 |---|---|
-| View | `QrCodeRoute.kt`, `QrCodeScreen.kt` |
+| View | `QrCodeRoute.kt`, `components/QrCodeScreen.kt` |
 | ViewModel | `QrCodeViewModel.kt` |
-| Analyzer | `core/utils/QrCodeAnalyzer.kt` (`ImageAnalysis.Analyzer`) |
+| Analyzer | `components/QrCodeAnalyzer.kt` (`ImageAnalysis.Analyzer`) |
 | Messages | `QrCodeToastMessage` |
+
+The analyzer sits under `components/`, not under a `data/` sub-package: it is an
+`ImageAnalysis.Analyzer` handed straight to CameraX by the screen, so it is a platform/UI concern
+rather than a repository. Filing it under `data/` would also trip the Konsist rule that forbids any
+`feature.*` file from importing a name containing `.data.`.
 
 This ViewModel **injects nothing**: it is pure UI arbitration. Decoding, validation and persistence
 of the payload are `ConfigViewModel`'s job, after the string travels back through navigation. It
@@ -309,7 +330,7 @@ configuration.
 
 | Role | Type |
 |---|---|
-| View | `HomeRoute` (in `LoadingScreen.kt`) + 15 files in `components/` |
+| View | `HomeRoute.kt` + 15 files in `components/` |
 | ViewModel | `HomeViewModel.kt` |
 | State | `HomeUiState.kt` — `Loading` \| `Empty` \| `Ready(streams, focusedStream, grid, orientation)` |
 | Logic | `logic/StreamPaging.kt`, `logic/FixedGridLayout.kt` |
@@ -395,9 +416,12 @@ reporting is a data concern. `GetStreamPreferencesUseCase` then decides what the
 `catch`ing into empty preferences so a corrupt file degrades to the "no URLs configured" screen
 instead of cancelling every collector's `combine` and freezing the UI.
 
-**Scoped writes.** `StreamPreferencesRepository.updateStreamPreferences { current -> ... }` takes a
-transform receiving the value persisted at write time, which is what lets three different use cases
-each rewrite only their own slice of the same file atomically.
+**Scoped writes.** Both DataStore managers take a transform receiving the value persisted at write
+time — `updateStreamPreferences { current -> ... }` and `updateUserPreferences { current -> ... }` —
+which is what lets several use cases each rewrite only their own slice of the same file atomically,
+with no read-then-write race. `UserPreferencesRepository` still exposes a wholesale
+`updateUserPreferences(userPreferences)`, because every caller today writes a complete object; the
+transform underneath is what makes a partial write possible when one is needed.
 
 ### 6.2 `core/vpn` — WireGuard tunnel
 
@@ -438,6 +462,13 @@ for every screen opened after the first was destroyed. `WhepClientImpl` is likew
 `ViewModelComponent`-bound because it holds a mutable `peerConnection`. Only the stateless
 `WhepRemoteDataSource` and the `PeerConnectionFactory` / `EglBase` are singletons.
 
+**`EglBase` reaches the UI as a `CompositionLocal`, not as a parameter.** `MainActivity` injects the
+singleton and provides `LocalEglBase` (`core/webrtc/EglBaseCompositionLocal.kt`) around the whole
+composition; `HomeRoute` reads it and passes it to `HomeScreen` explicitly. Threading it down as a
+parameter instead would put a WebRTC SDK type in `NavigationRoot`'s signature, making the navigation
+graph depend on the video stack it only routes to. The local stops at the route on purpose —
+`HomeScreen` keeps an explicit `eglBase` parameter so it stays pure and previewable.
+
 ### 6.4 `core/permission`
 
 Thin repositories over two platform calls — `ContextCompat.checkSelfPermission(CAMERA)` and
@@ -461,8 +492,8 @@ device into a build failure.
 - `ToastEventViewModel` — abstract base owning the toast `Channel`; every ViewModel extends it.
 - `ToastMessage` — `@StringRes` interface implemented by per-feature enums.
 - `Constants.kt` — `DEBUG_TAG`.
-- `core/components/` — `ToastDisplayer`, `LoadingScreen`, `LaunchActivityResultOnEvent`, and the
-  whole QR-code route (see [§9](#9-architectural-consistency-notes)).
+- `core/components/` — exactly three genuinely shared widgets: `ToastDisplayer`, `LoadingScreen` and
+  `LaunchActivityResultOnEvent`. Anything that is a screen of its own belongs in `feature/`.
 
 ### 6.7 `ui/theme`
 
@@ -542,9 +573,18 @@ swapping WHEP for RTSP/HLS a change that stops at that boundary.
 | **Device camera** | CameraX + ML Kit (on-device, no network) | `QrCodeScreen`, `QrCodeAnalyzer` |
 
 **Network reachability is tightly constrained.** All stream traffic is cleartext HTTP to a
-ULA IPv6 literal, reachable only through the tunnel. `network_security_config.xml` whitelists that
-host for cleartext; `STREAM_HOST` is the single Kotlin source of truth; `StreamHostTest` pins the
-two together. Default URLs ship as `http://[fd00:20::cafe]:8889/cam_160..163` (`StreamDefaults`).
+ULA IPv6 literal, reachable only through the tunnel. `network_security_config.xml` whitelists *the*
+host for cleartext — exactly one entry, nothing else; `STREAM_HOST` is the single Kotlin source of
+truth; `StreamHostTest` asserts the XML declares that host **and only** that host, so a stale
+exception cannot outlive its use. Default URLs ship as
+`http://[fd00:20::cafe]:8889/cam_160..163` (`StreamDefaults`).
+
+**Nothing persisted leaves the device.** `allowBackup` stays on, but `backup_rules.xml` and
+`data_extraction_rules.xml` exclude `filesDir/datastore/` from cloud backup *and* device transfer.
+The Keystore key that encrypts both stores is device-bound and does not travel, so a restored file
+would be undecryptable ciphertext — and `EncryptedPreferencesSerializer` falls back to
+`defaultValue` on a read failure, which would look to the user like their cameras and credentials
+silently disappeared. Excluding the files makes the app ask for the QR code again instead.
 
 **Credential shape.** `UserPreferences` splits the WireGuard config in two, mirroring the
 `[Interface]` / `[Peer]` sections (prefix `i` = interface, `p` = peer):
@@ -619,113 +659,43 @@ values.
 
 ## 9. Architectural consistency notes
 
-The layering is well enforced where the Konsist test reaches. The items below are the gaps found
-against a strict Clean Architecture + MVVM reading of the tree at `6fdf1ce`. They are observations
-for an incoming developer, ordered roughly by how likely they are to cause confusion or a real
-defect — not a work plan.
+Everything a strict Clean Architecture + MVVM reading of this tree used to flag has been closed,
+except the two entries below. Both are recorded on purpose: the first is a deliberate exception you
+should not "fix", the second is a real gap that is simply not closed yet.
 
-### 9.1 Naming and placement
+### 9.1 `core/webrtc` contracts sit at the package root — deliberate
 
-1. **`HomeRoute` is declared in `feature/cameras/LoadingScreen.kt`.** There is no `HomeRoute.kt`.
-   The file name describes neither its main content (the Home route composable, ~80 lines) nor the
-   `LoadingScreen` it merely *calls* from `core/components`. This is the single most disorienting
-   thing in the tree for a newcomer, and it has a measurable side effect — see 9.4.
+`StreamConnectionRepository` and `WhepClient` live directly in `core/webrtc`, not under
+`core/webrtc/domain`. `VideoSink` is a WebRTC SDK type and the sink *is* the renderer the UI
+creates, so wrapping it in a project type would only unwrap it again in the same frame; the contract
+owns the dependency instead of pretending to be pure domain.
 
-2. **The QR-code screen lives in `core/components`, not `feature/qrcode`.** `QrCodeRoute`,
-   `QrCodeScreen`, `QrCodeViewModel` and `QrCodeToastMessage` are a complete MVVM feature with its
-   own navigation destination, yet they sit beside genuinely shared widgets like `ToastDisplayer`.
-   A side effect is that the Konsist rule *"a feature does not import another feature"* does not
-   apply to it: `feature/config` reaches the scanner through navigation, but any feature could
-   import it directly without failing a test.
+The consequence is worth knowing, because it is invisible otherwise: `LayerDependencyTest` scopes
+all of its domain rules to `core..domain..`, so **none of them apply to `core/webrtc`**. What
+actually protects that boundary is the separate `feature → .data.` rule — the presentation layer
+depends on the contracts and never on `core/webrtc/data`. This is written on `domainFiles()` in
+`LayerDependencyTest` as well, which is where someone extending the rules will be looking.
 
-3. **`core/components` mixes two concerns** — reusable primitives (`ToastDisplayer`,
-   `LoadingScreen`, `LaunchActivityResultOnEvent`) and one full screen. `core/utils/QrCodeAnalyzer`
-   is the same feature's data source, filed elsewhere again.
+### 9.2 Release builds are not minified — open
 
-4. **Two `LoadingScreen` composables exist** (`core/components/LoadingScreen.kt` and the file of
-   that name in `feature/cameras`), which is why `feature/cameras/LoadingScreen.kt` has to import
-   the other one by name.
+`isMinifyEnabled = false`, so `proguard-rules.pro` is inert. This is a *documented decision* rather
+than drift — see [§2](#2-stack-and-build-configuration) and the comment on the `release` block in
+`app/build.gradle.kts`, which lists the keep rules to add and ends by requiring a minified build to
+be smoke-tested on a device. It stays listed here because it is a gap someone should eventually
+close, not a permanent choice.
 
-### 9.2 Layering
-
-5. **`core/webrtc` contracts sit at the package root rather than in `core/webrtc/domain`.** This is
-   *documented and deliberate* — `VideoSink` is an SDK type — but it has a consequence worth
-   knowing: `LayerDependencyTest` scopes its domain rules to `core..domain..`, so none of them
-   apply to `core/webrtc`. What actually protects the boundary there is the separate
-   `feature → .data.` rule.
-
-6. **`EglBase` is threaded through the navigation layer.** `MainActivity` injects it, passes it to
-   `NavigationRoot`, which passes it to `HomeRoute`, which passes it to `HomeScreen`. A WebRTC SDK
-   type therefore appears in the signature of the app's navigation graph. Injecting it where it is
-   used (or exposing it through the existing `LocalWebRtcConnection`) would keep the SDK out of
-   `app/navigation`.
-
-7. **`ConfigViewModel` exposes an `android.content.Intent`** in `VpnPermissionUiEvent.RequestPermission`.
-   Pragmatic — it is what `VpnService.prepare()` returns and what the launcher consumes — but it is
-   a platform type crossing the ViewModel boundary.
-
-8. **`DataStoreManager.updateUserPreferences` ignores the current value** (`updateData { userPreferences }`),
-   unlike its stream-preferences sibling, which takes a transform. User preferences can therefore
-   only be replaced wholesale, never partially updated. This is invisible today because
-   `ConfigViewModel` always writes a complete object, but it is an asymmetry waiting to surprise
-   the next writer of a partial update.
-
-### 9.3 Configuration drift
-
-9. **`network_security_config.xml` declares two cleartext domains** — `cameras.casa` and
-   `[fd00:20::cafe]` — while `StreamHost.kt`'s KDoc states that the host it defines is "the only
-   host allowed by" that file. `cameras.casa` appears nowhere in Kotlin code. `StreamHostTest` only
-   asserts that `STREAM_HOST` is *present* among the declared domains, so the stale entry passes.
-
-10. **`composeOptions { kotlinCompilerExtensionVersion = "1.5.1" }`** is still set in
-    `app/build.gradle.kts` while the project uses the Compose Compiler Gradle plugin on Kotlin 2.3.
-    The setting is obsolete in that configuration and does not reflect the compiler actually in use.
-
-11. **`android:allowBackup="true"` with template backup rules.** Both `backup_rules.xml` and
-    `data_extraction_rules.xml` are the unmodified AGP samples with every rule commented out, so
-    the DataStore files are eligible for cloud backup and device transfer. Their contents are
-    encrypted with a **device-bound** Keystore key that does not travel, so a restore on a new
-    device yields ciphertext that cannot be decrypted —
-    `EncryptedPreferencesSerializer` catches the failure and silently returns `defaultValue`. The
-    user's cameras and credentials appear to have vanished with no error. Excluding both DataStore
-    files from backup would make the outcome honest.
-
-12. **Release builds have `isMinifyEnabled = false`**, so `proguard-rules.pro` is inert.
-
-### 9.4 Coverage configuration
-
-13. **Two JaCoCo exclusion patterns match nothing**, because they name classes that do not exist:
-
-    | Pattern in `jacocoTestReport` | Class actually produced |
-    |---|---|
-    | `com/gdisys/cameras/feature/cameras/HomeRouteKt*.class` | `feature/cameras/LoadingScreenKt` |
-    | `com/gdisys/cameras/core/components/LoadingStorageScreenKt*.class` | `core/components/LoadingScreenKt` |
-
-    Both files are Compose UI that the task's own KDoc says is deliberately out of unit-test scope,
-    yet both are currently **counted** in the coverage denominator. Fixing item 9.1.1 (renaming the
-    file to `HomeRoute.kt`) would make the first pattern correct by construction.
-
-14. **`androidTest/` contains only the generated `ExampleInstrumentedTest`.** The JaCoCo comment
-    justifies excluding Compose UI on the grounds that it is "tested via Compose UI Test", and the
-    dependencies are wired, but no such tests exist yet.
-
-### 9.5 Language policy
-
-15. **The codebase is bilingual.** `CLAUDE.md` mandates en-US for code and comments. Recently
-    refactored files follow it (`StreamHost.kt`, `StreamPreferences.kt`, `LayerDependencyTest.kt`,
-    `StreamConnectionRepository.kt`, parts of `StreamURLsViewModel.kt`), while much of the rest —
-    including most `core/vpn`, `core/webrtc` and the Gradle task documentation — is in pt-BR. Some
-    single files mix both languages in adjacent KDoc blocks. Error messages passed to
-    `IllegalArgumentException` are also in pt-BR.
-
-    Two build-file comments also reference `relatorio_tested_expandido.md`, a document not present
-    in the repository.
+Related, and also open: `src/androidTest/` still holds only the generated `ExampleInstrumentedTest`.
+The Compose UI Test dependencies are wired but unused. That no longer contradicts anything — the
+JaCoCo KDoc now says Compose UI is excluded *by decision* rather than claiming it is covered
+elsewhere — but the highest-value tests to add, if someone picks this up, are `ConfigScreen` (the
+four `ConfigButtonState` renderings and the navigation gate), `StreamURLsScreen` (add/remove/reset
+and the per-section dirty flags) and `EmptyStreamsScreen`.
 
 ---
 
 ## 10. Testing and quality gates
 
-**43 test files** under `app/src/test/`, mirroring the production package structure. Coverage is
+**44 test files** under `app/src/test/`, mirroring the production package structure. Coverage is
 concentrated where the project decided it belongs: ViewModels, use cases, repository
 implementations, pure logic and serialization.
 
@@ -737,9 +707,14 @@ implementations, pure logic and serialization.
 | VPN | `VpnRepositoryImplTest`, `VpnConfigTest`, `VpnLifecycleControllerImplTest`, 4 use-case tests |
 | WebRTC | `WhepConnectionManagerTest`, `WhepRemoteDataSourceImplTest` (MockWebServer) |
 | Architecture | `LayerDependencyTest` (Konsist) |
-| Config drift | `StreamHostTest` (Kotlin constant vs. XML) |
+| Config drift | `StreamHostTest` (Kotlin constant vs. XML), `JacocoExclusionsTest` (coverage patterns vs. compiled classes) |
 
 `MainDispatcherRule` provides the standard `Dispatchers.Main` replacement for coroutine tests.
+
+**Language.** All code, identifiers, KDoc, comments and developer-facing exception messages are
+en-US, as `CLAUDE.md` requires — production sources, tests and the Gradle build script alike. The
+only user-facing text lives in `res/values*/strings.xml`, where pt-BR is a translation
+(`values-pt-rBR`), not a stray comment.
 
 Useful commands:
 
@@ -763,7 +738,7 @@ A suggested path through the code for a new contributor:
 3. `feature/init/` — the smallest complete route; the MVVM pattern in ~40 lines.
 4. `core/storage/domain/model/StreamPreferences.kt` + `StreamPreferencesExtensions.kt` — the central
    data model and its canonical-set invariant.
-5. `feature/cameras/LoadingScreen.kt` → `HomeViewModel.kt` → `components/HomeScreen.kt` — the main
+5. `feature/cameras/HomeRoute.kt` → `HomeViewModel.kt` → `components/HomeScreen.kt` — the main
    feature, top-down.
 6. `core/webrtc/` — the streaming contract and its WHEP implementation.
 

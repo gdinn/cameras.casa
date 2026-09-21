@@ -13,18 +13,16 @@ import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
-import com.gdisys.cameras.core.components.QrCodeRoute
 import com.gdisys.cameras.feature.cameras.HomeRoute
 import com.gdisys.cameras.feature.config.ConfigRoute
 import com.gdisys.cameras.feature.config.QR_CODE_RESULT_KEY
 import com.gdisys.cameras.feature.init.InitRoute
+import com.gdisys.cameras.feature.qrcode.QrCodeRoute
 import com.gdisys.cameras.feature.streamurls.StreamURLsRoute
-import org.webrtc.EglBase
 
 @Composable
 fun NavigationRoot(
-  navController: NavHostController,
-  eglBase: EglBase
+  navController: NavHostController
 ) {
   NavHost(
     navController = navController,
@@ -97,7 +95,6 @@ fun NavigationRoot(
 
     composable<NavigationRoute.Home> {
       HomeRoute(
-        eglBase = eglBase,
         onNavigateToConfig = {
           navController.navigate(NavigationRoute.Config)
         }

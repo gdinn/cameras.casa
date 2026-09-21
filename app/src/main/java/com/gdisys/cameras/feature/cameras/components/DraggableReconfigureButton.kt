@@ -26,16 +26,17 @@ import com.gdisys.cameras.R
 import kotlin.math.roundToInt
 
 /**
- * "Reconfigure" flutuando sobre a grade do modo fixo.
+ * "Reconfigure", floating over the fixed-mode grid.
  *
- * Como aqui não há scroll para revelá-lo (é o papel do `OverscrollReconfigure` no modo dinâmico),
- * o botão fica sempre visível — e arrastável, para sair da frente do stream que estiver atrás dele.
+ * There is no scrolling here to reveal it — that is `OverscrollReconfigure`'s job in dynamic mode —
+ * so the button is always visible, and draggable, so it can be moved off whichever stream it
+ * happens to cover.
  *
- * A posição é um deslocamento a partir do canto inferior direito, limitado ao tamanho do
- * contêiner, de modo que o botão nunca escapa da tela.
+ * Its position is an offset from the bottom-right corner, clamped to the container's size, so the
+ * button can never be dragged off screen.
  *
- * @param containerWidth largura disponível, usada para limitar o arraste
- * @param containerHeight altura disponível, usada para limitar o arraste
+ * @param containerWidth available width, used to clamp the drag
+ * @param containerHeight available height, used to clamp the drag
  */
 @Composable
 fun BoxScope.DraggableReconfigureButton(
@@ -62,8 +63,8 @@ fun BoxScope.DraggableReconfigureButton(
         detectDragGestures { change, dragAmount ->
           change.consume()
           val marginPx = currentMargin.toPx()
-          // A âncora é o canto inferior direito: o deslocamento só pode ser negativo, e no
-          // máximo até o canto oposto.
+          // The anchor is the bottom-right corner, so the offset can only be negative, and only
+          // as far as the opposite corner.
           val minX = -(currentContainerWidth.toPx() - buttonSize.width - 2 * marginPx)
           val minY = -(currentContainerHeight.toPx() - buttonSize.height - 2 * marginPx)
           offset = Offset(

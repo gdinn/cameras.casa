@@ -73,8 +73,8 @@ class StreamPagingTest {
 
   @Test
   fun `movedToPage drops the item at the start of the next page`() {
-    // Arrastando "a" (página 0) até a borda direita: ele entra pela esquerda da página 1, que
-    // passa a ser ["a", "f", "g"] — a página 0 fica cheia com os quatro que sobraram.
+    // Dragging "a" (page 0) to the right edge: it enters page 1 from the left, which becomes
+    // ["a", "f", "g"] — page 0 fills up with the four that were left over.
     assertEquals(
       listOf("b", "c", "d", "e", "a", "f", "g"),
       movedToPage(streams, url = "a", page = 1, itemsPerPage = 4, atStart = true)
@@ -83,7 +83,7 @@ class StreamPagingTest {
 
   @Test
   fun `movedToPage drops the item at the end of the previous page`() {
-    // Arrastando "g" (página 1) até a borda esquerda: ele entra pela direita da página 0.
+    // Dragging "g" (page 1) to the left edge: it enters page 0 from the right.
     assertEquals(
       listOf("a", "b", "c", "g", "d", "e", "f"),
       movedToPage(streams, url = "g", page = 0, itemsPerPage = 4, atStart = false)

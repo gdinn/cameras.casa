@@ -10,9 +10,9 @@ import java.io.OutputStream
 import java.util.Base64
 
 /**
- * Serializer de DataStore que grava o modelo [T] como JSON cifrado por [crypto] e codificado em
- * Base64. Qualquer falha de leitura (Base64 inválido, decriptação, JSON inválido) cai no
- * [defaultValue], para que um storage corrompido não derrube o app.
+ * DataStore serializer that writes the [T] model as JSON, encrypted with [crypto] and Base64
+ * encoded. Any read failure (bad Base64, failed decryption, malformed JSON) falls back to
+ * [defaultValue], so a corrupt store does not take the app down with it.
  *
  * That fallback is also why [json] is configured rather than default: silently returning the
  * default value means silently discarding the user's settings, so the encoding is tuned to make

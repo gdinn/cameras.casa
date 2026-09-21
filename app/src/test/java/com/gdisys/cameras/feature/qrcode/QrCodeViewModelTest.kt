@@ -1,7 +1,8 @@
-package com.gdisys.cameras.core.components
+package com.gdisys.cameras.feature.qrcode
 
 import app.cash.turbine.test
 import com.gdisys.cameras.MainDispatcherRule
+import com.gdisys.cameras.core.components.ToastUiEvent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Rule
