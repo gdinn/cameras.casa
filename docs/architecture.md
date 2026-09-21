@@ -82,12 +82,43 @@ Compose is configured by the Compose Compiler Gradle plugin (`libs.plugins.compo
 only supported mechanism on Kotlin 2.x — there is no `composeOptions` block, and adding one back
 would be inert.
 
-**Release builds are not minified.** `isMinifyEnabled = false`, so `proguard-rules.pro` has no
-effect. This is a recorded decision, not an oversight: the keep rules this stack needs
-(`kotlinx.serialization` serializers, `org.webrtc.**` and `com.wireguard.**` JNI entry points) fail
-at *runtime* when they are wrong, so a green `assembleRelease` would not tell you the APK works.
-`app/build.gradle.kts` carries the checklist to work through before turning it on, which ends in
-smoke-testing a minified build on a real device.
+**Release builds are minified.** `isMinifyEnabled = true` with
+`proguard-android-optimize.txt` + `proguard-rules.pro`, so that file is now the contract between R8
+and the parts of the app it cannot see. It holds three keep blocks, each with its rationale next to
+it:
+
+| Keep block | Why R8 cannot infer it |
+|---|---|
+| `kotlinx.serialization` | Serializers are looked up at runtime from the annotated class's `Companion` / `INSTANCE`. Covers the on-disk schema, the QR payload and the type-safe navigation routes. The generated `com.gdisys.cameras.**$$serializer` classes are kept with `includedescriptorclasses` |
+| `ComponentRegistrar` implementors (`<init>()`) | ML Kit discovers its registrars from manifest `<meta-data>` *values* and instantiates them reflectively — see below |
+| `org.webrtc.**` | The native layer instantiates classes, calls methods and reads fields by name through JNI |
+| `com.wireguard.**` | `GoBackend`'s native symbols are bound by fully qualified Java name; `GoBackend$VpnService` is also named in the manifest |
+
+Hilt/Dagger, AndroidX and CameraX ship consumer rules that cover them, and are deliberately not
+repeated.
+
+**The ML Kit rule is worth understanding, because it is a whole class of bug.** ML Kit's own
+consumer rules keep the *names* of `BarcodeRegistrar`, `VisionCommonRegistrar` and
+`CommonComponentRegistrar`, but R8 in full mode — the AGP 8+ default — removes the default
+constructor of a class that nothing constructs in code, and these are only ever constructed by
+`ComponentDiscovery` through `Class.forName(name).newInstance()`. Discovery swallows the resulting
+failure, so the barcode component is simply never registered and `BarcodeScanning.getClient()`
+throws an NPE the moment the QR screen builds its analyzer. Keeping the class name is not enough;
+the rule has to keep `<init>()`. Any future dependency that is instantiated reflectively will fail
+the same silent way.
+
+The caveat that kept minification off for so long has not gone away: a wrong keep rule fails at
+*runtime*, so a green `assembleRelease` is necessary but not sufficient. Any change to the keep
+rules, to a `@Serializable` model, or to the VPN/WebRTC dependencies has to be smoke-tested on a
+real device — scan the QR code, bring the tunnel up, play a stream. The rule set above was
+validated that way end to end on a physical device: QR scan, tunnel up, streams rendering.
+`SourceFile` and `LineNumberTable` are kept so release stack traces can be de-obfuscated with
+`app/build/outputs/mapping/release/mapping.txt`.
+
+Code shrinking lands the whole app in a single ~4.5 MB `classes.dex`, but the release APK is still
+~82 MB: ~74 MB of that is native libraries (`libjingle_peerconnection`, `libbarhopper_v3`,
+`libwg-go`) shipped for four ABIs. Minification does not touch those — `isShrinkResources`, ABI
+splits or an App Bundle are the levers there, and none of them is enabled.
 
 The build file also defines a bespoke `jacocoTestReport` task that narrows coverage to the
 "unit-testable" surface — it excludes generated code, DI, Compose UI, bootstrap, theme, and
@@ -676,20 +707,20 @@ actually protects that boundary is the separate `feature → .data.` rule — th
 depends on the contracts and never on `core/webrtc/data`. This is written on `domainFiles()` in
 `LayerDependencyTest` as well, which is where someone extending the rules will be looking.
 
-### 9.2 Release builds are not minified — open
+### 9.2 Instrumented tests are still the generated stub — open
 
-`isMinifyEnabled = false`, so `proguard-rules.pro` is inert. This is a *documented decision* rather
-than drift — see [§2](#2-stack-and-build-configuration) and the comment on the `release` block in
-`app/build.gradle.kts`, which lists the keep rules to add and ends by requiring a minified build to
-be smoke-tested on a device. It stays listed here because it is a gap someone should eventually
-close, not a permanent choice.
+`src/androidTest/` holds only the generated `ExampleInstrumentedTest`. The Compose UI Test
+dependencies are wired but unused. That no longer contradicts anything — the JaCoCo KDoc says
+Compose UI is excluded *by decision* rather than claiming it is covered elsewhere — but the
+highest-value tests to add, if someone picks this up, are `ConfigScreen` (the four
+`ConfigButtonState` renderings and the navigation gate), `StreamURLsScreen` (add/remove/reset and
+the per-section dirty flags) and `EmptyStreamsScreen`.
 
-Related, and also open: `src/androidTest/` still holds only the generated `ExampleInstrumentedTest`.
-The Compose UI Test dependencies are wired but unused. That no longer contradicts anything — the
-JaCoCo KDoc now says Compose UI is excluded *by decision* rather than claiming it is covered
-elsewhere — but the highest-value tests to add, if someone picks this up, are `ConfigScreen` (the
-four `ConfigButtonState` renderings and the navigation gate), `StreamURLsScreen` (add/remove/reset
-and the per-section dirty flags) and `EmptyStreamsScreen`.
+The gap that used to sit next to this one — release builds not being minified — is closed:
+`isMinifyEnabled = true` and `proguard-rules.pro` carries the keep rules, described in
+[§2](#2-stack-and-build-configuration). What remains of it is a process obligation rather than a
+gap: a minified build has to be exercised on a device, because R8 mistakes in this stack surface at
+runtime.
 
 ---
 
@@ -722,6 +753,7 @@ Useful commands:
 ./gradlew :app:testDebugUnitTest     # unit tests, including the architecture assertions
 ./gradlew :app:jacocoTestReport      # coverage → app/build/reports/jacoco/jacocoTestReport/html/index.html
 ./gradlew :app:assembleDebug
+./gradlew :app:assembleRelease       # runs R8; mapping → app/build/outputs/mapping/release/mapping.txt
 ```
 
 Note that `LayerDependencyTest` and `StreamHostTest` are ordinary unit tests, so a layering
