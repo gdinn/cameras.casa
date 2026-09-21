@@ -4,10 +4,10 @@ Onboarding reference for Android developers joining this project.
 
 | | |
 |---|---|
-| **Reference commit** | `6fdf1ce3b46a59a2091c951845815a362e897061` |
-| **Branch** | `main` |
+| **Reference commit** | `51092384ff1b2b13670e8876e7c1c85ecf751fb7` |
+| **Branch** | `refactor/adjustments_1` |
 | **Commit date** | 2026-09-21 |
-| **Subject** | `Merge pull request #3 from gdinn/feat/refactor_2` |
+| **Subject** | `docs: record the deliberate core/webrtc exception and the open gaps` |
 | **Application ID** | `com.gdisys.cameras` |
 | **Gradle modules** | a single `:app` module |
 
