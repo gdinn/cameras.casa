@@ -158,12 +158,11 @@ inter-screen wiring, including passing the QR-code result back through
 | `Config` | `ConfigRoute` | `feature/config/ConfigRoute.kt` | `ConfigViewModel` |
 | `QrCode` | `QrCodeRoute` | `core/components/QrCodeRoute.kt` | `QrCodeViewModel` |
 | `StreamURLs` | `StreamURLsRoute` | `feature/streamurls/StreamURLsRoute.kt` | `StreamURLsViewModel` |
-| `Home` | `HomeRoute` | `feature/cameras/LoadingScreen.kt` | `HomeViewModel` |
+| `Home` | `HomeRoute` | `feature/cameras/HomeRoute.kt` | `HomeViewModel` |
 
-> Two of these are worth flagging now and are detailed in
-> [§9](#9-architectural-consistency-notes): `HomeRoute` is declared in a file called
-> `LoadingScreen.kt`, and the QR-code route lives under `core/components` rather than in a feature
-> package.
+> One of these is worth flagging now and is detailed in
+> [§9](#9-architectural-consistency-notes): the QR-code route lives under `core/components` rather
+> than in a feature package.
 
 **Navigation shape.** The flow is gated, not linear. `InitRoute` decides between `Config` and
 `Home` based on stored credentials. `ConfigRoute` refuses to leave for `Home` until three
@@ -309,7 +308,7 @@ configuration.
 
 | Role | Type |
 |---|---|
-| View | `HomeRoute` (in `LoadingScreen.kt`) + 15 files in `components/` |
+| View | `HomeRoute.kt` + 15 files in `components/` |
 | ViewModel | `HomeViewModel.kt` |
 | State | `HomeUiState.kt` — `Loading` \| `Empty` \| `Ready(streams, focusedStream, grid, orientation)` |
 | Logic | `logic/StreamPaging.kt`, `logic/FixedGridLayout.kt` |
@@ -626,11 +625,6 @@ defect — not a work plan.
 
 ### 9.1 Naming and placement
 
-1. **`HomeRoute` is declared in `feature/cameras/LoadingScreen.kt`.** There is no `HomeRoute.kt`.
-   The file name describes neither its main content (the Home route composable, ~80 lines) nor the
-   `LoadingScreen` it merely *calls* from `core/components`. This is the single most disorienting
-   thing in the tree for a newcomer, and it has a measurable side effect — see 9.4.
-
 2. **The QR-code screen lives in `core/components`, not `feature/qrcode`.** `QrCodeRoute`,
    `QrCodeScreen`, `QrCodeViewModel` and `QrCodeToastMessage` are a complete MVVM feature with its
    own navigation destination, yet they sit beside genuinely shared widgets like `ToastDisplayer`.
@@ -641,10 +635,6 @@ defect — not a work plan.
 3. **`core/components` mixes two concerns** — reusable primitives (`ToastDisplayer`,
    `LoadingScreen`, `LaunchActivityResultOnEvent`) and one full screen. `core/utils/QrCodeAnalyzer`
    is the same feature's data source, filed elsewhere again.
-
-4. **Two `LoadingScreen` composables exist** (`core/components/LoadingScreen.kt` and the file of
-   that name in `feature/cameras`), which is why `feature/cameras/LoadingScreen.kt` has to import
-   the other one by name.
 
 ### 9.2 Layering
 
@@ -694,16 +684,14 @@ defect — not a work plan.
 
 ### 9.4 Coverage configuration
 
-13. **Two JaCoCo exclusion patterns match nothing**, because they name classes that do not exist:
+13. **A JaCoCo exclusion pattern matches nothing**, because it names a class that does not exist:
 
     | Pattern in `jacocoTestReport` | Class actually produced |
     |---|---|
-    | `com/gdisys/cameras/feature/cameras/HomeRouteKt*.class` | `feature/cameras/LoadingScreenKt` |
     | `com/gdisys/cameras/core/components/LoadingStorageScreenKt*.class` | `core/components/LoadingScreenKt` |
 
-    Both files are Compose UI that the task's own KDoc says is deliberately out of unit-test scope,
-    yet both are currently **counted** in the coverage denominator. Fixing item 9.1.1 (renaming the
-    file to `HomeRoute.kt`) would make the first pattern correct by construction.
+    That file is Compose UI that the task's own KDoc says is deliberately out of unit-test scope,
+    yet it is currently **counted** in the coverage denominator.
 
 14. **`androidTest/` contains only the generated `ExampleInstrumentedTest`.** The JaCoCo comment
     justifies excluding Compose UI on the grounds that it is "tested via Compose UI Test", and the
@@ -763,7 +751,7 @@ A suggested path through the code for a new contributor:
 3. `feature/init/` — the smallest complete route; the MVVM pattern in ~40 lines.
 4. `core/storage/domain/model/StreamPreferences.kt` + `StreamPreferencesExtensions.kt` — the central
    data model and its canonical-set invariant.
-5. `feature/cameras/LoadingScreen.kt` → `HomeViewModel.kt` → `components/HomeScreen.kt` — the main
+5. `feature/cameras/HomeRoute.kt` → `HomeViewModel.kt` → `components/HomeScreen.kt` — the main
    feature, top-down.
 6. `core/webrtc/` — the streaming contract and its WHEP implementation.
 
