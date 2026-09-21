@@ -126,13 +126,13 @@ dependencies {
   implementation(libs.kotlinx.serialization.json)
   implementation(libs.androidx.material.icons.extended)
 
-  // Drag-and-drop de itens em LazyVerticalGrid (reordenação dos streams na Home)
+  // Drag-and-drop of items in LazyVerticalGrid (stream reordering on Home)
   implementation(libs.reorderable)
 }
 
-// JacocoExclusionsTest lê os padrões de `outOfScopeFilter` diretamente deste arquivo. Sem declarar
-// o build script como entrada, a tarefa de teste fica UP-TO-DATE ao editar os padrões e o guarda
-// nunca roda justamente quando ele importa.
+// JacocoExclusionsTest reads the `outOfScopeFilter` patterns straight out of this file. Without
+// declaring the build script as an input, editing a pattern leaves the test task UP-TO-DATE, so the
+// guard would not run at exactly the moment it matters.
 tasks.withType<Test>().configureEach {
   inputs.file("build.gradle.kts")
     .withPropertyName("buildScript")
@@ -140,29 +140,32 @@ tasks.withType<Test>().configureEach {
 }
 
 /**
- * Gera relatório de cobertura dos testes unitários (JVM, variante debug).
- * Uso: ./gradlew :app:jacocoTestReport
- * Saída: app/build/reports/jacoco/jacocoTestReport/html/index.html
+ * Coverage report for the unit tests (JVM, debug variant).
+ * Usage: ./gradlew :app:jacocoTestReport
+ * Output: app/build/reports/jacoco/jacocoTestReport/html/index.html
  *
- * O escopo é filtrado para refletir só a lógica que se espera testar unitariamente
- * (ver relatorio_tested_expandido.md): fica de fora código gerado (R, BuildConfig, Hilt/Dagger,
- * factories do KSP) e código que o projeto decidiu deliberadamente não cobrir com JUnit puro —
- * Compose UI (telas/composables, testadas via Compose UI Test), bootstrap (MainActivity,
- * CamerasApp, NavigationRoot), tema, e o que depende de stack nativa/hardware sem shadow
- * disponível em JVM (WebRTC nativo, GoBackend/WireGuard, AndroidKeyStore, Android Service).
+ * The scope is filtered down to the logic this project expects to cover with plain JUnit (the
+ * rationale is in docs/architecture.md §9.4). Left out: generated code (R, BuildConfig, Hilt/Dagger,
+ * KSP factories), and the code the project decided deliberately not to cover with unit tests —
+ * Compose UI (screens and composables, excluded by decision), bootstrap (MainActivity, CamerasApp,
+ * NavigationRoot), the theme, and anything backed by a native/hardware stack with no JVM shadow
+ * (native WebRTC, GoBackend/WireGuard, AndroidKeyStore, Android Service).
+ *
+ * The patterns below are plain strings with no link to the code, so JacocoExclusionsTest resolves
+ * each one against the compiled classes and fails the build when one stops matching.
  */
 tasks.register<JacocoReport>("jacocoTestReport") {
   dependsOn("testDebugUnitTest")
   group = "verification"
-  description = "Gera relatório de cobertura (HTML + XML) dos testes unitários da variante debug, " +
-    "restrito ao escopo unit-testável (exclui Compose UI, bootstrap, DI e código nativo/hardware)."
+  description = "Coverage report (HTML + XML) for the debug variant unit tests, restricted to the " +
+    "unit-testable scope (excludes Compose UI, bootstrap, DI and native/hardware code)."
 
   reports {
     xml.required.set(true)
     html.required.set(true)
   }
 
-  // Código gerado (build tooling, KSP/Hilt) — nunca faz sentido medir cobertura aqui.
+  // Generated code (build tooling, KSP/Hilt) — measuring coverage here never means anything.
   val generatedCodeFilter = listOf(
     "**/R.class", "**/R$*.class", "**/BuildConfig.*", "**/Manifest*.*",
     "**/*Test*.*", "android/**/*.*", "**/*_Hilt*.*", "**/Hilt_*.*",
@@ -170,8 +173,8 @@ tasks.register<JacocoReport>("jacocoTestReport") {
     "**/di/**", "**/*Module*.*", "dagger/hilt/**", "hilt_aggregated_deps/**"
   )
 
-  // Fora de escopo de teste unitário puro por decisão do projeto (relatorio_tested_expandido.md):
-  // Compose UI, bootstrap/navegação, tema, e integrações nativas/hardware sem shadow em JVM.
+  // Out of plain-unit-test scope by project decision (see docs/architecture.md §9.4): Compose UI,
+  // bootstrap/navigation, the theme, and native/hardware integrations with no JVM shadow.
   val outOfScopeFilter = listOf(
     "com/gdisys/cameras/CamerasApp*.class",
     "com/gdisys/cameras/MainActivity*.class",
@@ -179,9 +182,9 @@ tasks.register<JacocoReport>("jacocoTestReport") {
     "com/gdisys/cameras/core/components/LoadingScreenKt*.class",
     "com/gdisys/cameras/core/components/ToastDisplayerKt*.class",
     "com/gdisys/cameras/core/vpn/data/VpnLifecycleService*.class", // Android Service
-    "com/gdisys/cameras/core/vpn/data/AppTunnel*.class", // wrapper fino sobre Tunnel nativo
-    "com/gdisys/cameras/core/webrtc/data/WhepClientImpl*.class", // stack WebRTC nativa
-    "com/gdisys/cameras/core/webrtc/data/extensions/PeerConnectionKt*.class", // idem
+    "com/gdisys/cameras/core/vpn/data/AppTunnel*.class", // thin wrapper over the native Tunnel
+    "com/gdisys/cameras/core/webrtc/data/WhepClientImpl*.class", // native WebRTC stack
+    "com/gdisys/cameras/core/webrtc/data/extensions/PeerConnectionKt*.class", // likewise
     "com/gdisys/cameras/feature/cameras/HomeRouteKt*.class",
     "com/gdisys/cameras/feature/cameras/components/**",
     "com/gdisys/cameras/feature/config/ConfigRouteKt*.class",
@@ -193,7 +196,7 @@ tasks.register<JacocoReport>("jacocoTestReport") {
     "com/gdisys/cameras/feature/streamurls/StreamURLsRouteKt*.class",
     "com/gdisys/cameras/feature/streamurls/components/**",
     "com/gdisys/cameras/ui/theme/**",
-    "com/gdisys/cameras/core/storage/data/DataStoreKt*.class", // fiação de DI, sem lógica própria
+    "com/gdisys/cameras/core/storage/data/DataStoreKt*.class", // DI wiring, no logic of its own
     "com/gdisys/cameras/core/storage/data/KeystoreCryptoEngine*.class" // AndroidKeyStore, hardware-backed
   )
 
@@ -207,9 +210,9 @@ tasks.register<JacocoReport>("jacocoTestReport") {
     include("jacoco/testDebugUnitTest.exec")
   })
 
-  // O JaCoCo lista "Lines" na tabela HTML, mas a barra/percentual de destaque no topo é sempre
-  // Instructions (não configurável pelo plugin). Injeta um banner com a % de LINE, que é a
-  // métrica usada para a meta de cobertura do projeto.
+  // JaCoCo lists "Lines" in the HTML table, but the headline bar and percentage at the top is
+  // always Instructions, and the plugin cannot change that. Inject a banner with the LINE
+  // percentage, which is the metric this project's coverage goal is stated in.
   doLast {
     val xmlFile = reports.xml.outputLocation.get().asFile
     val htmlIndex = reports.html.outputLocation.get().asFile.resolve("index.html")
@@ -239,7 +242,7 @@ tasks.register<JacocoReport>("jacocoTestReport") {
     if (!html.contains(bannerId)) {
       val banner = "<div id=\"$bannerId\" style=\"background:#2e7d32;color:#fff;" +
         "padding:10px 16px;font:bold 14px/1.4 -apple-system,Arial,sans-serif;\">" +
-        "Cobertura de linhas (LINE): $lineCovered/$total = $pct%</div>"
+        "Line coverage (LINE): $lineCovered/$total = $pct%</div>"
       val bodyTag = Regex("<body[^>]*>").find(html)
       if (bodyTag != null) {
         val insertAt = bodyTag.range.last + 1
