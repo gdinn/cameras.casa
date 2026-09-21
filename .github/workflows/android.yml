@@ -114,19 +114,54 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      # Signing material is optional: without the secrets the release build type stays unsigned
-      # (see the signingConfigs block in app/build.gradle.kts), which still exercises R8. Forks and
-      # pull requests from forks get no secrets, so they take exactly this path.
+      # Signing material is optional, but it is all-or-nothing: a half-configured set of secrets is
+      # a mistake, not a request for an unsigned build, so it fails here instead of quietly
+      # producing an APK nobody can install. With no secrets at all the release build type stays
+      # unsigned (see the signingConfigs block in app/build.gradle.kts) and R8 still runs, which is
+      # the path pull requests from forks take, since they are given no secrets.
       - name: Decode the release keystore
+        id: signing
         env:
           RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: |
-          if [ -z "$RELEASE_KEYSTORE_BASE64" ]; then
-            echo "No release signing secrets configured - assembleRelease will produce an unsigned APK."
+          set -euo pipefail
+          present=""
+          missing=""
+          for name in RELEASE_KEYSTORE_BASE64 RELEASE_STORE_PASSWORD RELEASE_KEY_ALIAS RELEASE_KEY_PASSWORD; do
+            if [ -n "${!name:-}" ]; then present="$present $name"; else missing="$missing $name"; fi
+          done
+
+          if [ -z "$present" ]; then
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No release signing secrets configured - assembleRelease will produce an unsigned APK."
             exit 0
           fi
+
+          if [ -n "$missing" ]; then
+            echo "::error::Incomplete release signing configuration. Missing secrets:$missing"
+            exit 1
+          fi
+
           printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
+          # A truncated or wrongly encoded secret otherwise surfaces much later, as an opaque
+          # Gradle signing error.
+          if ! keytool -list -keystore "$RUNNER_TEMP/release.jks" -storepass "$RELEASE_STORE_PASSWORD" > /dev/null 2>&1; then
+            echo "::error::RELEASE_KEYSTORE_BASE64 did not decode into a keystore readable with RELEASE_STORE_PASSWORD."
+            exit 1
+          fi
           echo "CAMERAS_RELEASE_STORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+
+      # A v* tag is a release: publishing an unsigned APK under one would be a silent failure, so
+      # it is caught before the build spends time on R8.
+      - name: Require a signed APK on release tags
+        if: startsWith(github.ref, 'refs/tags/v') && steps.signing.outputs.signed != 'true'
+        run: |
+          echo "::error::A v* tag must produce a signed release APK, but no signing secrets are configured."
+          exit 1
 
       - name: Assemble the debug APK
         run: ./gradlew :app:assembleDebug --stacktrace
@@ -137,6 +172,25 @@ jobs:
           CAMERAS_RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           CAMERAS_RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: ./gradlew :app:assembleRelease --stacktrace
+
+      # The build falls back to an unsigned APK whenever any part of the material fails to reach
+      # Gradle, so "the secrets are set" is not proof that the artifact is signed. This asserts it
+      # against the APK that is about to be uploaded, and prints the certificate that signed it.
+      - name: Verify the release APK signature
+        if: steps.signing.outputs.signed == 'true'
+        run: |
+          set -euo pipefail
+          apksigner=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)
+          if [ -z "$apksigner" ]; then
+            echo "::error::apksigner not found under $ANDROID_HOME/build-tools."
+            exit 1
+          fi
+          apk=app/build/outputs/apk/release/app-release.apk
+          if [ ! -f "$apk" ]; then
+            echo "::error::Expected a signed $apk; the release build produced $(ls app/build/outputs/apk/release/*.apk)."
+            exit 1
+          fi
+          "$apksigner" verify --verbose --print-certs "$apk"
 
       - name: Upload the APKs
         uses: actions/upload-artifact@v4

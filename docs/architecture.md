@@ -785,15 +785,17 @@ described in §2 — a wrong keep rule still only shows up at runtime, so the de
 (QR scan → tunnel up → stream playing) is still owed on any change to the keep rules, to a
 `@Serializable` model, or to the VPN/WebRTC dependencies.
 
-**Release signing.** The signing material is resolved in `app/build.gradle.kts` from environment
-variables first, then from a git-ignored `app/keystore.properties`:
+### 10.2 Release signing
 
-| Environment variable (CI) | `keystore.properties` key |
-|---|---|
-| `CAMERAS_RELEASE_STORE_FILE` | `storeFile` |
-| `CAMERAS_RELEASE_STORE_PASSWORD` | `storePassword` |
-| `CAMERAS_RELEASE_KEY_ALIAS` | `keyAlias` |
-| `CAMERAS_RELEASE_KEY_PASSWORD` | `keyPassword` |
+The signing material is resolved in `app/build.gradle.kts` from environment variables first, then
+from a git-ignored `app/keystore.properties`:
+
+| Environment variable (CI) | `keystore.properties` key | CI secret |
+|---|---|---|
+| `CAMERAS_RELEASE_STORE_FILE` | `storeFile` | `RELEASE_KEYSTORE_BASE64`, decoded to a file |
+| `CAMERAS_RELEASE_STORE_PASSWORD` | `storePassword` | `RELEASE_STORE_PASSWORD` |
+| `CAMERAS_RELEASE_KEY_ALIAS` | `keyAlias` | `RELEASE_KEY_ALIAS` |
+| `CAMERAS_RELEASE_KEY_PASSWORD` | `keyPassword` | `RELEASE_KEY_PASSWORD` |
 
 The `release` signing config is created only when all four are present; otherwise
 `signingConfig = signingConfigs.findByName("release")` resolves to `null` and the release APK is
@@ -801,10 +803,36 @@ built unsigned. That is what keeps `assembleRelease` runnable on a machine — o
 request — that has no keystore, and it replaces an earlier `getByName("release")` that failed the
 *configuration* of every Gradle task when no such config existed.
 
-On CI the keystore comes from the repository secret `RELEASE_KEYSTORE_BASE64` (`base64` of the
-`.jks`), decoded into the runner's temp directory, alongside `RELEASE_STORE_PASSWORD`,
-`RELEASE_KEY_ALIAS` and `RELEASE_KEY_PASSWORD`. With no secrets configured the job still passes and
-publishes `app-release-unsigned.apk`.
+**On CI** the `build` job treats the four secrets as all-or-nothing:
+
+| Secrets | Outcome |
+|---|---|
+| None | `app-release-unsigned.apk`, job green (forks and keystore-less setups) |
+| Some | Job fails — a half-configured set is a mistake, not a request for an unsigned build |
+| All four | Keystore decoded to the runner's temp dir, `app-release.apk` signed |
+| None, on a `v*` tag | Job fails before R8 — a release tag must not publish an unsigned APK |
+
+Two checks stand between the secrets and the uploaded artifact. The decode step opens the keystore
+with `keytool -list` (a truncated or wrongly encoded secret otherwise surfaces much later, as an
+opaque Gradle error), and after the build `apksigner verify --print-certs` asserts that the APK is
+actually signed and prints the certificate — the build falls back to unsigned whenever any part of
+the material fails to reach Gradle, so "the secrets are set" is not proof on its own. Note that the
+signed and unsigned outputs have different file names (`app-release.apk` vs.
+`app-release-unsigned.apk`); the upload step globs both.
+
+Creating the keystore and the secrets, once:
+
+```bash
+keytool -genkeypair -keystore release.jks -storetype PKCS12 \
+  -alias cameras -keyalg RSA -keysize 2048 -validity 10000
+base64 -i release.jks | tr -d '\n' | pbcopy   # -> secret RELEASE_KEYSTORE_BASE64
+```
+
+PKCS12 does not support a key password different from the store password — `keytool` ignores
+`-keypass` and the two end up identical, so `RELEASE_KEY_PASSWORD` gets the same value as
+`RELEASE_STORE_PASSWORD`. Keep `release.jks` and its passwords outside the repository: losing them
+means no future build can update an installed app, and `.gitignore` covers `*.jks`, `*.keystore`
+and `keystore.properties` precisely so neither is committed by accident.
 
 ---
 
