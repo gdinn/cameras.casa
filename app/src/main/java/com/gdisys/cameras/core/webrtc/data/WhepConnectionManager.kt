@@ -16,10 +16,11 @@ import javax.inject.Inject
 import javax.inject.Provider
 
 /**
- * Orquestra o ciclo de vida das conexões WHEP (abrir/fechar clients, cancelar jobs por URL).
- * Vive em `core/webrtc` porque, assim como [WhepClient], lida com tipos e recursos do SDK
- * WebRTC; mantém essa orquestração fora da camada de apresentação e sincroniza o acesso aos
- * mapas de jobs/clients, que antes eram mutados a partir de coroutines sem nenhuma proteção.
+ * Orchestrates the lifecycle of the WHEP connections: opening and closing clients, and cancelling
+ * the job belonging to a URL. It lives in `core/webrtc` because, like [WhepClient], it handles
+ * WebRTC SDK types and resources. Keeping the orchestration out of the presentation layer is half
+ * the point; the other half is the lock, which guards the job and client maps — they are mutated
+ * from several coroutines and used to be unsynchronized.
  *
  * WHEP implementation of [StreamConnectionRepository]: the presentation layer depends on that
  * contract, never on this class.

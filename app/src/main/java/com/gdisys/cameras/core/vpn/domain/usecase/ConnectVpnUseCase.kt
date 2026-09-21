@@ -13,12 +13,13 @@ class ConnectVpnUseCase @Inject constructor(
   private val vpnLifecycleController: VpnLifecycleController
 ) {
   suspend operator fun invoke(config: VpnConfig?): Result<Unit> = withContext(Dispatchers.Default) {
-    if (config == null) return@withContext Result.failure(IllegalArgumentException("Configuração nula"))
-    if (!config.isValid()) return@withContext Result.failure(IllegalArgumentException("Algum parâmetro está nulo"))
+    if (config == null) return@withContext Result.failure(IllegalArgumentException("Null configuration"))
+    if (!config.isValid()) return@withContext Result.failure(IllegalArgumentException("Some parameter is null"))
 
     return@withContext try {
       vpnRepository.connect(config)
-      // Inicia o serviço de ciclo de vida para monitorar se o app é fechado
+      // Start the lifecycle service only once the tunnel is actually up, so the watchdog exists
+      // exactly as long as the connection does.
       vpnLifecycleController.start()
       Result.success(Unit)
     } catch (e: Exception) {

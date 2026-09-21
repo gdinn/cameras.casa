@@ -31,7 +31,7 @@ private class AppTunnel(
 
   override fun onStateChange(newState: Tunnel.State) {
     onStateChanged(newState)
-    Log.d(DEBUG_TAG, "Status do Túnel alterado para: $newState")
+    Log.d(DEBUG_TAG, "Tunnel state changed to: $newState")
   }
 }
 
@@ -44,8 +44,9 @@ fun Tunnel.State.toVpnTunnelState(): VpnTunnelState {
 }
 
 /**
- * Mapeamento puro `VpnConfig` -> `Config` do WireGuard, extraído de [VpnRepositoryImpl.connect]
- * para ser testável sem instanciar `GoBackend` (lib nativa, não roda em JVM puro).
+ * Pure `VpnConfig` -> WireGuard `Config` mapping, extracted out of [VpnRepositoryImpl.connect] so
+ * it can be unit-tested without instantiating `GoBackend`, a native library that does not run on a
+ * plain JVM.
  */
 fun VpnConfig.toWireGuardConfig(): Config {
   val interfaceBuilder = Interface.Builder()
@@ -72,7 +73,7 @@ class VpnRepositoryImpl @Inject constructor(
   @ApplicationContext private val context: Context
 ) : VpnRepository {
 
-  // É altamente recomendado manter apenas uma instância do Backend durante o ciclo de vida do app.
+  // Keeping a single Backend instance for the app's lifetime is strongly recommended.
   private val backend: Backend by lazy { GoBackend(context) }
 
   private val _vpnState = MutableStateFlow(VpnTunnelState.DISCONNECTED)
@@ -83,13 +84,12 @@ class VpnRepositoryImpl @Inject constructor(
   }
 
   init {
-    // Tenta pegar o estado inicial se o backend já estiver pronto ou assim que possível
-    // No caso do GoBackend, podemos consultar o estado atual.
+    // Seed the initial state from the backend, which GoBackend lets us query directly.
     _vpnState.value = backend.getState(tunnel).toVpnTunnelState()
   }
 
   /**
-   * Inicia a conexão com os parâmetros do servidor WireGuard.
+   * Brings the tunnel up with the given WireGuard server parameters.
    */
   override suspend fun connect(
     config: VpnConfig
@@ -99,7 +99,7 @@ class VpnRepositoryImpl @Inject constructor(
   }
 
   /**
-   * Derruba a conexão do túnel atual.
+   * Drops the current tunnel connection.
    */
   override suspend fun disconnect() = withContext<Unit>(Dispatchers.IO) {
     backend.setState(tunnel, Tunnel.State.DOWN, null)

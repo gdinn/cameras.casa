@@ -39,7 +39,7 @@ class WhepClientImpl @Inject constructor(
         rtcConfig,
         TrackObserver(videoSink) { iceGatheringComplete.complete(Unit) }
       )
-    ) { "Não foi possível criar a PeerConnection" }
+    ) { "Could not create the PeerConnection" }
     peerConnection = pc
 
     pc.addTransceiver(
@@ -51,9 +51,9 @@ class WhepClientImpl @Inject constructor(
     pc.setLocalDescriptionSuspend(offer)
     iceGatheringComplete.await()
 
-    val localSdp = requireNotNull(pc.localDescription) { "SDP local ausente após o ICE gathering" }
+    val localSdp = requireNotNull(pc.localDescription) { "Local SDP missing after ICE gathering" }
 
-    // Chamada de rede agora é abstraída através do DataSource
+    // The network call goes through the DataSource, so this class stays pure WebRTC.
     val answerSdp = remoteDataSource.postOffer(streamUrl, localSdp.description)
 
     pc.setRemoteDescriptionSuspend(SessionDescription(SessionDescription.Type.ANSWER, answerSdp))

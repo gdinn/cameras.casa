@@ -28,7 +28,7 @@ class VpnLifecycleService : Service() {
   override fun onTaskRemoved(rootIntent: Intent?) {
     super.onTaskRemoved(rootIntent)
 
-    // Quando o app é removido da lista de recentes (swipe away)
+    // The app was swiped away from the recents list.
     serviceScope.launch {
       vpnRepository.disconnect()
       stopSelf()
@@ -38,8 +38,8 @@ class VpnLifecycleService : Service() {
   override fun onDestroy() {
     super.onDestroy()
 
-    // Garante que a VPN caia se o serviço for destruído por outros motivos
-    // (ex.: sistema encerrando o serviço), não só via onTaskRemoved.
+    // Makes sure the tunnel drops when the service is destroyed for any other reason too (the
+    // system reclaiming it, say), not only through onTaskRemoved.
     serviceScope.launch {
       vpnRepository.disconnect()
     }

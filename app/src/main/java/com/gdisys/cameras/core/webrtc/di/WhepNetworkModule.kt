@@ -11,7 +11,7 @@ import dagger.hilt.components.SingletonComponent
 import dagger.hilt.android.components.ViewModelComponent
 
 /**
- * Módulo para prover o DataSource de rede. Pode ser Singleton, pois não guarda estado.
+ * Provides the network DataSource. It can be a Singleton because it holds no state.
  */
 @Module
 @InstallIn(SingletonComponent::class)
@@ -24,11 +24,10 @@ abstract class WhepNetworkModule {
 }
 
 /**
- * Módulo para prover o Cliente WebRTC.
+ * Provides the WebRTC client.
  *
- * Usamos [ViewModelComponent] porque o Client guarda estado (var peerConnection).
- * Dessa forma, cada ViewModel pode injetar uma nova instância para gerenciar
- * sua própria conexão de forma independente.
+ * Bound to [ViewModelComponent] because the client holds state (a mutable `peerConnection`), so
+ * each ViewModel gets its own instance and manages its connection independently.
  */
 @Module
 @InstallIn(ViewModelComponent::class)

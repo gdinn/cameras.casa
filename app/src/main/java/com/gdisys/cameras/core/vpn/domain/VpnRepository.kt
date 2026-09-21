@@ -11,8 +11,8 @@ interface VpnRepository {
   fun getTunnelState(): VpnTunnelState
 
   /**
-   * Retorna o `Intent` de consentimento do sistema para ativar a VPN, ou `null`
-   * se a permissão já foi concedida (contrato de `VpnService.prepare`).
+   * Returns the system consent `Intent` needed to bring the VPN up, or `null` when permission has
+   * already been granted — the contract of `VpnService.prepare`.
    */
   fun getVpnPermissionIntent(): Intent?
 }

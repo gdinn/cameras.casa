@@ -17,8 +17,8 @@ import javax.inject.Singleton
 object WhepRtcModule {
 
   /**
-   * Provê uma instância única (Singleton) do EglBase para toda a aplicação.
-   * Assim você pode injetar o mesmo EglBase no ViewModel/View e no WebRTC.
+   * Provides one application-wide EglBase, so the UI and the WebRTC stack share the same EGL
+   * context — the renderer and the decoder have to agree on it.
    */
   @Provides
   @Singleton
@@ -35,14 +35,14 @@ object WhepRtcModule {
     @ApplicationContext context: Context,
     eglBase: EglBase
   ): PeerConnectionFactory {
-    // 1. O WebRTC exige inicialização global antes de criar a Factory
+    // 1. WebRTC requires global initialization before the factory can be created.
     PeerConnectionFactory.initialize(
       PeerConnectionFactory.InitializationOptions.builder(context)
         .setEnableInternalTracer(true)
         .createInitializationOptions()
     )
 
-    // 2. Constrói e retorna a Factory usando o EglBase provido acima
+    // 2. Build the factory on the EglBase provided above.
     return PeerConnectionFactory.builder()
       .setVideoDecoderFactory(DefaultVideoDecoderFactory(eglBase.eglBaseContext))
       .setVideoEncoderFactory(DefaultVideoEncoderFactory(eglBase.eglBaseContext, true, true))
