@@ -32,8 +32,8 @@ fun HomeRoute(
   // layer that reads it off the composition.
   val eglBase = LocalEglBase.current
 
-  // Decisão P1: a orientação vem da Configuration e é empurrada para o ViewModel, que escolhe a
-  // ordem e a grade correspondentes.
+  // Only the UI can see the real device configuration, so orientation is read here and pushed
+  // down to the ViewModel, which picks the matching order and grid.
   val configuration = LocalConfiguration.current
   val orientation = remember(configuration.orientation) {
     if (configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) {

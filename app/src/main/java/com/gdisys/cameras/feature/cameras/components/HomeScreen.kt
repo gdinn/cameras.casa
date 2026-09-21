@@ -62,7 +62,7 @@ fun HomeScreen(
     WebRtcConnection(eglBase = eglBase, connect = onConnectStream, disconnect = onDisconnectStream)
   }
 
-  // Resolução real de cada stream, preenchida pelo primeiro frame; até lá, 16:9.
+  // Each stream's real resolution, filled in by its first frame; until then, 16:9.
   val streamResolutions = remember { StreamResolutionRegistry() }
   val aspectRatioOf: (String) -> Float = { url -> streamResolutions.aspectRatioOf(url) }
 
@@ -94,8 +94,8 @@ fun HomeScreen(
         contentAlignment = Alignment.Center
       ) {
         when {
-          // O stream em foco conta sempre como visível: é o único composto, então é o único
-          // conectado — nem a troca de página por baixo o derruba.
+          // The focused stream always counts as visible: it is the only one composed, so it is
+          // the only one connected — not even a page change underneath drops it.
           focusedStream != null -> FocusedStreamView(
             videoContent = movablePlayerFor(focusedStream),
             aspectRatio = aspectRatioOf(focusedStream)
@@ -129,7 +129,7 @@ fun HomeScreen(
   }
 }
 
-/** Modo dinâmico: o de sempre — scroll vertical e "Reconfigure" revelado por overscroll. */
+/** Dynamic mode: vertical scrolling, with "Reconfigure" revealed by overscrolling past the end. */
 @Composable
 private fun DynamicStreamGrid(
   streams: List<String>,
@@ -179,8 +179,8 @@ private fun DynamicStreamGrid(
 }
 
 /**
- * Modo fixo: sem scroll, com paginação e o "Reconfigure" flutuando por cima da grade — arrastável,
- * já que sem scroll não há como tirá-lo da frente de um stream de outro jeito.
+ * Fixed mode: no scrolling, paged, with "Reconfigure" floating over the grid — draggable, since
+ * without scrolling there is no other way to move it off a stream.
  */
 @Composable
 private fun FixedStreamGrid(

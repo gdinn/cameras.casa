@@ -38,7 +38,7 @@ fun rememberOverscrollReconfigure(gridState: LazyGridState): OverscrollReconfigu
       ): Offset {
         if (source != NestedScrollSource.Drag) return Offset.Zero
 
-        // Só reconhece overscroll quando o usuário já está no fim da lista.
+        // Only counts as overscroll once the user is already at the end of the list.
         if (gridState.canScrollForward) {
           overscrollPx = 0f
           isReconfigureButtonVisible = false

@@ -6,12 +6,12 @@ import com.gdisys.cameras.core.storage.domain.model.StreamOrientation
 sealed interface HomeUiState {
   data object Loading : HomeUiState
 
-  /** Nenhuma URL cadastrada: não há o que conectar, só o convite a configurar. */
+  /** No URL registered: nothing to connect to, only the invitation to configure one. */
   data object Empty : HomeUiState
 
   /**
-   * @property streams URLs na ordem persistida para [orientation]
-   * @property grid configuração de grade da orientação corrente
+   * @property streams URLs in the order persisted for [orientation]
+   * @property grid grid configuration of the current orientation
    */
   data class Ready(
     val streams: List<String>,

@@ -60,20 +60,20 @@ private val PAGE_EDGE_ZONE = 48.dp
 private val GRID_PADDING = 8.dp
 
 /**
- * Modo fixo: a grade de cada página é uma [FixedGrid] e as páginas trocam por swipe, pelos botões
- * anterior/próximo ou pelo auto-avanço do arraste.
+ * Fixed mode: each page's grid is a [FixedGrid], and pages change by swiping, by the
+ * previous/next buttons, or by the drag auto-advancing them.
  *
- * Só a página corrente fica composta (`beyondViewportPageCount = 0`), então a conexão WHEP dos
- * streams das outras páginas cai sozinha pelo `onDispose` do [WebRtcVideoPlayer] — não há tracking
- * de visibilidade em lugar nenhum.
+ * Only the current page stays composed (`beyondViewportPageCount = 0`), so the WHEP connections of
+ * the other pages' streams drop by themselves through [WebRtcVideoPlayer]'s `onDispose` — there is
+ * no visibility tracking anywhere.
  *
- * O arraste é próprio (a lib de reorder do modo dinâmico só funciona sobre listas *lazy*) e o
- * detector vive no **contêiner**, não no *handle*: durante o arraste entre páginas a célula de
- * origem é descartada, e um gesto ancorado nela morreria junto. O contêiner sobrevive a qualquer
- * troca de página, então o gesto acompanha o dedo até o fim.
+ * The drag is hand-written, because the reorder library used in dynamic mode only works over *lazy*
+ * lists, and the detector lives on the **container**, not on the *handle*: dragging across pages
+ * discards the originating cell, and a gesture anchored to it would die with it. The container
+ * survives every page change, so the gesture follows the finger to the end.
  *
- * O item arrastado é representado por um fantasma flutuante, para que o player de verdade continue
- * na célula. Ao soltar, a ordem completa da orientação corrente é persistida de uma vez.
+ * The dragged item is drawn as a floating ghost, so the real player stays in its cell. On drop, the
+ * current orientation's complete order is persisted in one write.
  */
 @Composable
 fun PagedStreamGrid(
@@ -96,7 +96,7 @@ fun PagedStreamGrid(
   val pages = pageCount(dragState.localOrder.size, perPage)
   val pagerState = rememberPagerState(pageCount = { pages })
 
-  // Segurar o item na borda esquerda/direita avança a página e leva o item junto (D13).
+  // Holding the item against the left/right edge advances the page and takes the item along.
   LaunchedEffect(dragState.edgeDirection, pages, perPage) {
     if (dragState.edgeDirection == 0) return@LaunchedEffect
     while (true) {
@@ -105,21 +105,21 @@ fun PagedStreamGrid(
       val target = pagerState.currentPage + dragState.edgeDirection
       if (target !in 0 until pages) break
       dragState.advanceToPage(target, perPage, atStart = dragState.edgeDirection > 0)
-      // A rolagem roda num escopo próprio e só é aguardada aqui: soltar o item zera a direção e
-      // cancela este efeito, e uma animação interrompida no meio deixaria o pager parado entre
-      // duas páginas.
+      // The scroll runs in its own scope and is only awaited here: dropping the item zeroes the
+      // direction and cancels this effect, and an animation interrupted halfway would leave the
+      // pager stranded between two pages.
       scope.launch { pagerState.animateScrollToPage(target) }.join()
     }
   }
 
-  // O gesto nasce no contêiner e usa a passada Initial: assim ele ganha do scroll horizontal do
-  // pager, que é filho, sem depender de quem consome o quê depois.
+  // The gesture starts on the container and uses the Initial pass, so it wins over the pager's
+  // horizontal scroll — a child — without depending on who consumes what afterwards.
   val dragGesture = Modifier.pointerInput(perPage) {
     awaitEachGesture {
       val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
       val downInRoot = dragState.containerBounds.topLeft + down.position
       val grabbed = dragState.handleAt(downInRoot)
-        ?: return@awaitEachGesture // fora de um handle: é toque de foco, não arraste
+        ?: return@awaitEachGesture // outside a handle: this is a focus tap, not a drag
 
       down.consume()
       dragState.startDrag(grabbed)
@@ -136,7 +136,7 @@ fun PagedStreamGrid(
           }
         }
       } finally {
-        // Também cobre o cancelamento do gesto: sem isso o fantasma ficaria preso na tela.
+        // Also covers gesture cancellation: without this the ghost would stay stuck on screen.
         dragState.finishDrag(currentOnStreamsReordered)
       }
     }
@@ -167,8 +167,8 @@ fun PagedStreamGrid(
           onCellBounds = { url, bounds -> dragState.cellBounds[CellKey(page, url)] = bounds }
         ) { url, cellModifier ->
           val key = CellKey(page, url)
-          // A página que sai leva embora os limites das suas células, senão o teste de colisão do
-          // arraste acertaria retângulos de uma página que não está mais na tela.
+          // A page being left takes its cells' bounds with it, or the drag's hit test would keep
+          // matching rectangles from a page that is no longer on screen.
           DisposableEffect(key) {
             onDispose { dragState.onCellDisposed(key) }
           }
@@ -198,7 +198,7 @@ fun PagedStreamGrid(
   }
 }
 
-/** Fantasma que acompanha o dedo; o player de verdade fica na célula, ainda conectado. */
+/** Ghost that follows the finger; the real player stays in its cell, still connected. */
 @Composable
 private fun DraggedStreamGhost(
   isVisible: Boolean,
@@ -231,7 +231,7 @@ private fun DraggedStreamGhost(
   }
 }
 
-/** Anterior/próximo e o contador de páginas; o swipe cobre o mesmo caminho. */
+/** Previous/next and the page counter; swiping covers the same ground. */
 @Composable
 private fun PagerControls(currentPage: Int, pageCount: Int, onGoToPage: (Int) -> Unit) {
   val hasPrevious = currentPage > 0

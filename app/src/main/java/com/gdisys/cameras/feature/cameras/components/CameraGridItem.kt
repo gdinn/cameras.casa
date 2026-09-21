@@ -16,14 +16,14 @@ import androidx.compose.ui.unit.dp
 import com.gdisys.cameras.R
 
 /**
- * Célula da grade.
+ * One cell of the grid.
  *
- * O arraste sai de um *handle* dedicado, e não do card inteiro, para não disputar com o toque que
- * coloca o stream em foco. [dragHandleModifier] é fornecido pela [ReorderableStreamGrid] (modo
- * dinâmico) ou pela [PagedStreamGrid] (modo fixo).
+ * Dragging starts from a dedicated *handle* rather than from the whole card, so it does not compete
+ * with the tap that puts a stream in focus. [dragHandleModifier] comes from [ReorderableStreamGrid]
+ * (dynamic mode) or from [PagedStreamGrid] (fixed mode).
  *
- * @param aspectRatio proporção real do vídeo; no modo fixo é `null`, porque o [modifier] já chega
- *   com o tamanho medido pela [FixedGrid].
+ * @param aspectRatio the video's real ratio; `null` in fixed mode, where [modifier] already arrives
+ *   with the size [FixedGrid] measured.
  */
 @Composable
 fun CameraGridItem(

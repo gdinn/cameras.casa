@@ -6,23 +6,23 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import com.gdisys.cameras.feature.cameras.logic.DEFAULT_STREAM_ASPECT_RATIO
 
 /**
- * Proporção real de cada stream, alimentada pelos `RendererEvents` do `SurfaceViewRenderer`.
+ * Each stream's real aspect ratio, fed by the `SurfaceViewRenderer`'s `RendererEvents`.
  *
- * O dimensionamento das células depende da resolução do vídeo, que só é conhecida quando o primeiro
- * frame chega; até lá vale [DEFAULT_STREAM_ASPECT_RATIO] (16:9). Como é um `mutableStateMap`, a
- * grade se re-mede sozinha assim que a resolução verdadeira aparece.
+ * Cell sizing depends on the video resolution, which is only known once the first frame arrives;
+ * until then [DEFAULT_STREAM_ASPECT_RATIO] (16:9) applies. Being a `mutableStateMap`, the grid
+ * re-measures itself as soon as the real resolution turns up.
  */
 @Stable
 class StreamResolutionRegistry {
   private val aspectRatios = mutableStateMapOf<String, Float>()
 
-  /** Proporção conhecida de [streamUrl], ou 16:9 enquanto não houver primeiro frame. */
+  /** Known ratio of [streamUrl], or 16:9 while no first frame has arrived. */
   fun aspectRatioOf(streamUrl: String): Float =
     aspectRatios[streamUrl] ?: DEFAULT_STREAM_ASPECT_RATIO
 
   /**
-   * Registra a resolução reportada pelo renderer. Com [rotation] de 90°/270° o vídeo é exibido
-   * deitado, então as dimensões trocam de lugar.
+   * Records the resolution the renderer reported. At a [rotation] of 90 or 270 degrees the video
+   * is displayed on its side, so the dimensions swap.
    */
   fun onFrameResolutionChanged(streamUrl: String, width: Int, height: Int, rotation: Int) {
     if (width <= 0 || height <= 0) return
@@ -32,7 +32,7 @@ class StreamResolutionRegistry {
     aspectRatios[streamUrl] = displayWidth.toFloat() / displayHeight.toFloat()
   }
 
-  /** Esquece o que sabia de [streamUrl] — a próxima conexão volta a começar em 16:9. */
+  /** Forgets what it knew about [streamUrl] — the next connection starts back at 16:9. */
   fun forget(streamUrl: String) {
     aspectRatios.remove(streamUrl)
   }

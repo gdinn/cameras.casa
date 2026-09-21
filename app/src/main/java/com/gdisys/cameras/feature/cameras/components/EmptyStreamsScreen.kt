@@ -17,8 +17,8 @@ import androidx.compose.ui.unit.dp
 import com.gdisys.cameras.R
 
 /**
- * Home sem nenhuma URL cadastrada. Diferente do modo dinâmico, o "Reconfigure" aqui é fixo: não há
- * lista para dar overscroll e revelá-lo.
+ * Home with no URL registered. Unlike dynamic mode, "Reconfigure" is fixed in place here: there is
+ * no list to overscroll and reveal it.
  */
 @Composable
 fun EmptyStreamsScreen(
