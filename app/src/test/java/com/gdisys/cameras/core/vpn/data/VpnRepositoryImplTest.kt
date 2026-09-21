@@ -9,10 +9,10 @@ import org.junit.Assert.assertThrows
 import org.junit.Test
 
 /**
- * VpnRepositoryImpl instancia GoBackend (biblioteca nativa do WireGuard) já no seu
- * bloco `init`, então a classe não pode ser instanciada em um unit test puro (JVM) sem
- * a lib nativa disponível. Aqui testamos apenas a lógica de mapeamento pura que o
- * arquivo expõe: a extensão `Tunnel.State.toVpnTunnelState()` e `VpnConfig.toWireGuardConfig()`.
+ * VpnRepositoryImpl instantiates GoBackend — WireGuard's native library — in its `init` block, so
+ * the class cannot be constructed in a plain JVM unit test without that library present. What is
+ * tested here is only the pure mapping logic the file exposes: the `Tunnel.State.toVpnTunnelState()`
+ * extension and `VpnConfig.toWireGuardConfig()`.
  */
 class VpnRepositoryImplTest {
 

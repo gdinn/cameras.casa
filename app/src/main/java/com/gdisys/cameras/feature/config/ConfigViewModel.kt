@@ -58,8 +58,8 @@ class ConfigViewModel @Inject constructor(
   private val _qrCodeError = MutableStateFlow(false)
   private val _canNavigateBackToHome = MutableStateFlow(false)
 
-  // O estado de cada botão é derivado antes de compor o UiState: a sobrecarga tipada de `combine`
-  // só vai até 5 fontes, e com as preferências de stream seriam 6.
+  // Each button's state is derived before the UiState is composed: the typed `combine` overload
+  // tops out at 5 sources, and the stream preferences would make 6.
   private val qrCodeButtonState: Flow<ConfigButtonState> = combine(
     getVpnConfigStatusUseCase(),
     _qrCodeError
@@ -78,8 +78,8 @@ class ConfigViewModel @Inject constructor(
     }
     .onStart { emit(ConfigButtonState.Loading) }
 
-  // Eagerly porque o gating da navegação consulta `uiState.value` no momento do clique: o estado
-  // precisa estar atualizado mesmo em um instante sem coletores.
+  // Eagerly, because the navigation gate reads `uiState.value` synchronously at click time: the
+  // state has to be current even at a moment when nothing is collecting.
   val uiState: StateFlow<ConfigUiState> = combine(
     _cameraPermissionButtonState,
     qrCodeButtonState,
@@ -193,8 +193,8 @@ class ConfigViewModel @Inject constructor(
   }
 
   /**
-   * A Home só é alcançável com credenciais válidas, permissão de VPN concedida e ao menos uma
-   * Stream URL. Faltando qualquer um, o feedback é o toast do primeiro requisito pendente.
+   * Home is only reachable with valid credentials, VPN permission granted and at least one stream
+   * URL. If any is missing, the feedback is a toast for the first unmet requirement.
    */
   fun onNavigateToHomeRequested() {
     val missingRequirement = uiState.value.missingRequirement
@@ -208,8 +208,8 @@ class ConfigViewModel @Inject constructor(
   }
 
   /**
-   * Back consumido pela tela: ou falta um requisito, ou não há Home na pilha de navegação — nesse
-   * caso o único caminho válido é o botão "Navigate to Home".
+   * Back press consumed by this screen: either a requirement is missing, or there is no Home in
+   * the back stack — in which case the only valid way out is the "Navigate to Home" button.
    */
   fun onBackPressedBlocked() {
     val missingRequirement = uiState.value.missingRequirement

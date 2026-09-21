@@ -106,7 +106,7 @@ class VpnRepositoryImpl @Inject constructor(
   }
 
   /**
-   * Retorna o estado atual (CONNECTED, DISCONNECTED ou CONNECTING).
+   * Returns the current state (CONNECTED, DISCONNECTED or CONNECTING).
    */
   override fun getTunnelState(): VpnTunnelState {
     return backend.getState(tunnel).toVpnTunnelState()

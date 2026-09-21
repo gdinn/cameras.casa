@@ -36,20 +36,20 @@ class QrCodeAnalyzer(
       scanner.process(image)
         .addOnSuccessListener { barcodes ->
           if (barcodes.isNotEmpty()) {
-            Log.d("QrCodeAnalyzer", "Barcodes detectados: ${barcodes.size}")
+            Log.d("QrCodeAnalyzer", "Barcodes detected: ${barcodes.size}")
           }
 
           val barcode = barcodes.firstOrNull { it.rawValue != null }
 
           if (barcode != null && !isScanned) {
             val rawValue = barcode.rawValue!!
-            Log.d("QrCodeAnalyzer", "Conteúdo lido: $rawValue")
+            Log.d("QrCodeAnalyzer", "Scanned content: $rawValue")
             isScanned = true
             onQrCodeScanned(rawValue)
           }
         }
         .addOnFailureListener { e ->
-          Log.e("QrCodeAnalyzer", "Erro no scanner: ${e.message}", e)
+          Log.e("QrCodeAnalyzer", "Scanner error: ${e.message}", e)
         }
         .addOnCompleteListener {
           imageProxy.close()

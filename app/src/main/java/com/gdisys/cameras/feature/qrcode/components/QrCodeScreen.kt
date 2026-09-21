@@ -24,7 +24,7 @@ fun QrCodeScreen(
   onQrCodeScanned: (String) -> Unit,
   onCameraInitError: (Throwable) -> Unit
 ) {
-  // A permissão de câmera é solicitada antes desta tela ser exibida, em ConfigScreen.
+  // Camera permission is requested before this screen is shown, in ConfigScreen.
   QrCodeCameraPreview(
     onQrCodeScanned = onQrCodeScanned,
     onCameraInitError = onCameraInitError
@@ -41,8 +41,8 @@ private fun QrCodeCameraPreview(
   val lifecycleOwner = LocalLifecycleOwner.current
   val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(context) }
 
-  // O executor pertence à câmera renderizada aqui, então seu ciclo de vida
-  // é gerenciado nesta Composable, não no ViewModel.
+  // The executor belongs to the camera rendered here, so its lifecycle is managed in this
+  // composable rather than in the ViewModel.
   val analyzerExecutor = remember { Executors.newSingleThreadExecutor() }
   DisposableEffect(Unit) {
     onDispose { analyzerExecutor.shutdown() }
@@ -63,8 +63,8 @@ private fun QrCodeCameraPreview(
         if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.CAMERA) !=
           PackageManager.PERMISSION_GRANTED
         ) {
-          // A permissão pode ter sido revogada externamente (ex.: configurações do
-          // sistema) enquanto esta tela já estava aberta.
+          // Permission may have been revoked externally, from system settings, while this
+          // screen was already open.
           onCameraInitError(SecurityException("Camera permission not granted"))
           return@addListener
         }

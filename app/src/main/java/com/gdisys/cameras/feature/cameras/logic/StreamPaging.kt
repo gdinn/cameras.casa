@@ -25,7 +25,7 @@ fun streamsOnPage(streams: List<String>, page: Int, itemsPerPage: Int): List<Str
 }
 
 /**
- * Move [url] para [targetIndex] da lista completa, preservando o resto da ordem.
+ * Moves [url] to [targetIndex] of the complete list, preserving the rest of the order.
  *
  * The index is the one in the list **before** the removal — that is what the UI knows when it
  * drags an item over another cell.

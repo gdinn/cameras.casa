@@ -80,8 +80,8 @@ fun StreamURLsScreen(
       return@Scaffold
     }
 
-    // Um único container de scroll para as duas seções: a lista de URLs é aberta e a seção do
-    // grid tem altura fixa, então aninhar scrolls verticais não é uma opção.
+    // One scroll container for both sections: the URL list is open-ended and the grid section has
+    // a fixed height, so nesting vertical scrolls is not an option.
     LazyColumn(
       modifier = Modifier
         .fillMaxSize()
@@ -128,7 +128,7 @@ fun StreamURLsScreen(
   )
 }
 
-/** Seção A da tela: conjunto canônico de URLs. */
+/** Section A of the screen: the canonical set of URLs. */
 private fun LazyListScope.streamUrlsSection(
   uiState: StreamURLsUiState,
   onShowAddUrlForm: () -> Unit,

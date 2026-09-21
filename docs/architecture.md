@@ -686,18 +686,6 @@ defect — not a work plan.
     justifies excluding Compose UI on the grounds that it is "tested via Compose UI Test", and the
     dependencies are wired, but no such tests exist yet.
 
-### 9.5 Language policy
-
-15. **The codebase is bilingual.** `CLAUDE.md` mandates en-US for code and comments. Recently
-    refactored files follow it (`StreamHost.kt`, `StreamPreferences.kt`, `LayerDependencyTest.kt`,
-    `StreamConnectionRepository.kt`, parts of `StreamURLsViewModel.kt`), while much of the rest —
-    including most `core/vpn`, `core/webrtc` and the Gradle task documentation — is in pt-BR. Some
-    single files mix both languages in adjacent KDoc blocks. Error messages passed to
-    `IllegalArgumentException` are also in pt-BR.
-
-    Two build-file comments also reference `relatorio_tested_expandido.md`, a document not present
-    in the repository.
-
 ---
 
 ## 10. Testing and quality gates
@@ -717,6 +705,11 @@ implementations, pure logic and serialization.
 | Config drift | `StreamHostTest` (Kotlin constant vs. XML), `JacocoExclusionsTest` (coverage patterns vs. compiled classes) |
 
 `MainDispatcherRule` provides the standard `Dispatchers.Main` replacement for coroutine tests.
+
+**Language.** All code, identifiers, KDoc, comments and developer-facing exception messages are
+en-US, as `CLAUDE.md` requires — production sources, tests and the Gradle build script alike. The
+only user-facing text lives in `res/values*/strings.xml`, where pt-BR is a translation
+(`values-pt-rBR`), not a stray comment.
 
 Useful commands:
 

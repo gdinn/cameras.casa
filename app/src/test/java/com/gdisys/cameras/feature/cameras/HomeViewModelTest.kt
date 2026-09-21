@@ -62,7 +62,7 @@ class HomeViewModelTest {
   private val portraitGrid = GridPreferences(columns = 1, rows = 1, dynamicRows = true)
   private val landscapeGrid = GridPreferences(columns = 2, rows = 1, dynamicRows = true)
 
-  /** Ordens deliberadamente diferentes: é o que prova que a orientação escolhe a lista certa. */
+  /** The two orders differ on purpose: that is what proves orientation picks the right list. */
   private val streamPreferences = MutableStateFlow(
     StreamPreferences(
       streamUrls = defaultStreams,
@@ -235,8 +235,8 @@ class HomeViewModelTest {
 
   @Test
   fun `a drag across pages persists the whole order of the current orientation`() = runTest {
-    // Grade fixa de 2 itens por página: o primeiro stream é arrastado até a borda direita e cai
-    // no início da página seguinte. O que é persistido é a ordem completa, não só a da página.
+    // Fixed grid of 2 items per page: the first stream is dragged to the right edge and lands at
+    // the start of the next page. What gets persisted is the complete order, not just the page's.
     val newOrder = movedToPage(
       order = defaultStreams,
       url = defaultStreams[0],

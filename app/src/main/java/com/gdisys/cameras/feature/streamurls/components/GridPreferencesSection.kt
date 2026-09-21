@@ -27,10 +27,10 @@ import com.gdisys.cameras.feature.streamurls.GridInput
 import com.gdisys.cameras.feature.streamurls.StreamURLsUiState
 
 /**
- * Seção B da tela: configuração da grade, um bloco por orientação.
+ * Section B of the screen: grid configuration, one block per orientation.
  *
- * Entra como itens da `LazyColumn` da tela para que exista um único container de scroll — a seção
- * A já é uma lista, e aninhar dois scrolls verticais não é possível no Compose.
+ * It is emitted as items of the screen's `LazyColumn` so there is a single scroll container —
+ * section A is already a list, and Compose cannot nest two vertical scrolls.
  */
 fun LazyListScope.gridPreferencesSection(
   uiState: StreamURLsUiState,
@@ -115,8 +115,8 @@ private fun GridOrientationBlock(
           modifier = Modifier.weight(1f),
           value = gridInput.rows,
           onValueChange = onRowsChanged,
-          // No modo dinâmico as linhas são ignoradas: o campo fica desabilitado, e não apagado,
-          // para o usuário não perder o valor ao alternar o modo.
+          // In dynamic mode the row count is ignored: the field is disabled rather than cleared,
+          // so toggling the mode does not lose the value the user typed.
           enabled = !gridInput.dynamicRows,
           singleLine = true,
           label = { Text(stringResource(R.string.stream_urls_screen_grid_rows_label)) },

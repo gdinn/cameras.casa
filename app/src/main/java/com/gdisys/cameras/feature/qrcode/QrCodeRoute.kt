@@ -15,8 +15,8 @@ fun QrCodeRoute(
   onNavigateBack: () -> Unit,
   viewModel: QrCodeViewModel = hiltViewModel()
 ) {
-  // A QrCodeViewModel é retida entre exibições do scanner, então é preciso
-  // reabilitar a leitura de QR code sempre que a tela é reaberta.
+  // The QrCodeViewModel survives between scanner visits, so scanning has to be re-enabled every
+  // time the screen is reopened.
   LaunchedEffect(Unit) {
     viewModel.resetScan()
   }

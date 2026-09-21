@@ -35,7 +35,7 @@ class QrCodeViewModel @Inject constructor() : ToastEventViewModel() {
   }
 
   fun onCameraInitError(error: Throwable) {
-    Log.e(DEBUG_TAG, "Falha ao iniciar a câmera", error)
+    Log.e(DEBUG_TAG, "Failed to start the camera", error)
     showToast(QrCodeToastMessage.CAMERA_INIT_ERROR)
     viewModelScope.launch {
       _navigateBackEvent.send(Unit)

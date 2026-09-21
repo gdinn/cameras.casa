@@ -10,9 +10,9 @@ import org.junit.rules.TestWatcher
 import org.junit.runner.Description
 
 /**
- * Troca o `Dispatchers.Main` (usado por `viewModelScope`) por um `TestDispatcher` durante
- * os testes. Usa `UnconfinedTestDispatcher` por padrão para que as corrotinas lançadas em
- * `viewModelScope` executem imediatamente, o que simplifica a sincronização com Turbine.
+ * Swaps `Dispatchers.Main` — the dispatcher `viewModelScope` uses — for a `TestDispatcher` while
+ * the tests run. It defaults to `UnconfinedTestDispatcher` so coroutines launched in
+ * `viewModelScope` execute immediately, which keeps synchronization with Turbine simple.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class MainDispatcherRule(

@@ -36,8 +36,8 @@ fun ConfigRoute(
   val activity = LocalActivity.current
   val context = LocalContext.current
 
-  // A permissão de câmera pode ser concedida externamente, pelas configurações
-  // do sistema, enquanto esta tela está em segundo plano.
+  // Camera permission can be granted externally, from system settings, while this screen is in
+  // the background.
   LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
     viewModel.refreshCameraPermissionState()
   }
@@ -46,8 +46,8 @@ fun ConfigRoute(
     viewModel.setCanNavigateBackToHome(canNavigateBackToHome)
   }
 
-  // O back só sai desta tela quando há Home na pilha de navegação *e* a configuração está
-  // completa; caso contrário ele é consumido aqui e vira toast.
+  // Back only leaves this screen when there is a Home in the back stack *and* the configuration
+  // is complete; otherwise it is consumed here and turned into a toast.
   BackHandler(enabled = !uiState.canNavigateBackToHome || !uiState.canNavigateToHome) {
     viewModel.onBackPressedBlocked()
   }

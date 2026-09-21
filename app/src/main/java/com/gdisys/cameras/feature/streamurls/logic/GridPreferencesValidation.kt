@@ -2,26 +2,25 @@ package com.gdisys.cameras.feature.streamurls.logic
 
 import com.gdisys.cameras.core.storage.domain.model.GridPreferences
 
-/** Faixa aceita para colunas e linhas da grade, nas duas orientações. */
+/** Accepted range for the grid's columns and rows, in both orientations. */
 const val MIN_GRID_DIMENSION = 1
 const val MAX_GRID_DIMENSION = 6
 
 /**
- * Linhas gravadas quando o modo dinâmico está ativo e o campo de linhas não tem um valor válido.
+ * Row count written when dynamic mode is on and the rows field holds no valid value.
  *
- * No modo dinâmico o número de linhas é ignorado na exibição, mas o modelo persiste um inteiro;
- * gravar um valor dentro da faixa mantém a preferência coerente caso o usuário desligue o modo
- * dinâmico mais tarde.
+ * In dynamic mode the row count is ignored for display, but the model persists an integer anyway;
+ * writing a value inside the accepted range keeps the preference coherent in case the user turns
+ * dynamic mode off later.
  */
 private const val FALLBACK_ROWS = MIN_GRID_DIMENSION
 
 /**
- * Valida os campos da grade de uma orientação e devolve as preferências correspondentes, ou `null`
- * quando a configuração é inválida — que é o que desabilita o botão de salvar da seção.
+ * Validates one orientation's grid fields and returns the matching preferences, or `null` when the
+ * configuration is invalid — which is what disables the section's save button.
  *
- * Colunas são sempre obrigatórias. Linhas só são exigidas fora do modo dinâmico: com
- * [dynamicRows] ligado o campo é ignorado, então um valor vazio ou inválido ali não bloqueia o
- * salvamento.
+ * Columns are always required. Rows are only required outside dynamic mode: with [dynamicRows] on
+ * the field is ignored, so an empty or invalid value there does not block saving.
  */
 fun validateGridPreferences(
   columns: String,
@@ -42,10 +41,10 @@ fun validateGridPreferences(
 }
 
 /**
- * `false` quando a grade é menor do que a quantidade de streams cadastrados — configuração válida,
- * mas que merece um aviso, já que parte dos streams fica de fora da tela.
+ * `false` when the grid is smaller than the number of registered streams — a valid configuration,
+ * but one worth warning about, since some streams then never appear on screen.
  *
- * No modo dinâmico a grade cresce com scroll, então ela sempre exibe todos.
+ * In dynamic mode the grid grows and scrolls, so it always shows every stream.
  */
 fun GridPreferences.showsAllStreams(streamCount: Int): Boolean =
   dynamicRows || columns * rows >= streamCount
