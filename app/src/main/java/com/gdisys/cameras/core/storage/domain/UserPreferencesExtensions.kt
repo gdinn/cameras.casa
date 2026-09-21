@@ -4,7 +4,8 @@ import com.gdisys.cameras.core.storage.domain.model.UserPreferences
 import com.gdisys.cameras.core.vpn.domain.model.VpnConfig
 
 fun UserPreferences.toVpnConfigOrNull(): VpnConfig? {
-  // Validação de dados críticos. Se algum for nulo, a função aborta e retorna null.
+  // Every field is required: a single null means the stored credentials are incomplete, so the
+  // whole mapping gives up and returns null rather than building a config that cannot connect.
   val prk = vpnConfigTokens?.iPrk ?: return null
   val puk = vpnConfigDefaults?.pPuk ?: return null
   val addr = vpnConfigTokens.iAddr ?: return null

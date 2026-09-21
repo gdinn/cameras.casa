@@ -3,18 +3,18 @@ package com.gdisys.cameras.core.storage.domain.model
 import kotlinx.serialization.Serializable
 
 /**
- * Parâmetros de rede WireGuard comuns a todos os dispositivos (recebidos via QR code /
- * provisionamento), equivalentes às seções `[Interface]`/`[Peer]` de um arquivo de
- * configuração WireGuard. Prefixo `i` = `[Interface]`, prefixo `p` = `[Peer]`.
+ * WireGuard network parameters shared by every device (received via QR code / provisioning),
+ * matching the `[Interface]`/`[Peer]` sections of a WireGuard configuration file. Prefix `i` =
+ * `[Interface]`, prefix `p` = `[Peer]`.
  *
- * Diferente de [VpnConfigTokens], que traz valores exclusivos deste dispositivo.
+ * Unlike [VpnConfigTokens], which carries the values unique to this device.
  *
- * @property iDns servidor DNS do túnel (`[Interface] DNS`)
- * @property iMtu MTU da interface do túnel (`[Interface] MTU`)
- * @property pPuk chave pública do peer/servidor (`[Peer] PublicKey`)
- * @property pAllowedips faixas de IP roteadas pelo túnel (`[Peer] AllowedIPs`)
- * @property pEndpoint endereço `host:porta` do servidor WireGuard (`[Peer] Endpoint`)
- * @property pPersistentKeepAlive intervalo em segundos de keepalive com o peer (`[Peer] PersistentKeepalive`)
+ * @property iDns the tunnel's DNS server (`[Interface] DNS`)
+ * @property iMtu MTU of the tunnel interface (`[Interface] MTU`)
+ * @property pPuk public key of the peer/server (`[Peer] PublicKey`)
+ * @property pAllowedips IP ranges routed through the tunnel (`[Peer] AllowedIPs`)
+ * @property pEndpoint `host:port` address of the WireGuard server (`[Peer] Endpoint`)
+ * @property pPersistentKeepAlive keepalive interval with the peer, in seconds (`[Peer] PersistentKeepalive`)
  */
 @Serializable
 data class VpnConfigDefaults(

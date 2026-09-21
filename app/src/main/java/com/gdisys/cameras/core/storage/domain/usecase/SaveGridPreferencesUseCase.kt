@@ -4,7 +4,7 @@ import com.gdisys.cameras.core.storage.domain.StreamPreferencesRepository
 import com.gdisys.cameras.core.storage.domain.model.GridPreferences
 import javax.inject.Inject
 
-/** Sobrescreve as grades das duas orientações, sem tocar nas URLs nem nas ordens. */
+/** Overwrites the grids of both orientations, touching neither the URLs nor the orders. */
 class SaveGridPreferencesUseCase @Inject constructor(
   private val streamPreferencesRepository: StreamPreferencesRepository
 ) {

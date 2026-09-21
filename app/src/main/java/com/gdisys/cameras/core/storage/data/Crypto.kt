@@ -14,10 +14,10 @@ interface CryptoEngine {
 }
 
 /**
- * Cifra AES/CBC/PKCS7 com a chave guardada no Android Keystore sob [alias].
+ * AES/CBC/PKCS7 cipher keyed from the Android Keystore under [alias].
  *
- * Cada storage instancia o seu próprio engine com um alias distinto, de modo que a perda ou a
- * invalidação da chave de um storage não afeta os demais.
+ * Each store builds its own engine with a distinct alias, so losing or invalidating one store's key
+ * leaves the others readable.
  */
 class KeystoreCryptoEngine(private val alias: String) : CryptoEngine {
 

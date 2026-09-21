@@ -3,15 +3,15 @@ package com.gdisys.cameras.core.storage.domain.model
 import kotlinx.serialization.Serializable
 
 /**
- * Credenciais WireGuard exclusivas deste dispositivo (recebidas via QR code /
- * provisionamento), equivalentes às seções `[Interface]`/`[Peer]` de um arquivo de
- * configuração WireGuard. Prefixo `i` = `[Interface]`, prefixo `p` = `[Peer]`.
+ * WireGuard credentials unique to this device (received via QR code / provisioning), matching the
+ * `[Interface]`/`[Peer]` sections of a WireGuard configuration file. Prefix `i` = `[Interface]`,
+ * prefix `p` = `[Peer]`.
  *
- * Diferente de [VpnConfigDefaults], que traz valores comuns a todos os dispositivos.
+ * Unlike [VpnConfigDefaults], which carries the values shared by every device.
  *
- * @property iPrk chave privada deste dispositivo (`[Interface] PrivateKey`)
- * @property iAddr endereço IP do túnel atribuído a este dispositivo (`[Interface] Address`)
- * @property pPsk chave pré-compartilhada com o peer/servidor (`[Peer] PresharedKey`)
+ * @property iPrk this device's private key (`[Interface] PrivateKey`)
+ * @property iAddr tunnel IP address assigned to this device (`[Interface] Address`)
+ * @property pPsk pre-shared key with the peer/server (`[Peer] PresharedKey`)
  */
 @Serializable
 data class VpnConfigTokens(

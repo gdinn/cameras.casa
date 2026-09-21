@@ -5,7 +5,8 @@ import com.gdisys.cameras.core.storage.domain.model.StreamOrientation
 import javax.inject.Inject
 
 /**
- * Persiste a nova ordem de exibição de **uma** orientação; a ordem da outra permanece intacta.
+ * Persists the new display order of **one** orientation; the other orientation's order is left
+ * untouched.
  */
 class UpdateStreamOrderUseCase @Inject constructor(
   private val streamPreferencesRepository: StreamPreferencesRepository
