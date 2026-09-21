@@ -14,3 +14,7 @@
 .externalNativeBuild
 .cxx
 local.properties
+# Release signing material, read by app/build.gradle.kts
+keystore.properties
+*.jks
+*.keystore

@@ -75,6 +75,7 @@ Three product decisions shape most of the code:
 | Build | Gradle KTS + version catalog (`gradle/libs.versions.toml`) |
 | Coverage | JaCoCo 0.8.12, custom `:app:jacocoTestReport` task |
 | Arch enforcement | Konsist 0.17.3 (`LayerDependencyTest`) |
+| CI | GitHub Actions — `.github/workflows/android.yml` (§10.1) |
 
 **SDK levels:** `minSdk 26`, `targetSdk 36`, `compileSdk 36`, Java 17.
 
@@ -758,6 +759,52 @@ Useful commands:
 
 Note that `LayerDependencyTest` and `StreamHostTest` are ordinary unit tests, so a layering
 violation or a host/XML mismatch fails `testDebugUnitTest` like any other regression.
+
+### 10.1 Continuous integration
+
+`.github/workflows/android.yml` ("Android CI") runs on pushes to `main`, on `v*` tags, on pull
+requests targeting `main`, and on manual dispatch. Runs on the same ref cancel each other.
+
+| Job | What it runs | Artifacts |
+|---|---|---|
+| `unit-tests` | `:app:testDebugUnitTest` + `:app:jacocoTestReport` | test reports (HTML + XML), JaCoCo report |
+| `build` | `:app:assembleDebug` + `:app:assembleRelease` | debug and release APKs, `mapping.txt` |
+
+Both jobs set up Temurin **JDK 21** — the version `gradle/gradle-daemon-jvm.properties` pins the
+daemon to, independent of the Java 17 the app compiles against — plus the Android SDK and
+`gradle/actions/setup-gradle`, which caches Gradle and validates the committed wrapper's checksum.
+
+Two things the pipeline does *not* do: there is no instrumented-test job, because
+`src/androidTest/` still holds only the generated stub (§9.2), and there is no separate lint job,
+because `assembleRelease` already runs `lintVitalRelease`. Adding either one is a matter of adding
+a job, not of reworking the workflow.
+
+`assembleRelease` on every pull request is deliberate: R8 is the part of the build most likely to
+break from an ordinary dependency bump. It remains the necessary-but-not-sufficient check
+described in §2 — a wrong keep rule still only shows up at runtime, so the device smoke test
+(QR scan → tunnel up → stream playing) is still owed on any change to the keep rules, to a
+`@Serializable` model, or to the VPN/WebRTC dependencies.
+
+**Release signing.** The signing material is resolved in `app/build.gradle.kts` from environment
+variables first, then from a git-ignored `app/keystore.properties`:
+
+| Environment variable (CI) | `keystore.properties` key |
+|---|---|
+| `CAMERAS_RELEASE_STORE_FILE` | `storeFile` |
+| `CAMERAS_RELEASE_STORE_PASSWORD` | `storePassword` |
+| `CAMERAS_RELEASE_KEY_ALIAS` | `keyAlias` |
+| `CAMERAS_RELEASE_KEY_PASSWORD` | `keyPassword` |
+
+The `release` signing config is created only when all four are present; otherwise
+`signingConfig = signingConfigs.findByName("release")` resolves to `null` and the release APK is
+built unsigned. That is what keeps `assembleRelease` runnable on a machine — or a fork's pull
+request — that has no keystore, and it replaces an earlier `getByName("release")` that failed the
+*configuration* of every Gradle task when no such config existed.
+
+On CI the keystore comes from the repository secret `RELEASE_KEYSTORE_BASE64` (`base64` of the
+`.jks`), decoded into the runner's temp directory, alongside `RELEASE_STORE_PASSWORD`,
+`RELEASE_KEY_ALIAS` and `RELEASE_KEY_PASSWORD`. With no secrets configured the job still passes and
+publishes `app-release-unsigned.apk`.
 
 ---
 
