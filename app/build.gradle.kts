@@ -1,4 +1,5 @@
 import org.w3c.dom.Element
+import java.util.Properties
 import javax.xml.parsers.DocumentBuilderFactory
 
 plugins {
@@ -14,6 +15,25 @@ jacoco {
   toolVersion = "0.8.12"
 }
 
+// Release signing material never lives in the repository: it comes from the environment on CI and
+// from the git-ignored app/keystore.properties for a local release build. When none of it is
+// available the release build type is left unsigned (see `signingConfigs` below), so
+// `assembleRelease` still runs R8 on a machine that has no keystore — which is what lets CI catch
+// a shrinking failure on every pull request.
+val releaseSigningProperties = Properties().apply {
+  val propertiesFile = project.file("keystore.properties")
+  if (propertiesFile.exists()) propertiesFile.inputStream().use { load(it) }
+}
+
+fun releaseSigningValue(propertyName: String, environmentVariable: String): String? =
+  System.getenv(environmentVariable)?.takeIf { it.isNotBlank() }
+    ?: releaseSigningProperties.getProperty(propertyName)?.takeIf { it.isNotBlank() }
+
+val releaseStoreFile = releaseSigningValue("storeFile", "CAMERAS_RELEASE_STORE_FILE")
+val releaseStorePassword = releaseSigningValue("storePassword", "CAMERAS_RELEASE_STORE_PASSWORD")
+val releaseKeyAlias = releaseSigningValue("keyAlias", "CAMERAS_RELEASE_KEY_ALIAS")
+val releaseKeyPassword = releaseSigningValue("keyPassword", "CAMERAS_RELEASE_KEY_PASSWORD")
+
 android {
   namespace = "com.gdisys.cameras"
   compileSdk = 36
@@ -28,6 +48,25 @@ android {
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     vectorDrawables {
       useSupportLibrary = true
+    }
+  }
+
+  signingConfigs {
+    // Created only when every piece of the material is present. `findByName` below then hands the
+    // release build type either this config or `null`, and `null` means "unsigned APK" rather than
+    // a build that cannot even be configured.
+    if (
+      releaseStoreFile != null &&
+      releaseStorePassword != null &&
+      releaseKeyAlias != null &&
+      releaseKeyPassword != null
+    ) {
+      create("release") {
+        storeFile = file(releaseStoreFile)
+        storePassword = releaseStorePassword
+        keyAlias = releaseKeyAlias
+        keyPassword = releaseKeyPassword
+      }
     }
   }
 
@@ -48,7 +87,7 @@ android {
         getDefaultProguardFile("proguard-android-optimize.txt"),
         "proguard-rules.pro"
       )
-      signingConfig = signingConfigs.getByName("release")
+      signingConfig = signingConfigs.findByName("release")
     }
   }
   compileOptions {
