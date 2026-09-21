@@ -33,6 +33,20 @@ android {
 
   buildTypes {
     release {
+      // Deliberately off, and proguard-rules.pro is therefore inert. Turning it on is the right
+      // end state, but this stack fails at runtime rather than at build time when the keep rules
+      // are wrong, so a green `assembleRelease` proves nothing. Enabling it without running the
+      // minified APK on a device would ship a build that installs and then breaks on first use.
+      //
+      // Before flipping this to true, add the keep rules below and smoke-test a minified release
+      // build on a real device — scan the QR code, bring the tunnel up, and play a stream:
+      //   - kotlinx.serialization: keep the generated serializers for every @Serializable model
+      //     (UserPreferences, StreamPreferences, GridPreferences and the NavigationRoute objects).
+      //     @SerialName is already explicit on the storage models, which protects the on-disk
+      //     schema, but route serialization and serializer lookup still need the standard rules.
+      //   - org.webrtc.** and com.wireguard.**: JNI/native entry points, called by name.
+      //   - Hilt/Dagger generated code is covered by the plugin's own consumer rules; blanket keeps
+      //     are not needed and would defeat the point.
       isMinifyEnabled = false
       proguardFiles(
         getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -52,9 +66,6 @@ android {
     unitTests {
       isReturnDefaultValues = true
     }
-  }
-  composeOptions {
-    kotlinCompilerExtensionVersion = "1.5.1"
   }
   packaging {
     resources {

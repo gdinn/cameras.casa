@@ -78,6 +78,17 @@ Three product decisions shape most of the code:
 
 **SDK levels:** `minSdk 26`, `targetSdk 36`, `compileSdk 36`, Java 17.
 
+Compose is configured by the Compose Compiler Gradle plugin (`libs.plugins.compose.compiler`), the
+only supported mechanism on Kotlin 2.x — there is no `composeOptions` block, and adding one back
+would be inert.
+
+**Release builds are not minified.** `isMinifyEnabled = false`, so `proguard-rules.pro` has no
+effect. This is a recorded decision, not an oversight: the keep rules this stack needs
+(`kotlinx.serialization` serializers, `org.webrtc.**` and `com.wireguard.**` JNI entry points) fail
+at *runtime* when they are wrong, so a green `assembleRelease` would not tell you the APK works.
+`app/build.gradle.kts` carries the checklist to work through before turning it on, which ends in
+smoke-testing a minified build on a real device.
+
 The build file also defines a bespoke `jacocoTestReport` task that narrows coverage to the
 "unit-testable" surface — it excludes generated code, DI, Compose UI, bootstrap, theme, and
 anything backed by a native/hardware stack (WebRTC native, `GoBackend`, AndroidKeyStore, Android
@@ -562,9 +573,18 @@ swapping WHEP for RTSP/HLS a change that stops at that boundary.
 | **Device camera** | CameraX + ML Kit (on-device, no network) | `QrCodeScreen`, `QrCodeAnalyzer` |
 
 **Network reachability is tightly constrained.** All stream traffic is cleartext HTTP to a
-ULA IPv6 literal, reachable only through the tunnel. `network_security_config.xml` whitelists that
-host for cleartext; `STREAM_HOST` is the single Kotlin source of truth; `StreamHostTest` pins the
-two together. Default URLs ship as `http://[fd00:20::cafe]:8889/cam_160..163` (`StreamDefaults`).
+ULA IPv6 literal, reachable only through the tunnel. `network_security_config.xml` whitelists *the*
+host for cleartext — exactly one entry, nothing else; `STREAM_HOST` is the single Kotlin source of
+truth; `StreamHostTest` asserts the XML declares that host **and only** that host, so a stale
+exception cannot outlive its use. Default URLs ship as
+`http://[fd00:20::cafe]:8889/cam_160..163` (`StreamDefaults`).
+
+**Nothing persisted leaves the device.** `allowBackup` stays on, but `backup_rules.xml` and
+`data_extraction_rules.xml` exclude `filesDir/datastore/` from cloud backup *and* device transfer.
+The Keystore key that encrypts both stores is device-bound and does not travel, so a restored file
+would be undecryptable ciphertext — and `EncryptedPreferencesSerializer` falls back to
+`defaultValue` on a read failure, which would look to the user like their cameras and credentials
+silently disappeared. Excluding the files makes the app ask for the QR code again instead.
 
 **Credential shape.** `UserPreferences` splits the WireGuard config in two, mirroring the
 `[Interface]` / `[Peer]` sections (prefix `i` = interface, `p` = peer):
@@ -654,25 +674,11 @@ defect — not a work plan.
 
 ### 9.3 Configuration drift
 
-9. **`network_security_config.xml` declares two cleartext domains** — `cameras.casa` and
-   `[fd00:20::cafe]` — while `StreamHost.kt`'s KDoc states that the host it defines is "the only
-   host allowed by" that file. `cameras.casa` appears nowhere in Kotlin code. `StreamHostTest` only
-   asserts that `STREAM_HOST` is *present* among the declared domains, so the stale entry passes.
-
-10. **`composeOptions { kotlinCompilerExtensionVersion = "1.5.1" }`** is still set in
-    `app/build.gradle.kts` while the project uses the Compose Compiler Gradle plugin on Kotlin 2.3.
-    The setting is obsolete in that configuration and does not reflect the compiler actually in use.
-
-11. **`android:allowBackup="true"` with template backup rules.** Both `backup_rules.xml` and
-    `data_extraction_rules.xml` are the unmodified AGP samples with every rule commented out, so
-    the DataStore files are eligible for cloud backup and device transfer. Their contents are
-    encrypted with a **device-bound** Keystore key that does not travel, so a restore on a new
-    device yields ciphertext that cannot be decrypted —
-    `EncryptedPreferencesSerializer` catches the failure and silently returns `defaultValue`. The
-    user's cameras and credentials appear to have vanished with no error. Excluding both DataStore
-    files from backup would make the outcome honest.
-
-12. **Release builds have `isMinifyEnabled = false`**, so `proguard-rules.pro` is inert.
+12. **Release builds have `isMinifyEnabled = false`**, so `proguard-rules.pro` is inert. This is now
+    a *documented decision* rather than drift — see [§2](#2-stack-and-build-configuration) and the
+    comment on the `release` block in `app/build.gradle.kts`, which lists the keep rules to add and
+    requires a minified build to be smoke-tested on a device before the flag is flipped. It is
+    recorded here because it is still a gap someone should eventually close, not a permanent choice.
 
 ### 9.4 Coverage configuration
 

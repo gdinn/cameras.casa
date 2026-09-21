@@ -1,7 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+   Cleartext is permitted for exactly one host: the WHEP media server, reachable only through the
+   WireGuard tunnel. The same host is declared in Kotlin as STREAM_HOST (core/network/StreamHost.kt)
+   and StreamHostTest asserts that this file declares that host and nothing else, so the two cannot
+   drift apart.
+-->
 <network-security-config>
     <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="true">cameras.casa</domain>
         <domain includeSubdomains="true">[fd00:20::cafe]</domain>
     </domain-config>
 </network-security-config>

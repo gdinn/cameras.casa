@@ -1,19 +1,19 @@
-<?xml version="1.0" encoding="utf-8"?><!--
-   Sample data extraction rules file; uncomment and customize as necessary.
-   See https://developer.android.com/about/versions/12/backup-restore#xml-changes
-   for details.
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+   Backup and device-transfer rules for API 31+. See backup_rules.xml for API 30 and below.
+
+   The DataStore files under filesDir/datastore/ are AES-encrypted with a key that lives in the
+   Android Keystore and is bound to this device, so the key never travels. A restored or transferred
+   file is ciphertext the new device cannot decrypt: EncryptedPreferencesSerializer catches the
+   failure and returns defaultValue, so the user's cameras and WireGuard credentials appear to have
+   vanished with no error. Both paths are excluded for the same reason — device transfer moves the
+   files just as cloud backup does, and neither moves the Keystore key.
 -->
 <data-extraction-rules>
     <cloud-backup>
-        <!-- TODO: Use <include> and <exclude> to control what is backed up.
-        <include .../>
-        <exclude .../>
-        -->
+        <exclude domain="file" path="datastore/"/>
     </cloud-backup>
-    <!--
     <device-transfer>
-        <include .../>
-        <exclude .../>
+        <exclude domain="file" path="datastore/"/>
     </device-transfer>
-    -->
 </data-extraction-rules>
