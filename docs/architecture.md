@@ -84,6 +84,12 @@ anything backed by a native/hardware stack (WebRTC native, `GoBackend`, AndroidK
 `Service`) — and injects a LINE-coverage banner into the HTML report, since JaCoCo's own headline
 figure is instruction coverage.
 
+Those exclusions are plain strings with no link to the code, so a rename or a package move would
+leave them matching nothing and silently pull the excluded code back into the denominator.
+`JacocoExclusionsTest` reads the patterns back out of `app/build.gradle.kts` and resolves each one
+against the compiled classes, which turns that drift into a failing test. The build script is
+declared as an input of the test task so editing a pattern actually re-runs the guard.
+
 ---
 
 ## 3. Architecture: layers and packages
@@ -672,15 +678,6 @@ defect — not a work plan.
 
 ### 9.4 Coverage configuration
 
-13. **A JaCoCo exclusion pattern matches nothing**, because it names a class that does not exist:
-
-    | Pattern in `jacocoTestReport` | Class actually produced |
-    |---|---|
-    | `com/gdisys/cameras/core/components/LoadingStorageScreenKt*.class` | `core/components/LoadingScreenKt` |
-
-    That file is Compose UI that the task's own KDoc says is deliberately out of unit-test scope,
-    yet it is currently **counted** in the coverage denominator.
-
 14. **`androidTest/` contains only the generated `ExampleInstrumentedTest`.** The JaCoCo comment
     justifies excluding Compose UI on the grounds that it is "tested via Compose UI Test", and the
     dependencies are wired, but no such tests exist yet.
@@ -701,7 +698,7 @@ defect — not a work plan.
 
 ## 10. Testing and quality gates
 
-**43 test files** under `app/src/test/`, mirroring the production package structure. Coverage is
+**44 test files** under `app/src/test/`, mirroring the production package structure. Coverage is
 concentrated where the project decided it belongs: ViewModels, use cases, repository
 implementations, pure logic and serialization.
 
@@ -713,7 +710,7 @@ implementations, pure logic and serialization.
 | VPN | `VpnRepositoryImplTest`, `VpnConfigTest`, `VpnLifecycleControllerImplTest`, 4 use-case tests |
 | WebRTC | `WhepConnectionManagerTest`, `WhepRemoteDataSourceImplTest` (MockWebServer) |
 | Architecture | `LayerDependencyTest` (Konsist) |
-| Config drift | `StreamHostTest` (Kotlin constant vs. XML) |
+| Config drift | `StreamHostTest` (Kotlin constant vs. XML), `JacocoExclusionsTest` (coverage patterns vs. compiled classes) |
 
 `MainDispatcherRule` provides the standard `Dispatchers.Main` replacement for coroutine tests.
 

@@ -119,6 +119,15 @@ dependencies {
   implementation(libs.reorderable)
 }
 
+// JacocoExclusionsTest lê os padrões de `outOfScopeFilter` diretamente deste arquivo. Sem declarar
+// o build script como entrada, a tarefa de teste fica UP-TO-DATE ao editar os padrões e o guarda
+// nunca roda justamente quando ele importa.
+tasks.withType<Test>().configureEach {
+  inputs.file("build.gradle.kts")
+    .withPropertyName("buildScript")
+    .withPathSensitivity(PathSensitivity.RELATIVE)
+}
+
 /**
  * Gera relatório de cobertura dos testes unitários (JVM, variante debug).
  * Uso: ./gradlew :app:jacocoTestReport
@@ -156,12 +165,8 @@ tasks.register<JacocoReport>("jacocoTestReport") {
     "com/gdisys/cameras/CamerasApp*.class",
     "com/gdisys/cameras/MainActivity*.class",
     "com/gdisys/cameras/app/navigation/**",
-    "com/gdisys/cameras/core/components/QrCodeRouteKt*.class",
-    "com/gdisys/cameras/core/components/QrCodeScreenKt*.class",
-    "com/gdisys/cameras/core/components/LoadingStorageScreenKt*.class",
+    "com/gdisys/cameras/core/components/LoadingScreenKt*.class",
     "com/gdisys/cameras/core/components/ToastDisplayerKt*.class",
-    "com/gdisys/cameras/core/components/ComposableSingletons*.class",
-    "com/gdisys/cameras/core/utils/QrCodeAnalyzer*.class", // ImageProxy/ML Kit
     "com/gdisys/cameras/core/vpn/data/VpnLifecycleService*.class", // Android Service
     "com/gdisys/cameras/core/vpn/data/AppTunnel*.class", // wrapper fino sobre Tunnel nativo
     "com/gdisys/cameras/core/webrtc/data/WhepClientImpl*.class", // stack WebRTC nativa
@@ -172,12 +177,13 @@ tasks.register<JacocoReport>("jacocoTestReport") {
     "com/gdisys/cameras/feature/config/components/**",
     "com/gdisys/cameras/feature/init/InitRouteKt*.class",
     "com/gdisys/cameras/feature/init/components/**",
+    "com/gdisys/cameras/feature/qrcode/QrCodeRouteKt*.class",
+    "com/gdisys/cameras/feature/qrcode/components/**", // QrCodeScreen (Compose) + QrCodeAnalyzer (ImageProxy/ML Kit)
     "com/gdisys/cameras/feature/streamurls/StreamURLsRouteKt*.class",
     "com/gdisys/cameras/feature/streamurls/components/**",
     "com/gdisys/cameras/ui/theme/**",
     "com/gdisys/cameras/core/storage/data/DataStoreKt*.class", // fiação de DI, sem lógica própria
-    "com/gdisys/cameras/core/storage/data/Crypto.class", // AndroidKeyStore, hardware-backed
-    "com/gdisys/cameras/core/storage/data/Crypto\$*.class"
+    "com/gdisys/cameras/core/storage/data/KeystoreCryptoEngine*.class" // AndroidKeyStore, hardware-backed
   )
 
   val debugClasses = fileTree("${layout.buildDirectory.get()}/intermediates/classes/debug/transformDebugClassesWithAsm/dirs") {
