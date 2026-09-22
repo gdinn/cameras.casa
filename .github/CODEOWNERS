@@ -1,0 +1,13 @@
+# Review ownership. A pull request touching a path below automatically requests a review from its
+# owner.
+#
+# GitHub applies exactly one rule per file, and it is the LAST pattern that matches — not the most
+# specific one. The catch-all is therefore written first and the narrower paths after it; reversing
+# the order would leave `*` overriding everything below it.
+
+# The project itself: application code, Gradle build scripts and documentation.
+*           @gdinn
+
+# CI workflows and repository configuration, including this file. These paths decide how everything
+# above is built, signed and published, so ownership of them is ownership of the release path.
+/.github/   @gdinn

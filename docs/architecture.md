@@ -879,6 +879,14 @@ a release happens, not *who* can cause one. Restricting that is a repository-con
 (a tag ruleset, or an environment with required reviewers holding the signing secrets), not
 something this file can express.
 
+**Review ownership.** `.github/CODEOWNERS` names `@gdinn` for the whole tree and again, separately,
+for `/.github/` — the workflows and repository configuration that decide how everything else is
+built, signed and published, this file's own ownership included. The two entries are one owner
+today, so they behave alike; they are kept apart because the release path is the half that would
+want a narrower owner first if that ever changes. Note that CODEOWNERS only requests reviews unless
+the branch ruleset turns on **Require review from Code Owners** — without it the file documents
+ownership rather than enforcing it.
+
 Each workflow asserts the property it claims, against the bytes rather than against its own
 configuration. `[DEV] BUILD` fails if `app-release.apk` exists at all, since AGP only drops the
 `-unsigned` suffix when a signing config was applied — a signed APK appearing there would mean
