@@ -15,6 +15,9 @@ description: >-
 
 app_id: com.gdisys.cameras
 repository_url: https://github.com/gdinn/cameras.casa
+# The architecture reference lives in docs/, which is NOT part of this site (only pages/ is
+# published), so it is linked on GitHub rather than as a local page.
+architecture_url: https://github.com/gdinn/cameras.casa/blob/main/docs/architecture.md
 
 # kramdown is the only Markdown engine GitHub Pages supports, and it renders the tables the
 # policies rely on.

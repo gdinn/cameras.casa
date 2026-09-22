@@ -18,6 +18,16 @@ The full policy is available in two languages:
 - **[English (US)](./privacy-policy/en-us/)** — the privacy policy in English.
 - **[Português (Brasil)](./privacy-policy/pt-br/)** — a política de privacidade em português.
 
+## The project
+
+Cameras App is open source, under the Apache License 2.0:
+
+- **[Source repository]({{ site.repository_url }})** — the Android client, the QR-code generator
+  and this site.
+- **[Architecture documentation]({{ site.architecture_url }})** — a file-level walkthrough of the
+  codebase: layering rules, the MVVM breakdown of each screen, data-flow diagrams and the CI
+  pipelines.
+
 ---
 
 ## Em português
@@ -32,3 +42,13 @@ A política completa está disponível em dois idiomas:
 
 - **[Português (Brasil)](./privacy-policy/pt-br/)** — a política de privacidade em português.
 - **[English (US)](./privacy-policy/en-us/)** — the privacy policy in English.
+
+## O projeto
+
+O Cameras App é open source, sob a Licença Apache 2.0:
+
+- **[Repositório]({{ site.repository_url }})** — o cliente Android, o gerador de QR code e este
+  site.
+- **[Documentação arquitetural]({{ site.architecture_url }})** — um passeio pelo código em nível de
+  arquivo: regras de camada, o MVVM de cada tela, diagramas de fluxo de dados e os pipelines de
+  CI (em inglês).
