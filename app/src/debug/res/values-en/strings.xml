@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+   Debug-only override of the launcher label. The debug variant installs beside a release build
+   (applicationIdSuffix ".debug" in app/build.gradle.kts), so without this the two are
+   indistinguishable in the launcher: same name, same icon, different app. "debug" is a technical
+   term and is deliberately not translated.
+-->
+<resources>
+    <string name="app_name">Cameras (debug)</string>
+</resources>

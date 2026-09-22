@@ -19,6 +19,15 @@ class ExampleInstrumentedTest {
     fun useAppContext() {
         // Context of the app under test.
         val appContext = InstrumentationRegistry.getInstrumentation().targetContext
-        assertEquals("com.gdisys.cameras", appContext.packageName)
+
+        // The prefix, not the whole id: the debug variant appends ".debug" so that it installs
+        // beside a release build (app/build.gradle.kts), and this test runs against whichever
+        // variant `testBuildType` selects. Asserting one literal id would tie a stub test to one
+        // variant's suffix.
+        assertTrue(
+            "Expected the package name to be the app's namespace, optionally suffixed by the " +
+                "build type, but it was ${appContext.packageName}.",
+            appContext.packageName.startsWith("com.gdisys.cameras")
+        )
     }
 }

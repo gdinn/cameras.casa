@@ -1,0 +1,325 @@
+name: "[PRD] BUILD"
+
+# The release pipeline. Everything it does is downstream of the same quality gates the development
+# pipeline applies: nothing is signed, and nothing is published, until the unit tests and the
+# coverage minimum have both passed.
+#
+# There is deliberately no automatic trigger. Releasing is a decision, and a `push: tags: ['v*']`
+# turns every tag into one — including a tag pushed to mark a milestone, to park an experiment, or
+# by mistake, none of which are requests to sign a binary and publish it under a permanent URL.
+# Dispatch makes the decision explicit and records who made it.
+#
+# The tag has not stopped being what identifies a release, though. It moved from being the trigger
+# to being a precondition: the `version` job below rejects any run whose ref is not a
+# v<major>.<minor>.<patch> tag, so "dispatched" never means "dispatched off whatever branch
+# happened to be selected".
+on:
+  workflow_dispatch:
+
+# Two tags are two different releases, so a run is keyed by the tag and is never cancelled by
+# another one: a half-published release is worse than a queued one.
+concurrency:
+  group: prd-build-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  # The gate itself lives in app/build.gradle.kts (`minimumLineCoverage`), so it is the same number
+  # locally and here. This is only for what the job prints.
+  MINIMUM_LINE_COVERAGE: 90
+
+jobs:
+  # The version identity of the release, established before anything is built — and, since dispatch
+  # is the only way in, also the gate that keeps a dispatch off an arbitrary branch from becoming a
+  # release. It is the single place the version is derived.
+  version:
+    name: Resolve the release version
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+    steps:
+      - name: Resolve the version from the tag
+        id: resolve
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_TYPE}" != "tag" ]; then
+            echo "::error::[PRD] BUILD only releases from a v* tag, but this run is on ${GITHUB_REF}. Re-run it with a v<major>.<minor>.<patch> tag selected as the ref."
+            exit 1
+          fi
+          version="${GITHUB_REF_NAME#v}"
+          if [ "$version" = "$GITHUB_REF_NAME" ] || ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::Tag '$GITHUB_REF_NAME' is not v<major>.<minor>.<patch>, so no version code can be derived from it."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "::notice::Releasing version $version from tag $GITHUB_REF_NAME."
+
+  # Identical gates to "[DEV] BUILD": the ViewModel/use-case/repository tests plus the architecture
+  # assertions that ride along with testDebugUnitTest (LayerDependencyTest, StreamHostTest,
+  # JacocoExclusionsTest), and the same LINE coverage minimum. A release is not the moment to apply
+  # a weaker standard than a pull request does.
+  unit-tests:
+    name: Unit tests and coverage
+    needs: version
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          # gradle/gradle-daemon-jvm.properties pins the Gradle daemon to a Java 21 toolchain.
+          # The app itself still compiles against Java 17 (compileOptions in app/build.gradle.kts).
+          java-version: '21'
+
+      # v4 and the explicit package list are both deliberate: the obsolete `tools` package no
+      # longer exists in the SDK repository, and v3 installs it by default, which fails the job
+      # with "Failed to find package 'tools'". Everything else the build needs (platform 36,
+      # build-tools) is downloaded by AGP itself, since this step accepts the SDK licenses.
+      - name: Set up the Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+
+      # Also validates the checksum of the committed Gradle wrapper (validate-wrappers defaults to
+      # true), which is what stops a tampered gradle-wrapper.jar from running here.
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # jacocoTestCoverageVerification depends on jacocoTestReport, which depends on
+      # testDebugUnitTest: the tests run, the report is written, and only then is the LINE ratio
+      # checked — so a run that fails the gate still leaves behind the report that explains why.
+      - name: Run unit tests and verify coverage
+        run: ./gradlew :app:jacocoTestCoverageVerification --stacktrace
+
+      # Plugin resolution reports "not found in any of the following sources" for a 403 or a 503
+      # just as it does for a genuine 404, and the HTTP detail is only printed at --info level. So
+      # when a run fails, record what the runner actually gets back from the plugin repositories:
+      # a 200 here means the build failed for some other reason, anything else names the culprit.
+      # Only this job carries the probe — it is the first Gradle invocation of the run, so a
+      # repository outage lands here before it can reach the build job.
+      - name: Probe the plugin repositories
+        if: failure()
+        run: |
+          kotlin=$(sed -n 's/^kotlin = "\(.*\)"/\1/p' gradle/libs.versions.toml)
+          marker="org/jetbrains/kotlin/plugin/compose/org.jetbrains.kotlin.plugin.compose.gradle.plugin"
+          for base in https://repo1.maven.org/maven2 https://plugins.gradle.org/m2; do
+            url="$base/$marker/$kotlin/org.jetbrains.kotlin.plugin.compose.gradle.plugin-$kotlin.pom"
+            echo "$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$url")  $url"
+          done
+
+      # What the released version actually measured, recorded on the run that produced it.
+      - name: Report the coverage on the run summary
+        if: always()
+        run: |
+          set -euo pipefail
+          report=app/build/reports/jacoco/jacocoTestReport/jacocoTestReport.xml
+          if [ ! -f "$report" ]; then
+            echo "### Coverage: not measured" >> "$GITHUB_STEP_SUMMARY"
+            echo "The unit tests did not get far enough to produce a JaCoCo report." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          # The report-level counters are the last ones in the XML, after every <package>. A miss
+          # here must not fail the run: this step only reports a number the gate has already acted
+          # on, so it says so and stops rather than turning a green run red.
+          counter=$(grep -o '<counter type="LINE" missed="[0-9]*" covered="[0-9]*"/>' "$report" | tail -1 || true)
+          missed=$(printf '%s' "$counter" | sed -n 's/.*missed="\([0-9]*\)".*/\1/p')
+          covered=$(printf '%s' "$counter" | sed -n 's/.*covered="\([0-9]*\)".*/\1/p')
+          if [ -z "$missed" ] || [ -z "$covered" ]; then
+            echo "### Coverage: not reported" >> "$GITHUB_STEP_SUMMARY"
+            echo "No report-level LINE counter in \`$report\`." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          total=$((missed + covered))
+          pct=$(awk -v c="$covered" -v t="$total" 'BEGIN { printf "%.2f", t ? 100 * c / t : 0 }')
+          verdict=$(awk -v p="$pct" -v m="$MINIMUM_LINE_COVERAGE" 'BEGIN { print (p >= m) ? "PASS" : "FAIL" }')
+          {
+            echo "### Coverage: $verdict"
+            echo
+            echo "Line coverage $covered/$total = **$pct%**, minimum $MINIMUM_LINE_COVERAGE%."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-reports
+          path: |
+            app/build/reports/tests/testDebugUnitTest
+            app/build/test-results/testDebugUnitTest
+          if-no-files-found: ignore
+
+      # The HTML report carries the injected LINE-coverage banner; the XML is the machine-readable
+      # input for any coverage service wired up later.
+      - name: Upload the coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-coverage-report
+          path: app/build/reports/jacoco/jacocoTestReport
+          if-no-files-found: ignore
+
+  # `needs: unit-tests` is the difference that matters between this job and its development
+  # counterpart: the release key is only reached after the tests and the coverage minimum have
+  # passed. Signing an artifact built from code that failed its own gates would make the gates
+  # decorative.
+  #
+  # assembleRelease runs R8 in full mode. A wrong keep rule fails at *runtime*, not here, so a green
+  # job is necessary but not sufficient — docs/architecture.md §2 describes the device smoke test
+  # that still has to follow any change to the keep rules, to a @Serializable model, or to the
+  # VPN/WebRTC dependencies.
+  build:
+    name: Assemble and sign the release
+    needs: [version, unit-tests]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CAMERAS_VERSION_NAME: ${{ needs.version.outputs.version }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up the Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # This pipeline has exactly one acceptable outcome, so signing material is required rather
+      # than detected: a missing or malformed secret fails here, before the build spends time on
+      # R8, instead of quietly producing an APK nobody can install.
+      - name: Decode the release keystore
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          missing=""
+          for name in RELEASE_KEYSTORE_BASE64 RELEASE_STORE_PASSWORD RELEASE_KEY_ALIAS RELEASE_KEY_PASSWORD; do
+            if [ -z "${!name:-}" ]; then missing="$missing $name"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::[PRD] BUILD must produce a signed APK, but these release signing secrets are not configured:$missing"
+            exit 1
+          fi
+
+          printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
+          # A truncated or wrongly encoded secret otherwise surfaces much later, as an opaque
+          # Gradle signing error.
+          if ! keytool -list -keystore "$RUNNER_TEMP/release.jks" -storepass "$RELEASE_STORE_PASSWORD" > /dev/null 2>&1; then
+            echo "::error::RELEASE_KEYSTORE_BASE64 did not decode into a keystore readable with RELEASE_STORE_PASSWORD."
+            exit 1
+          fi
+          echo "CAMERAS_RELEASE_STORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+
+      # The debug APK is built here too, because the release pipeline should exercise the same
+      # compilation path the development one signs off on, and because a debug build of the exact
+      # released commit is a useful thing to have when a release has to be reproduced.
+      - name: Assemble the debug APK
+        run: ./gradlew :app:assembleDebug --stacktrace
+
+      # CAMERAS_VERSION_NAME comes from the tag (job `version`), and the build script derives the
+      # version code from that same string, so the name and the number can never disagree.
+      - name: Assemble the release APK
+        env:
+          CAMERAS_RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          CAMERAS_RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          CAMERAS_RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: ./gradlew :app:assembleRelease --stacktrace
+
+      # The build falls back to an unsigned APK whenever any part of the material fails to reach
+      # Gradle, so "the secrets are set" is not proof that the artifact is signed. This asserts it
+      # against the APK that is about to be uploaded, and prints the certificate that signed it.
+      - name: Verify the release APK signature
+        run: |
+          set -euo pipefail
+          apksigner=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)
+          if [ -z "$apksigner" ]; then
+            echo "::error::apksigner not found under $ANDROID_HOME/build-tools."
+            exit 1
+          fi
+          apk=app/build/outputs/apk/release/app-release.apk
+          if [ ! -f "$apk" ]; then
+            echo "::error::Expected a signed $apk; the release build produced $(ls app/build/outputs/apk/release/*.apk)."
+            exit 1
+          fi
+          "$apksigner" verify --verbose --print-certs "$apk"
+
+      - name: Upload the APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: apks
+          path: app/build/outputs/apk/**/*.apk
+          if-no-files-found: error
+
+      # Release stack traces are only readable with this file, and it is regenerated by every R8
+      # run - keep the one that belongs to the APK above.
+      - name: Upload the R8 mapping file
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-mapping
+          path: app/build/outputs/mapping/release/mapping.txt
+          if-no-files-found: error
+
+  # Run artifacts expire (90 days by default) and are addressed by run id, which makes them a poor
+  # home for a released build. The signed APK and its mapping file are attached to a GitHub Release
+  # instead, where they keep a stable URL for as long as the tag exists.
+  release:
+    name: Publish the GitHub Release
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Narrower than it looks: only this job can write to the repository, and only to create the
+    # release. The jobs that compile and sign keep read-only access.
+    permissions:
+      contents: write
+    steps:
+      - name: Download the APKs
+        uses: actions/download-artifact@v4
+        with:
+          name: apks
+          path: artifacts
+
+      - name: Download the R8 mapping file
+        uses: actions/download-artifact@v4
+        with:
+          name: release-mapping
+          path: artifacts
+
+      # mapping.txt is worth keeping next to the APK it belongs to: without the exact file from the
+      # build that produced this binary, a crash report from the field cannot be de-obfuscated.
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          apk="artifacts/release/app-release.apk"
+          if [ ! -f "$apk" ]; then
+            echo "::error::No signed APK in the build artifacts; refusing to publish a release."
+            exit 1
+          fi
+          mv "$apk" "artifacts/cameras-$VERSION.apk"
+          mv artifacts/mapping.txt "artifacts/mapping-$VERSION.txt"
+          gh release create "$GITHUB_REF_NAME" \
+            "artifacts/cameras-$VERSION.apk" \
+            "artifacts/mapping-$VERSION.txt" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes

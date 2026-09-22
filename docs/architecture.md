@@ -73,11 +73,37 @@ Three product decisions shape most of the code:
 | Video | `io.getstream:stream-webrtc-android` (WHEP over plain `HttpURLConnection`) |
 | QR scanning | CameraX + ML Kit Barcode Scanning |
 | Build | Gradle KTS + version catalog (`gradle/libs.versions.toml`) |
-| Coverage | JaCoCo 0.8.12, custom `:app:jacocoTestReport` task |
+| Coverage | JaCoCo 0.8.12, custom `:app:jacocoTestReport` + `:app:jacocoTestCoverageVerification` (90% LINE) |
 | Arch enforcement | Konsist 0.17.3 (`LayerDependencyTest`) |
-| CI | GitHub Actions — `.github/workflows/android.yml` (§10.1) |
+| CI | GitHub Actions — `[DEV] BUILD` and `[PRD] BUILD` (§10.1) |
 
 **SDK levels:** `minSdk 26`, `targetSdk 36`, `compileSdk 36`, Java 17.
+
+**The two variants install side by side.** The debug build type sets
+`applicationIdSuffix = ".debug"`, so a debug APK and a release APK are two distinct apps with
+distinct data directories, Keystore entries and backup sets:
+
+| | Application id | `versionName` | Launcher label |
+|---|---|---|---|
+| `debug` | `com.gdisys.cameras.debug` | `1.0-debug` | Cameras (debug) |
+| `release` | `com.gdisys.cameras` | `1.0`, or the tag's version | Cameras |
+
+Without the suffix both claim `com.gdisys.cameras`, and because they are signed with different
+keys (the debug key vs. the release key) Android treats an install of one over the other as a
+signature mismatch and refuses it — the practical effect being that you cannot keep a development
+build and the real app on the same device. The `versionNameSuffix` and the debug-only `app_name`
+override in `src/debug/res/values*/` exist so the two are also *distinguishable* once installed;
+otherwise they differ only by an id nobody reads.
+
+This moves the **application id**, not the namespace. `com.gdisys.cameras` remains the namespace,
+which is what the R class and the relative component names in `AndroidManifest.xml`
+(`.MainActivity`, `.CamerasApp`, `.core.vpn.data.VpnLifecycleService`) resolve against — the merged
+debug manifest declares `package="com.gdisys.cameras.debug"` while still pointing at
+`com.gdisys.cameras.MainActivity`. So Konsist's `LayerDependencyTest` still sees one package tree,
+and `GoBackend$VpnService` is unaffected. Two caveats worth knowing: anything asserting the
+installed package name must allow for the suffix (`ExampleInstrumentedTest` asserts the namespace
+prefix rather than one literal id), and although both apps can be installed, Android still allows
+only one active VPN at a time, so only one of them can hold the tunnel up.
 
 Compose is configured by the Compose Compiler Gradle plugin (`libs.plugins.compose.compiler`), the
 only supported mechanism on Kotlin 2.x — there is no `composeOptions` block, and adding one back
@@ -132,6 +158,17 @@ leave them matching nothing and silently pull the excluded code back into the de
 `JacocoExclusionsTest` reads the patterns back out of `app/build.gradle.kts` and resolves each one
 against the compiled classes, which turns that drift into a failing test. The build script is
 declared as an input of the test task so editing a pattern actually re-runs the guard.
+
+**The coverage minimum is a build rule, not a CI rule.** `jacocoTestCoverageVerification` fails the
+build when LINE coverage of that same filtered scope falls below `minimumLineCoverage` (90%), and
+both workflows do nothing more than call it — so `./gradlew :app:jacocoTestCoverageVerification`
+locally means exactly what CI means, and the threshold has one home. It is stated in LINE rather
+than JaCoCo's headline INSTRUCTION figure for the reason the HTML banner exists: instruction
+coverage counts bytecode, so on Kotlin a single line expands to a very variable number of
+instructions and a long expression outweighs a branch. The two tasks share one definition of the
+measured classes, because a gate computed over a different set than the report it is read next to
+would be a trap rather than a gate. The task depends on `jacocoTestReport`, so a run that fails the
+gate still leaves the report that explains which classes made it fail.
 
 ---
 
@@ -753,6 +790,7 @@ Useful commands:
 ```bash
 ./gradlew :app:testDebugUnitTest     # unit tests, including the architecture assertions
 ./gradlew :app:jacocoTestReport      # coverage → app/build/reports/jacoco/jacocoTestReport/html/index.html
+./gradlew :app:jacocoTestCoverageVerification   # the 90% LINE gate; what both CI workflows run
 ./gradlew :app:assembleDebug
 ./gradlew :app:assembleRelease       # runs R8; mapping → app/build/outputs/mapping/release/mapping.txt
 ```
@@ -762,22 +800,109 @@ violation or a host/XML mismatch fails `testDebugUnitTest` like any other regres
 
 ### 10.1 Continuous integration
 
-`.github/workflows/android.yml` ("Android CI") runs on pushes to `main`, on `v*` tags, on pull
-requests targeting `main`, and on manual dispatch. Runs on the same ref cancel each other.
+Two workflows, split by what they are allowed to produce rather than by what they run:
 
-| Job | What it runs | Artifacts |
+| Workflow | File | Starts on |
 |---|---|---|
-| `unit-tests` | `:app:testDebugUnitTest` + `:app:jacocoTestReport` | test reports (HTML + XML), JaCoCo report |
-| `build` | `:app:assembleDebug` + `:app:assembleRelease` | debug and release APKs, `mapping.txt` |
+| `[DEV] BUILD` | `.github/workflows/dev-build.yml` | pull requests targeting `main`, pushes to `main`, manual dispatch |
+| `[PRD] BUILD` | `.github/workflows/prd-build.yml` | **manual dispatch only**, and only on a `v*` tag |
 
-Both jobs set up Temurin **JDK 21** — the version `gradle/gradle-daemon-jvm.properties` pins the
-daemon to, independent of the Java 17 the app compiles against — plus the Android SDK and
+**The split is about the signing key, not about the checks.** Both workflows apply exactly the same
+quality gates — `:app:jacocoTestCoverageVerification`, which pulls in `jacocoTestReport` and
+`testDebugUnitTest` behind it, so the unit tests, the architecture assertions that ride along with
+them (`LayerDependencyTest`, `StreamHostTest`, `JacocoExclusionsTest`) and the 90% LINE minimum are
+one Gradle invocation. A release is not the moment to apply a weaker standard than a pull request
+does. What differs is the outcome: `[DEV] BUILD` reads no secret and sets no `CAMERAS_RELEASE_*`
+variable, so it is structurally incapable of minting a *releasable* artifact, while `[PRD] BUILD`
+is the only path to the release key.
+
+Be precise about what that does and does not mean, because "unsigned pipeline" is a tempting
+shorthand and it is false. `[DEV] BUILD` uploads two APKs and **one of them is installable**:
+`assembleDebug` produces `app-debug.apk`, signed by AGP with the standard Android debug key
+(`CN=Android Debug`), which is exactly what makes it sideloadable for manual testing. What the
+pipeline cannot produce is an artifact signed with the *release* key — `app-release-unsigned.apk`
+is genuinely unsigned and Android will refuse to install it. The guarantee is about the release
+key, not about installability:
+
+| Artifact from `[DEV] BUILD` | Signed with | Installable |
+|---|---|---|
+| `app-debug.apk` | the debug key AGP generates | Yes — that is its purpose |
+| `app-release-unsigned.apk` | nothing | No |
+
+That debug APK installs *beside* a release build rather than fighting it: the debug variant
+carries `applicationIdSuffix = ".debug"`, so the two are different apps to Android (§2). Sideload
+it freely — it will not disturb an installed release.
+
+| Workflow | Job | What it runs | Artifacts |
+|---|---|---|---|
+| `[DEV] BUILD` | `unit-tests` | `:app:jacocoTestCoverageVerification` | test reports (HTML + XML), JaCoCo report |
+| | `build` | `:app:assembleDebug` + `:app:assembleRelease` | debug and **unsigned** release APKs, `mapping.txt` |
+| `[PRD] BUILD` | `version` | resolves `v1.4.2` → `1.4.2`, fails on any other ref | — |
+| | `unit-tests` | `:app:jacocoTestCoverageVerification` | test reports (HTML + XML), JaCoCo report |
+| | `build` | `:app:assembleDebug` + `:app:assembleRelease`, signed | debug and **signed** release APKs, `mapping.txt` |
+| | `release` | attaches the signed build to a GitHub Release | `cameras-<version>.apk`, `mapping-<version>.txt` |
+
+Both set up Temurin **JDK 21** — the version `gradle/gradle-daemon-jvm.properties` pins the daemon
+to, independent of the Java 17 the app compiles against — plus the Android SDK and
 `gradle/actions/setup-gradle`, which caches Gradle and validates the committed wrapper's checksum.
+Each job prints the measured LINE coverage to the run summary whether it passed or failed, so "how
+close are we to the minimum" is answerable without downloading an artifact.
 
-Two things the pipeline does *not* do: there is no instrumented-test job, because
-`src/androidTest/` still holds only the generated stub (§9.2), and there is no separate lint job,
-because `assembleRelease` already runs `lintVitalRelease`. Adding either one is a matter of adding
-a job, not of reworking the workflow.
+**Job ordering differs, and that is the point.** In `[DEV] BUILD` the two jobs run in parallel:
+nothing is published, so the useful thing is to learn about a compile failure and a test failure in
+the same run rather than one after the other. In `[PRD] BUILD` `build` declares
+`needs: [version, unit-tests]`, so the release key is reached only after the tests and the coverage
+minimum have passed — a signed artifact built from code that failed its own gates would make the
+gates decorative.
+
+**Nothing releases automatically.** `[PRD] BUILD` has no `push` trigger at all: it runs only when
+someone dispatches it, and only when the ref they dispatch it on is a `v<major>.<minor>.<patch>`
+tag. Pushes to `main` and pull requests compile, test and shrink, and their release APK is unsigned
+and carries version code 1; nothing in the repository reaches the signing key on its own.
+
+The tag did not stop mattering — it moved from being the *trigger* to being a *precondition*. A
+`push: tags: ['v*']` trigger makes every tag a release request, and tags get pushed for reasons
+that are not that: marking a milestone, parking an experiment, a typo. Under it, the way to find
+out you had published something was to see the Release appear. Requiring a dispatch makes the
+decision explicit and records who made it, and the `version` job then rejects any ref that is not a
+proper version tag, so "dispatched" can never mean "dispatched off whatever branch happened to be
+selected". The cost is one deliberate step; releasing was never meant to be the path of least
+resistance.
+
+Two practical consequences. `workflow_dispatch` only lists a workflow once it exists on the
+**default branch**, so `[PRD] BUILD` is not dispatchable until it is merged to `main` — with no
+`push` trigger there is no other way in. And pushing a `v*` tag now does nothing by itself; the tag
+is what you *select* when dispatching, not what starts the run.
+
+This makes releases deliberate, not restricted: dispatch requires write access, so it bounds *when*
+a release happens, not *who* can cause one. Restricting that is a repository-configuration question
+(a tag ruleset, or an environment with required reviewers holding the signing secrets), not
+something this file can express.
+
+**Review ownership.** `.github/CODEOWNERS` names `@gdinn` for the whole tree and again, separately,
+for `/.github/` — the workflows and repository configuration that decide how everything else is
+built, signed and published, this file's own ownership included. The two entries are one owner
+today, so they behave alike; they are kept apart because the release path is the half that would
+want a narrower owner first if that ever changes. Note that CODEOWNERS only requests reviews unless
+the branch ruleset turns on **Require review from Code Owners** — without it the file documents
+ownership rather than enforcing it.
+
+Each workflow asserts the property it claims, against the bytes rather than against its own
+configuration. `[DEV] BUILD` fails if `app-release.apk` exists at all, since AGP only drops the
+`-unsigned` suffix when a signing config was applied — a signed APK appearing there would mean
+signing material had reached a pipeline that must never see it. `[PRD] BUILD` runs
+`apksigner verify --print-certs` on the APK it is about to upload (§10.2).
+
+Only the `release` job holds `contents: write`, and only to create the release; the jobs that
+compile and sign stay read-only. Run artifacts expire (90 days by default) and are addressed by run
+id, which is why the tagged build is attached to a Release instead: a stable URL for as long as the
+tag exists. The mapping file rides along with the APK it belongs to, since a crash report from the
+field cannot be de-obfuscated without the exact file from the build that produced that binary.
+
+Two things neither pipeline does: there is no instrumented-test job, because `src/androidTest/`
+still holds only the generated stub (§9.2), and there is no separate lint job, because
+`assembleRelease` already runs `lintVitalRelease`. Adding either one is a matter of adding a job,
+not of reworking a workflow.
 
 `assembleRelease` on every pull request is deliberate: R8 is the part of the build most likely to
 break from an ordinary dependency bump. It remains the necessary-but-not-sufficient check
@@ -785,15 +910,17 @@ described in §2 — a wrong keep rule still only shows up at runtime, so the de
 (QR scan → tunnel up → stream playing) is still owed on any change to the keep rules, to a
 `@Serializable` model, or to the VPN/WebRTC dependencies.
 
-**Release signing.** The signing material is resolved in `app/build.gradle.kts` from environment
-variables first, then from a git-ignored `app/keystore.properties`:
+### 10.2 Release signing
 
-| Environment variable (CI) | `keystore.properties` key |
-|---|---|
-| `CAMERAS_RELEASE_STORE_FILE` | `storeFile` |
-| `CAMERAS_RELEASE_STORE_PASSWORD` | `storePassword` |
-| `CAMERAS_RELEASE_KEY_ALIAS` | `keyAlias` |
-| `CAMERAS_RELEASE_KEY_PASSWORD` | `keyPassword` |
+The signing material is resolved in `app/build.gradle.kts` from environment variables first, then
+from a git-ignored `app/keystore.properties`:
+
+| Environment variable (CI) | `keystore.properties` key | CI secret |
+|---|---|---|
+| `CAMERAS_RELEASE_STORE_FILE` | `storeFile` | `RELEASE_KEYSTORE_BASE64`, decoded to a file |
+| `CAMERAS_RELEASE_STORE_PASSWORD` | `storePassword` | `RELEASE_STORE_PASSWORD` |
+| `CAMERAS_RELEASE_KEY_ALIAS` | `keyAlias` | `RELEASE_KEY_ALIAS` |
+| `CAMERAS_RELEASE_KEY_PASSWORD` | `keyPassword` | `RELEASE_KEY_PASSWORD` |
 
 The `release` signing config is created only when all four are present; otherwise
 `signingConfig = signingConfigs.findByName("release")` resolves to `null` and the release APK is
@@ -801,10 +928,68 @@ built unsigned. That is what keeps `assembleRelease` runnable on a machine — o
 request — that has no keystore, and it replaces an earlier `getByName("release")` that failed the
 *configuration* of every Gradle task when no such config existed.
 
-On CI the keystore comes from the repository secret `RELEASE_KEYSTORE_BASE64` (`base64` of the
-`.jks`), decoded into the runner's temp directory, alongside `RELEASE_STORE_PASSWORD`,
-`RELEASE_KEY_ALIAS` and `RELEASE_KEY_PASSWORD`. With no secrets configured the job still passes and
-publishes `app-release-unsigned.apk`.
+**On CI** the secrets are referenced in exactly one workflow, `[PRD] BUILD`, and they are
+required there rather than detected — that pipeline has one acceptable outcome, so a missing piece
+is a failure, not a request for an unsigned build:
+
+| Build | Outcome |
+|---|---|
+| Anything in `[DEV] BUILD` | `app-release-unsigned.apk`; the workflow names no secret at all, so nothing is put in front of Gradle |
+| `[PRD] BUILD`, all four secrets | Keystore decoded to the runner's temp dir, `app-release.apk` signed |
+| `[PRD] BUILD`, any secret missing | Job fails before R8, naming the missing secrets — a release tag must not publish an unsigned APK |
+
+Two checks stand between the secrets and the uploaded artifact. The decode step opens the keystore
+with `keytool -list` (a truncated or wrongly encoded secret otherwise surfaces much later, as an
+opaque Gradle error), and after the build `apksigner verify --print-certs` asserts that the APK is
+actually signed and prints the certificate — the build falls back to unsigned whenever any part of
+the material fails to reach Gradle, so "the secrets are set" is not proof on its own. The signed
+and unsigned outputs have different file names (`app-release.apk` vs. `app-release-unsigned.apk`),
+which is what lets each workflow assert its own outcome by file name (§10.1); the upload step globs
+both.
+
+Creating the keystore and the secrets, once:
+
+```bash
+keytool -genkeypair -keystore release.jks -storetype PKCS12 \
+  -alias cameras -keyalg RSA -keysize 2048 -validity 10000
+base64 -i release.jks | tr -d '\n' | pbcopy   # -> secret RELEASE_KEYSTORE_BASE64
+```
+
+PKCS12 does not support a key password different from the store password — `keytool` ignores
+`-keypass` and the two end up identical, so `RELEASE_KEY_PASSWORD` gets the same value as
+`RELEASE_STORE_PASSWORD`. Keep `release.jks` and its passwords outside the repository: losing them
+means no future build can update an installed app, and `.gitignore` covers `*.jks`, `*.keystore`
+and `keystore.properties` precisely so neither is committed by accident.
+
+### 10.3 Version identity
+
+The version of a release comes from its tag. The `version` job of `[PRD] BUILD` turns `v1.4.2`
+into `CAMERAS_VERSION_NAME=1.4.2` — once, as a job output the build job consumes — and
+`app/build.gradle.kts` derives the version code from that same string, so the number and the name
+cannot disagree:
+
+```
+versionCode = major * 1_000_000 + minor * 1_000 + patch     # v1.4.2 -> 1_004_002
+```
+
+Android requires a strictly increasing `Int`, so minor and patch are capped at 999 and major at
+2147; the build fails with the offending value named rather than silently producing a version code
+that stops increasing. The derivation lives in the build script, not in the workflow, so a release
+build is reproducible off CI:
+
+```bash
+CAMERAS_VERSION_NAME=1.4.2 ./gradlew :app:assembleRelease
+```
+
+Builds with no such variable — local, pull request, push to `main` — keep `versionCode 1`, and
+`versionName "1.0"` (`"1.0-debug"` on the debug variant, per §2). The shared version code costs
+nothing, because none of these builds can be installed over a real release anyway: the debug
+variant is a different app id entirely, and an unsigned release APK does not install at all.
+
+Pre-release tags (`v1.4.2-rc1`) are deliberately not supported: this scheme cannot express them in
+a single increasing integer, and the `version` job rejects anything that is not
+`v<major>.<minor>.<patch>` with the reason spelled out, instead of guessing a version code. It
+rejects it before any other job starts, so a malformed tag costs one step rather than a full build.
 
 ---
 
