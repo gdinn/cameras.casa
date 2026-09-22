@@ -1,28 +1,64 @@
-name: Android CI
+name: "[PRD] BUILD"
 
+# The release pipeline. A v* tag is the only thing that starts it, and everything it does is
+# downstream of the same quality gates the development pipeline applies: nothing is signed, and
+# nothing is published, until the unit tests and the coverage minimum have both passed.
 on:
   push:
-    branches: [main]
     tags: ['v*']
-  pull_request:
-    branches: [main]
+  # Re-running a release for a tag whose first attempt failed on something outside the build (a
+  # repository outage, a missing secret). The guard below still requires the run to be on a v* tag,
+  # so this cannot be used to sign an arbitrary branch.
   workflow_dispatch:
 
-# A new push to the same branch supersedes the run in flight.
+# Two tags are two different releases, so a run is keyed by the tag and is never cancelled by
+# another one: a half-published release is worse than a queued one.
 concurrency:
-  group: android-ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: prd-build-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
 
+env:
+  # The gate itself lives in app/build.gradle.kts (`minimumLineCoverage`), so it is the same number
+  # locally and here. This is only for what the job prints.
+  MINIMUM_LINE_COVERAGE: 90
+
 jobs:
-  # Unit tests are the project's real quality gate: besides the ViewModel/use-case/repository
-  # tests, testDebugUnitTest also runs LayerDependencyTest (Konsist layering rules), StreamHostTest
-  # (Kotlin constant vs. XML) and JacocoExclusionsTest (coverage patterns vs. compiled classes), so
-  # an architecture violation fails this job like any other regression.
+  # The version identity of the release, established before anything is built. It fails the run on
+  # a ref that is not a v<major>.<minor>.<patch> tag, which is what keeps `workflow_dispatch` from
+  # turning a branch into a release, and it is the single place the version is derived.
+  version:
+    name: Resolve the release version
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+    steps:
+      - name: Resolve the version from the tag
+        id: resolve
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_TYPE}" != "tag" ]; then
+            echo "::error::[PRD] BUILD only runs on a v* tag, but this run is on ${GITHUB_REF}. Tag the commit and push the tag, or dispatch this workflow against a tag."
+            exit 1
+          fi
+          version="${GITHUB_REF_NAME#v}"
+          if [ "$version" = "$GITHUB_REF_NAME" ] || ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::Tag '$GITHUB_REF_NAME' is not v<major>.<minor>.<patch>, so no version code can be derived from it."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "::notice::Releasing version $version from tag $GITHUB_REF_NAME."
+
+  # Identical gates to "[DEV] BUILD": the ViewModel/use-case/repository tests plus the architecture
+  # assertions that ride along with testDebugUnitTest (LayerDependencyTest, StreamHostTest,
+  # JacocoExclusionsTest), and the same LINE coverage minimum. A release is not the moment to apply
+  # a weaker standard than a pull request does.
   unit-tests:
     name: Unit tests and coverage
+    needs: version
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -51,13 +87,18 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Run unit tests and build the coverage report
-        run: ./gradlew :app:testDebugUnitTest :app:jacocoTestReport --stacktrace
+      # jacocoTestCoverageVerification depends on jacocoTestReport, which depends on
+      # testDebugUnitTest: the tests run, the report is written, and only then is the LINE ratio
+      # checked — so a run that fails the gate still leaves behind the report that explains why.
+      - name: Run unit tests and verify coverage
+        run: ./gradlew :app:jacocoTestCoverageVerification --stacktrace
 
       # Plugin resolution reports "not found in any of the following sources" for a 403 or a 503
       # just as it does for a genuine 404, and the HTTP detail is only printed at --info level. So
       # when a run fails, record what the runner actually gets back from the plugin repositories:
       # a 200 here means the build failed for some other reason, anything else names the culprit.
+      # Only this job carries the probe — it is the first Gradle invocation of the run, so a
+      # repository outage lands here before it can reach the build job.
       - name: Probe the plugin repositories
         if: failure()
         run: |
@@ -67,6 +108,37 @@ jobs:
             url="$base/$marker/$kotlin/org.jetbrains.kotlin.plugin.compose.gradle.plugin-$kotlin.pom"
             echo "$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$url")  $url"
           done
+
+      # What the released version actually measured, recorded on the run that produced it.
+      - name: Report the coverage on the run summary
+        if: always()
+        run: |
+          set -euo pipefail
+          report=app/build/reports/jacoco/jacocoTestReport/jacocoTestReport.xml
+          if [ ! -f "$report" ]; then
+            echo "### Coverage: not measured" >> "$GITHUB_STEP_SUMMARY"
+            echo "The unit tests did not get far enough to produce a JaCoCo report." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          # The report-level counters are the last ones in the XML, after every <package>. A miss
+          # here must not fail the run: this step only reports a number the gate has already acted
+          # on, so it says so and stops rather than turning a green run red.
+          counter=$(grep -o '<counter type="LINE" missed="[0-9]*" covered="[0-9]*"/>' "$report" | tail -1 || true)
+          missed=$(printf '%s' "$counter" | sed -n 's/.*missed="\([0-9]*\)".*/\1/p')
+          covered=$(printf '%s' "$counter" | sed -n 's/.*covered="\([0-9]*\)".*/\1/p')
+          if [ -z "$missed" ] || [ -z "$covered" ]; then
+            echo "### Coverage: not reported" >> "$GITHUB_STEP_SUMMARY"
+            echo "No report-level LINE counter in \`$report\`." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          total=$((missed + covered))
+          pct=$(awk -v c="$covered" -v t="$total" 'BEGIN { printf "%.2f", t ? 100 * c / t : 0 }')
+          verdict=$(awk -v p="$pct" -v m="$MINIMUM_LINE_COVERAGE" 'BEGIN { print (p >= m) ? "PASS" : "FAIL" }')
+          {
+            echo "### Coverage: $verdict"
+            echo
+            echo "Line coverage $covered/$total = **$pct%**, minimum $MINIMUM_LINE_COVERAGE%."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload the test reports
         if: always()
@@ -88,14 +160,22 @@ jobs:
           path: app/build/reports/jacoco/jacocoTestReport
           if-no-files-found: ignore
 
+  # `needs: unit-tests` is the difference that matters between this job and its development
+  # counterpart: the release key is only reached after the tests and the coverage minimum have
+  # passed. Signing an artifact built from code that failed its own gates would make the gates
+  # decorative.
+  #
   # assembleRelease runs R8 in full mode. A wrong keep rule fails at *runtime*, not here, so a green
   # job is necessary but not sufficient — docs/architecture.md §2 describes the device smoke test
   # that still has to follow any change to the keep rules, to a @Serializable model, or to the
   # VPN/WebRTC dependencies.
   build:
-    name: Assemble debug and release
+    name: Assemble and sign the release
+    needs: [version, unit-tests]
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      CAMERAS_VERSION_NAME: ${{ needs.version.outputs.version }}
     steps:
       - name: Check out the repository
         uses: actions/checkout@v4
@@ -114,29 +194,10 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      # A v* tag is the only thing that produces a signed build. Pushes to main and pull requests
-      # still run R8 and publish app-release-unsigned.apk, which is what catches a shrinking
-      # failure early; what they do not do is touch the release key or mint an artifact that looks
-      # installable. Every such build also carries version code 1, so it could not be a release
-      # even if it were signed.
-      - name: Read the release version from the tag
-        if: startsWith(github.ref, 'refs/tags/v')
-        run: |
-          set -euo pipefail
-          version="${GITHUB_REF_NAME#v}"
-          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "::error::Tag '$GITHUB_REF_NAME' is not v<major>.<minor>.<patch>, so no version code can be derived from it."
-            exit 1
-          fi
-          echo "CAMERAS_VERSION_NAME=$version" >> "$GITHUB_ENV"
-          echo "::notice::Building version $version from tag $GITHUB_REF_NAME."
-
-      # Signing material is all-or-nothing: a half-configured set of secrets is a mistake, not a
-      # request for an unsigned build, so it fails here instead of quietly producing an APK nobody
-      # can install.
+      # This pipeline has exactly one acceptable outcome, so signing material is required rather
+      # than detected: a missing or malformed secret fails here, before the build spends time on
+      # R8, instead of quietly producing an APK nobody can install.
       - name: Decode the release keystore
-        id: signing
-        if: startsWith(github.ref, 'refs/tags/v')
         env:
           RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
           RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
@@ -144,20 +205,12 @@ jobs:
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          present=""
           missing=""
           for name in RELEASE_KEYSTORE_BASE64 RELEASE_STORE_PASSWORD RELEASE_KEY_ALIAS RELEASE_KEY_PASSWORD; do
-            if [ -n "${!name:-}" ]; then present="$present $name"; else missing="$missing $name"; fi
+            if [ -z "${!name:-}" ]; then missing="$missing $name"; fi
           done
-
-          if [ -z "$present" ]; then
-            echo "signed=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::No release signing secrets configured - assembleRelease will produce an unsigned APK."
-            exit 0
-          fi
-
           if [ -n "$missing" ]; then
-            echo "::error::Incomplete release signing configuration. Missing secrets:$missing"
+            echo "::error::[PRD] BUILD must produce a signed APK, but these release signing secrets are not configured:$missing"
             exit 1
           fi
 
@@ -169,33 +222,26 @@ jobs:
             exit 1
           fi
           echo "CAMERAS_RELEASE_STORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
-          echo "signed=true" >> "$GITHUB_OUTPUT"
 
-      # A v* tag is a release: publishing an unsigned APK under one would be a silent failure, so
-      # it is caught before the build spends time on R8.
-      - name: Require a signed APK on release tags
-        if: startsWith(github.ref, 'refs/tags/v') && steps.signing.outputs.signed != 'true'
-        run: |
-          echo "::error::A v* tag must produce a signed release APK, but no signing secrets are configured."
-          exit 1
-
+      # The debug APK is built here too, because the release pipeline should exercise the same
+      # compilation path the development one signs off on, and because a debug build of the exact
+      # released commit is a useful thing to have when a release has to be reproduced.
       - name: Assemble the debug APK
         run: ./gradlew :app:assembleDebug --stacktrace
 
-      # Off a tag these resolve to empty strings, and the build script ignores blank values - the
-      # passwords are not put in front of the build at all on an ordinary push.
+      # CAMERAS_VERSION_NAME comes from the tag (job `version`), and the build script derives the
+      # version code from that same string, so the name and the number can never disagree.
       - name: Assemble the release APK
         env:
-          CAMERAS_RELEASE_STORE_PASSWORD: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.RELEASE_STORE_PASSWORD || '' }}
-          CAMERAS_RELEASE_KEY_ALIAS: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.RELEASE_KEY_ALIAS || '' }}
-          CAMERAS_RELEASE_KEY_PASSWORD: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.RELEASE_KEY_PASSWORD || '' }}
+          CAMERAS_RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          CAMERAS_RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          CAMERAS_RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: ./gradlew :app:assembleRelease --stacktrace
 
       # The build falls back to an unsigned APK whenever any part of the material fails to reach
       # Gradle, so "the secrets are set" is not proof that the artifact is signed. This asserts it
       # against the APK that is about to be uploaded, and prints the certificate that signed it.
       - name: Verify the release APK signature
-        if: steps.signing.outputs.signed == 'true'
         run: |
           set -euo pipefail
           apksigner=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)
@@ -227,12 +273,11 @@ jobs:
           if-no-files-found: error
 
   # Run artifacts expire (90 days by default) and are addressed by run id, which makes them a poor
-  # home for a released build. On a v* tag the signed APK and its mapping file are attached to a
-  # GitHub Release instead, where they keep a stable URL for as long as the tag exists.
+  # home for a released build. The signed APK and its mapping file are attached to a GitHub Release
+  # instead, where they keep a stable URL for as long as the tag exists.
   release:
     name: Publish the GitHub Release
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [version, build]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     # Narrower than it looks: only this job can write to the repository, and only to create the
@@ -258,18 +303,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.version.outputs.version }}
         run: |
           set -euo pipefail
-          version="${GITHUB_REF_NAME#v}"
           apk="artifacts/release/app-release.apk"
           if [ ! -f "$apk" ]; then
             echo "::error::No signed APK in the build artifacts; refusing to publish a release."
             exit 1
           fi
-          mv "$apk" "artifacts/cameras-$version.apk"
-          mv artifacts/mapping.txt "artifacts/mapping-$version.txt"
+          mv "$apk" "artifacts/cameras-$VERSION.apk"
+          mv artifacts/mapping.txt "artifacts/mapping-$VERSION.txt"
           gh release create "$GITHUB_REF_NAME" \
-            "artifacts/cameras-$version.apk" \
-            "artifacts/mapping-$version.txt" \
+            "artifacts/cameras-$VERSION.apk" \
+            "artifacts/mapping-$VERSION.txt" \
             --title "$GITHUB_REF_NAME" \
             --generate-notes

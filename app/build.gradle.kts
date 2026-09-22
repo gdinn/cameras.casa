@@ -222,6 +222,70 @@ tasks.withType<Test>().configureEach {
 }
 
 /**
+ * Minimum LINE coverage the unit tests have to reach, enforced by `jacocoTestCoverageVerification`.
+ *
+ * LINE rather than INSTRUCTION is deliberate, and it is the number this project has always talked
+ * about: the HTML banner below reports LINE, and §10.1 of docs/architecture.md states the goal in
+ * those terms. JaCoCo's own headline figure is instruction coverage, which counts bytecode and so
+ * weighs a long expression more than a branch — a worse proxy for "is this logic exercised" on
+ * Kotlin, where a single line expands to a very variable number of instructions.
+ */
+val minimumLineCoverage = "0.90".toBigDecimal()
+
+// Generated code (build tooling, KSP/Hilt) — measuring coverage here never means anything.
+val generatedCodeFilter = listOf(
+  "**/R.class", "**/R$*.class", "**/BuildConfig.*", "**/Manifest*.*",
+  "**/*Test*.*", "android/**/*.*", "**/*_Hilt*.*", "**/Hilt_*.*",
+  "**/*_Factory.class", "**/*_Factory\$*.class", "**/*_MembersInjector.*",
+  "**/di/**", "**/*Module*.*", "dagger/hilt/**", "hilt_aggregated_deps/**"
+)
+
+// Out of plain-unit-test scope by project decision (see docs/architecture.md §9.4): Compose UI,
+// bootstrap/navigation, the theme, and native/hardware integrations with no JVM shadow.
+val outOfScopeFilter = listOf(
+  "com/gdisys/cameras/CamerasApp*.class",
+  "com/gdisys/cameras/MainActivity*.class",
+  "com/gdisys/cameras/app/navigation/**",
+  "com/gdisys/cameras/core/components/LoadingScreenKt*.class",
+  "com/gdisys/cameras/core/components/ToastDisplayerKt*.class",
+  "com/gdisys/cameras/core/vpn/data/VpnLifecycleService*.class", // Android Service
+  "com/gdisys/cameras/core/vpn/data/AppTunnel*.class", // thin wrapper over the native Tunnel
+  "com/gdisys/cameras/core/webrtc/data/WhepClientImpl*.class", // native WebRTC stack
+  "com/gdisys/cameras/core/webrtc/data/extensions/PeerConnectionKt*.class", // likewise
+  "com/gdisys/cameras/feature/cameras/HomeRouteKt*.class",
+  "com/gdisys/cameras/feature/cameras/components/**",
+  "com/gdisys/cameras/feature/config/ConfigRouteKt*.class",
+  "com/gdisys/cameras/feature/config/components/**",
+  "com/gdisys/cameras/feature/init/InitRouteKt*.class",
+  "com/gdisys/cameras/feature/init/components/**",
+  "com/gdisys/cameras/feature/qrcode/QrCodeRouteKt*.class",
+  "com/gdisys/cameras/feature/qrcode/components/**", // QrCodeScreen (Compose) + QrCodeAnalyzer (ImageProxy/ML Kit)
+  "com/gdisys/cameras/feature/streamurls/StreamURLsRouteKt*.class",
+  "com/gdisys/cameras/feature/streamurls/components/**",
+  "com/gdisys/cameras/ui/theme/**",
+  "com/gdisys/cameras/core/storage/data/DataStoreKt*.class", // DI wiring, no logic of its own
+  "com/gdisys/cameras/core/storage/data/KeystoreCryptoEngine*.class" // AndroidKeyStore, hardware-backed
+)
+
+/**
+ * The compiled debug classes the two JaCoCo tasks below measure, narrowed to the unit-testable
+ * scope by the two filters above.
+ *
+ * The report and the verification share this on purpose: a gate computed over a different set of
+ * classes than the report it is read next to would be a trap, not a gate.
+ */
+fun coveredDebugClasses(): ConfigurableFileTree =
+  fileTree("${layout.buildDirectory.get()}/intermediates/classes/debug/transformDebugClassesWithAsm/dirs") {
+    exclude(generatedCodeFilter + outOfScopeFilter)
+  }
+
+/** The `.exec` file `testDebugUnitTest` writes, which is the raw input to both JaCoCo tasks. */
+fun unitTestExecutionData(): ConfigurableFileTree =
+  fileTree(layout.buildDirectory.get()) {
+    include("jacoco/testDebugUnitTest.exec")
+  }
+
+/**
  * Coverage report for the unit tests (JVM, debug variant).
  * Usage: ./gradlew :app:jacocoTestReport
  * Output: app/build/reports/jacoco/jacocoTestReport/html/index.html
@@ -237,7 +301,7 @@ tasks.withType<Test>().configureEach {
  * dependencies are wired, but `src/androidTest/` holds no test of its own yet. Saying it is "tested
  * via Compose UI Test" would be a claim this repository does not back up.
  *
- * The patterns below are plain strings with no link to the code, so JacocoExclusionsTest resolves
+ * The patterns above are plain strings with no link to the code, so JacocoExclusionsTest resolves
  * each one against the compiled classes and fails the build when one stops matching.
  */
 tasks.register<JacocoReport>("jacocoTestReport") {
@@ -251,50 +315,9 @@ tasks.register<JacocoReport>("jacocoTestReport") {
     html.required.set(true)
   }
 
-  // Generated code (build tooling, KSP/Hilt) — measuring coverage here never means anything.
-  val generatedCodeFilter = listOf(
-    "**/R.class", "**/R$*.class", "**/BuildConfig.*", "**/Manifest*.*",
-    "**/*Test*.*", "android/**/*.*", "**/*_Hilt*.*", "**/Hilt_*.*",
-    "**/*_Factory.class", "**/*_Factory\$*.class", "**/*_MembersInjector.*",
-    "**/di/**", "**/*Module*.*", "dagger/hilt/**", "hilt_aggregated_deps/**"
-  )
-
-  // Out of plain-unit-test scope by project decision (see docs/architecture.md §9.4): Compose UI,
-  // bootstrap/navigation, the theme, and native/hardware integrations with no JVM shadow.
-  val outOfScopeFilter = listOf(
-    "com/gdisys/cameras/CamerasApp*.class",
-    "com/gdisys/cameras/MainActivity*.class",
-    "com/gdisys/cameras/app/navigation/**",
-    "com/gdisys/cameras/core/components/LoadingScreenKt*.class",
-    "com/gdisys/cameras/core/components/ToastDisplayerKt*.class",
-    "com/gdisys/cameras/core/vpn/data/VpnLifecycleService*.class", // Android Service
-    "com/gdisys/cameras/core/vpn/data/AppTunnel*.class", // thin wrapper over the native Tunnel
-    "com/gdisys/cameras/core/webrtc/data/WhepClientImpl*.class", // native WebRTC stack
-    "com/gdisys/cameras/core/webrtc/data/extensions/PeerConnectionKt*.class", // likewise
-    "com/gdisys/cameras/feature/cameras/HomeRouteKt*.class",
-    "com/gdisys/cameras/feature/cameras/components/**",
-    "com/gdisys/cameras/feature/config/ConfigRouteKt*.class",
-    "com/gdisys/cameras/feature/config/components/**",
-    "com/gdisys/cameras/feature/init/InitRouteKt*.class",
-    "com/gdisys/cameras/feature/init/components/**",
-    "com/gdisys/cameras/feature/qrcode/QrCodeRouteKt*.class",
-    "com/gdisys/cameras/feature/qrcode/components/**", // QrCodeScreen (Compose) + QrCodeAnalyzer (ImageProxy/ML Kit)
-    "com/gdisys/cameras/feature/streamurls/StreamURLsRouteKt*.class",
-    "com/gdisys/cameras/feature/streamurls/components/**",
-    "com/gdisys/cameras/ui/theme/**",
-    "com/gdisys/cameras/core/storage/data/DataStoreKt*.class", // DI wiring, no logic of its own
-    "com/gdisys/cameras/core/storage/data/KeystoreCryptoEngine*.class" // AndroidKeyStore, hardware-backed
-  )
-
-  val debugClasses = fileTree("${layout.buildDirectory.get()}/intermediates/classes/debug/transformDebugClassesWithAsm/dirs") {
-    exclude(generatedCodeFilter + outOfScopeFilter)
-  }
-
   sourceDirectories.setFrom(files("${projectDir}/src/main/java"))
-  classDirectories.setFrom(files(debugClasses))
-  executionData.setFrom(fileTree(layout.buildDirectory.get()) {
-    include("jacoco/testDebugUnitTest.exec")
-  })
+  classDirectories.setFrom(files(coveredDebugClasses()))
+  executionData.setFrom(unitTestExecutionData())
 
   // JaCoCo lists "Lines" in the HTML table, but the headline bar and percentage at the top is
   // always Instructions, and the plugin cannot change that. Inject a banner with the LINE
@@ -321,18 +344,61 @@ tasks.register<JacocoReport>("jacocoTestReport") {
 
     val total = lineCovered + lineMissed
     if (total == 0) return@doLast
-    val pct = "%.1f".format(100.0 * lineCovered / total)
+    val ratio = lineCovered.toDouble() / total
+    val pct = "%.1f".format(100.0 * ratio)
+    val minimumPct = "%.0f".format(minimumLineCoverage.toDouble() * 100)
 
+    // Red below the gate, so the report and jacocoTestCoverageVerification never read as
+    // disagreeing with each other.
+    val meetsMinimum = ratio >= minimumLineCoverage.toDouble()
     val bannerId = "jacoco-line-coverage-banner"
     val html = htmlIndex.readText()
     if (!html.contains(bannerId)) {
-      val banner = "<div id=\"$bannerId\" style=\"background:#2e7d32;color:#fff;" +
+      val background = if (meetsMinimum) "#2e7d32" else "#c62828"
+      val verdict = if (meetsMinimum) "meets" else "is below"
+      val banner = "<div id=\"$bannerId\" style=\"background:$background;color:#fff;" +
         "padding:10px 16px;font:bold 14px/1.4 -apple-system,Arial,sans-serif;\">" +
-        "Line coverage (LINE): $lineCovered/$total = $pct%</div>"
+        "Line coverage (LINE): $lineCovered/$total = $pct% - $verdict the $minimumPct% minimum</div>"
       val bodyTag = Regex("<body[^>]*>").find(html)
       if (bodyTag != null) {
         val insertAt = bodyTag.range.last + 1
         htmlIndex.writeText(html.substring(0, insertAt) + banner + html.substring(insertAt))
+      }
+    }
+  }
+}
+
+/**
+ * The coverage gate: fails the build when LINE coverage of the unit-testable scope falls below
+ * [minimumLineCoverage].
+ * Usage: ./gradlew :app:jacocoTestCoverageVerification
+ *
+ * It lives here rather than in the CI workflow for the same reason the release version code does:
+ * a rule that only exists in a workflow cannot be checked before pushing, and drifts from the
+ * report it is supposed to be about. Both CI workflows just call this task, so
+ * `./gradlew :app:jacocoTestCoverageVerification` locally means exactly what CI means.
+ *
+ * It depends on `jacocoTestReport` rather than only on `testDebugUnitTest` so that a failing run
+ * still leaves the HTML and XML reports behind — the gate says a number is too low, and the report
+ * next to it says which classes made it so.
+ */
+tasks.register<JacocoCoverageVerification>("jacocoTestCoverageVerification") {
+  dependsOn("jacocoTestReport")
+  group = "verification"
+  description = "Fails the build when LINE coverage of the unit-testable scope is below " +
+    "${minimumLineCoverage.toDouble() * 100}%."
+
+  sourceDirectories.setFrom(files("${projectDir}/src/main/java"))
+  classDirectories.setFrom(files(coveredDebugClasses()))
+  executionData.setFrom(unitTestExecutionData())
+
+  violationRules {
+    rule {
+      element = "BUNDLE"
+      limit {
+        counter = "LINE"
+        value = "COVEREDRATIO"
+        minimum = minimumLineCoverage
       }
     }
   }

@@ -1,0 +1,207 @@
+name: "[DEV] BUILD"
+
+# The development pipeline: it proves a change is sound, and it is structurally incapable of
+# producing a releasable artifact. Signing lives in "[PRD] BUILD", which only a v* tag starts.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# A new push to the same branch supersedes the run in flight.
+concurrency:
+  group: dev-build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # The gate itself lives in app/build.gradle.kts (`minimumLineCoverage`), so it is the same number
+  # locally and here. This is only for what the job prints.
+  MINIMUM_LINE_COVERAGE: 90
+
+jobs:
+  # Unit tests are the project's real quality gate: besides the ViewModel/use-case/repository
+  # tests, testDebugUnitTest also runs LayerDependencyTest (Konsist layering rules), StreamHostTest
+  # (Kotlin constant vs. XML) and JacocoExclusionsTest (coverage patterns vs. compiled classes), so
+  # an architecture violation fails this job like any other regression.
+  unit-tests:
+    name: Unit tests and coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          # gradle/gradle-daemon-jvm.properties pins the Gradle daemon to a Java 21 toolchain.
+          # The app itself still compiles against Java 17 (compileOptions in app/build.gradle.kts).
+          java-version: '21'
+
+      # v4 and the explicit package list are both deliberate: the obsolete `tools` package no
+      # longer exists in the SDK repository, and v3 installs it by default, which fails the job
+      # with "Failed to find package 'tools'". Everything else the build needs (platform 36,
+      # build-tools) is downloaded by AGP itself, since this step accepts the SDK licenses.
+      - name: Set up the Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+
+      # Also validates the checksum of the committed Gradle wrapper (validate-wrappers defaults to
+      # true), which is what stops a tampered gradle-wrapper.jar from running here.
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # One task covers all three requirements: jacocoTestCoverageVerification depends on
+      # jacocoTestReport, which depends on testDebugUnitTest. So the tests run, the report is
+      # written, and only then is the LINE ratio checked against the minimum — which means a run
+      # that fails the gate still leaves behind the report that explains why.
+      - name: Run unit tests and verify coverage
+        run: ./gradlew :app:jacocoTestCoverageVerification --stacktrace
+
+      # Plugin resolution reports "not found in any of the following sources" for a 403 or a 503
+      # just as it does for a genuine 404, and the HTTP detail is only printed at --info level. So
+      # when a run fails, record what the runner actually gets back from the plugin repositories:
+      # a 200 here means the build failed for some other reason, anything else names the culprit.
+      # Only this job carries the probe — a repository outage fails the very first Gradle
+      # invocation of the run, and this is it.
+      - name: Probe the plugin repositories
+        if: failure()
+        run: |
+          kotlin=$(sed -n 's/^kotlin = "\(.*\)"/\1/p' gradle/libs.versions.toml)
+          marker="org/jetbrains/kotlin/plugin/compose/org.jetbrains.kotlin.plugin.compose.gradle.plugin"
+          for base in https://repo1.maven.org/maven2 https://plugins.gradle.org/m2; do
+            url="$base/$marker/$kotlin/org.jetbrains.kotlin.plugin.compose.gradle.plugin-$kotlin.pom"
+            echo "$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$url")  $url"
+          done
+
+      # The gate's own failure message is buried in the Gradle log, and a passing run prints the
+      # number nowhere at all. Put it on the run summary either way, so "how close are we to the
+      # minimum" is answerable without downloading an artifact.
+      - name: Report the coverage on the run summary
+        if: always()
+        run: |
+          set -euo pipefail
+          report=app/build/reports/jacoco/jacocoTestReport/jacocoTestReport.xml
+          if [ ! -f "$report" ]; then
+            echo "### Coverage: not measured" >> "$GITHUB_STEP_SUMMARY"
+            echo "The unit tests did not get far enough to produce a JaCoCo report." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          # The report-level counters are the last ones in the XML, after every <package>. A miss
+          # here must not fail the run: this step only reports a number the gate has already acted
+          # on, so it says so and stops rather than turning a green run red.
+          counter=$(grep -o '<counter type="LINE" missed="[0-9]*" covered="[0-9]*"/>' "$report" | tail -1 || true)
+          missed=$(printf '%s' "$counter" | sed -n 's/.*missed="\([0-9]*\)".*/\1/p')
+          covered=$(printf '%s' "$counter" | sed -n 's/.*covered="\([0-9]*\)".*/\1/p')
+          if [ -z "$missed" ] || [ -z "$covered" ]; then
+            echo "### Coverage: not reported" >> "$GITHUB_STEP_SUMMARY"
+            echo "No report-level LINE counter in \`$report\`." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          total=$((missed + covered))
+          pct=$(awk -v c="$covered" -v t="$total" 'BEGIN { printf "%.2f", t ? 100 * c / t : 0 }')
+          verdict=$(awk -v p="$pct" -v m="$MINIMUM_LINE_COVERAGE" 'BEGIN { print (p >= m) ? "PASS" : "FAIL" }')
+          {
+            echo "### Coverage: $verdict"
+            echo
+            echo "Line coverage $covered/$total = **$pct%**, minimum $MINIMUM_LINE_COVERAGE%."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-reports
+          path: |
+            app/build/reports/tests/testDebugUnitTest
+            app/build/test-results/testDebugUnitTest
+          if-no-files-found: ignore
+
+      # The HTML report carries the injected LINE-coverage banner; the XML is the machine-readable
+      # input for any coverage service wired up later.
+      - name: Upload the coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-coverage-report
+          path: app/build/reports/jacoco/jacocoTestReport
+          if-no-files-found: ignore
+
+  # assembleRelease runs R8 in full mode. A wrong keep rule fails at *runtime*, not here, so a green
+  # job is necessary but not sufficient — docs/architecture.md §2 describes the device smoke test
+  # that still has to follow any change to the keep rules, to a @Serializable model, or to the
+  # VPN/WebRTC dependencies.
+  #
+  # It does not wait for unit-tests: nothing here is published, so the useful thing is to learn
+  # about a compile failure and a test failure in the same run rather than one after the other.
+  build:
+    name: Assemble debug and release (unsigned)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up the Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # No CAMERAS_RELEASE_* variable is set anywhere in this workflow, and no secret is read. The
+      # build script leaves the release build type unsigned when the material is absent, so R8 runs
+      # and the shrinking failures still get caught — the release key is simply never in reach.
+      # Every APK from here also carries version code 1, since CAMERAS_VERSION_NAME is unset.
+      - name: Assemble the debug APK
+        run: ./gradlew :app:assembleDebug --stacktrace
+
+      - name: Assemble the release APK
+        run: ./gradlew :app:assembleRelease --stacktrace
+
+      # "We did not configure signing" is a claim about the workflow; this is a claim about the
+      # bytes. AGP names the artifact app-release.apk only when a signing config was applied, so
+      # the file name alone distinguishes the two outcomes — and a signed APK appearing here would
+      # mean signing material reached a pipeline that must never see it.
+      - name: Verify the release APK is unsigned
+        run: |
+          set -euo pipefail
+          releases=app/build/outputs/apk/release
+          if [ -f "$releases/app-release.apk" ]; then
+            echo "::error::The development pipeline produced a signed $releases/app-release.apk. Only [PRD] BUILD may sign a release."
+            exit 1
+          fi
+          if [ ! -f "$releases/app-release-unsigned.apk" ]; then
+            echo "::error::Expected $releases/app-release-unsigned.apk; the release build produced $(ls "$releases"/*.apk 2>/dev/null || echo 'no APK at all')."
+            exit 1
+          fi
+          echo "::notice::Release APK is unsigned, as this pipeline requires."
+
+      - name: Upload the APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: apks
+          path: app/build/outputs/apk/**/*.apk
+          if-no-files-found: error
+
+      # Release stack traces are only readable with this file, and it is regenerated by every R8
+      # run - keep the one that belongs to the APK above.
+      - name: Upload the R8 mapping file
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-mapping
+          path: app/build/outputs/mapping/release/mapping.txt
+          if-no-files-found: error

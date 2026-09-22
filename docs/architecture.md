@@ -73,9 +73,9 @@ Three product decisions shape most of the code:
 | Video | `io.getstream:stream-webrtc-android` (WHEP over plain `HttpURLConnection`) |
 | QR scanning | CameraX + ML Kit Barcode Scanning |
 | Build | Gradle KTS + version catalog (`gradle/libs.versions.toml`) |
-| Coverage | JaCoCo 0.8.12, custom `:app:jacocoTestReport` task |
+| Coverage | JaCoCo 0.8.12, custom `:app:jacocoTestReport` + `:app:jacocoTestCoverageVerification` (90% LINE) |
 | Arch enforcement | Konsist 0.17.3 (`LayerDependencyTest`) |
-| CI | GitHub Actions — `.github/workflows/android.yml` (§10.1) |
+| CI | GitHub Actions — `[DEV] BUILD` and `[PRD] BUILD` (§10.1) |
 
 **SDK levels:** `minSdk 26`, `targetSdk 36`, `compileSdk 36`, Java 17.
 
@@ -132,6 +132,17 @@ leave them matching nothing and silently pull the excluded code back into the de
 `JacocoExclusionsTest` reads the patterns back out of `app/build.gradle.kts` and resolves each one
 against the compiled classes, which turns that drift into a failing test. The build script is
 declared as an input of the test task so editing a pattern actually re-runs the guard.
+
+**The coverage minimum is a build rule, not a CI rule.** `jacocoTestCoverageVerification` fails the
+build when LINE coverage of that same filtered scope falls below `minimumLineCoverage` (90%), and
+both workflows do nothing more than call it — so `./gradlew :app:jacocoTestCoverageVerification`
+locally means exactly what CI means, and the threshold has one home. It is stated in LINE rather
+than JaCoCo's headline INSTRUCTION figure for the reason the HTML banner exists: instruction
+coverage counts bytecode, so on Kotlin a single line expands to a very variable number of
+instructions and a long expression outweighs a branch. The two tasks share one definition of the
+measured classes, because a gate computed over a different set than the report it is read next to
+would be a trap rather than a gate. The task depends on `jacocoTestReport`, so a run that fails the
+gate still leaves the report that explains which classes made it fail.
 
 ---
 
@@ -753,6 +764,7 @@ Useful commands:
 ```bash
 ./gradlew :app:testDebugUnitTest     # unit tests, including the architecture assertions
 ./gradlew :app:jacocoTestReport      # coverage → app/build/reports/jacoco/jacocoTestReport/html/index.html
+./gradlew :app:jacocoTestCoverageVerification   # the 90% LINE gate; what both CI workflows run
 ./gradlew :app:assembleDebug
 ./gradlew :app:assembleRelease       # runs R8; mapping → app/build/outputs/mapping/release/mapping.txt
 ```
@@ -762,24 +774,71 @@ violation or a host/XML mismatch fails `testDebugUnitTest` like any other regres
 
 ### 10.1 Continuous integration
 
-`.github/workflows/android.yml` ("Android CI") runs on pushes to `main`, on `v*` tags, on pull
-requests targeting `main`, and on manual dispatch. Runs on the same ref cancel each other.
+Two workflows, split by what they are allowed to produce rather than by what they run:
 
-| Job | What it runs | Artifacts |
+| Workflow | File | Starts on |
 |---|---|---|
-| `unit-tests` | `:app:testDebugUnitTest` + `:app:jacocoTestReport` | test reports (HTML + XML), JaCoCo report |
-| `build` | `:app:assembleDebug` + `:app:assembleRelease` | debug and release APKs, `mapping.txt` |
-| `release` (`v*` tags only) | attaches the signed build to a GitHub Release | `cameras-<version>.apk`, `mapping-<version>.txt` |
+| `[DEV] BUILD` | `.github/workflows/dev-build.yml` | pull requests targeting `main`, pushes to `main`, manual dispatch |
+| `[PRD] BUILD` | `.github/workflows/prd-build.yml` | a `v*` tag, or a manual dispatch **on a `v*` tag** |
 
-The build jobs set up Temurin **JDK 21** — the version `gradle/gradle-daemon-jvm.properties` pins
-the daemon to, independent of the Java 17 the app compiles against — plus the Android SDK and
+**The split is about the signing key, not about the checks.** Both workflows apply exactly the same
+quality gates — `:app:jacocoTestCoverageVerification`, which pulls in `jacocoTestReport` and
+`testDebugUnitTest` behind it, so the unit tests, the architecture assertions that ride along with
+them (`LayerDependencyTest`, `StreamHostTest`, `JacocoExclusionsTest`) and the 90% LINE minimum are
+one Gradle invocation. A release is not the moment to apply a weaker standard than a pull request
+does. What differs is the outcome: `[DEV] BUILD` reads no secret and sets no `CAMERAS_RELEASE_*`
+variable, so it is structurally incapable of minting a *releasable* artifact, while `[PRD] BUILD`
+is the only path to the release key.
+
+Be precise about what that does and does not mean, because "unsigned pipeline" is a tempting
+shorthand and it is false. `[DEV] BUILD` uploads two APKs and **one of them is installable**:
+`assembleDebug` produces `app-debug.apk`, signed by AGP with the standard Android debug key
+(`CN=Android Debug`), which is exactly what makes it sideloadable for manual testing. What the
+pipeline cannot produce is an artifact signed with the *release* key — `app-release-unsigned.apk`
+is genuinely unsigned and Android will refuse to install it. The guarantee is about the release
+key, not about installability:
+
+| Artifact from `[DEV] BUILD` | Signed with | Installable |
+|---|---|---|
+| `app-debug.apk` | the debug key AGP generates | Yes — that is its purpose |
+| `app-release-unsigned.apk` | nothing | No |
+
+| Workflow | Job | What it runs | Artifacts |
+|---|---|---|---|
+| `[DEV] BUILD` | `unit-tests` | `:app:jacocoTestCoverageVerification` | test reports (HTML + XML), JaCoCo report |
+| | `build` | `:app:assembleDebug` + `:app:assembleRelease` | debug and **unsigned** release APKs, `mapping.txt` |
+| `[PRD] BUILD` | `version` | resolves `v1.4.2` → `1.4.2`, fails on any other ref | — |
+| | `unit-tests` | `:app:jacocoTestCoverageVerification` | test reports (HTML + XML), JaCoCo report |
+| | `build` | `:app:assembleDebug` + `:app:assembleRelease`, signed | debug and **signed** release APKs, `mapping.txt` |
+| | `release` | attaches the signed build to a GitHub Release | `cameras-<version>.apk`, `mapping-<version>.txt` |
+
+Both set up Temurin **JDK 21** — the version `gradle/gradle-daemon-jvm.properties` pins the daemon
+to, independent of the Java 17 the app compiles against — plus the Android SDK and
 `gradle/actions/setup-gradle`, which caches Gradle and validates the committed wrapper's checksum.
+Each job prints the measured LINE coverage to the run summary whether it passed or failed, so "how
+close are we to the minimum" is answerable without downloading an artifact.
 
-**A tag is what makes a release, not a push.** Pushes to `main` and pull requests compile,
-test and shrink, and their release APK is unsigned and carries version code 1; only a `v*` tag
-reaches the signing key, derives a real version, and publishes anything durable. That split keeps
-the release key off every ordinary push, and keeps "which build is the release" an answerable
-question — a signed artifact per commit, all sharing one version code, would answer it badly.
+**Job ordering differs, and that is the point.** In `[DEV] BUILD` the two jobs run in parallel:
+nothing is published, so the useful thing is to learn about a compile failure and a test failure in
+the same run rather than one after the other. In `[PRD] BUILD` `build` declares
+`needs: [version, unit-tests]`, so the release key is reached only after the tests and the coverage
+minimum have passed — a signed artifact built from code that failed its own gates would make the
+gates decorative.
+
+**A tag is what makes a release, not a push.** Pushes to `main` and pull requests compile, test and
+shrink, and their release APK is unsigned and carries version code 1; only a `v*` tag reaches the
+signing key, derives a real version, and publishes anything durable. That split keeps the release
+key off every ordinary push, and keeps "which build is the release" an answerable question — a
+signed artifact per commit, all sharing one version code, would answer it badly. `[PRD] BUILD`
+accepts `workflow_dispatch` so a tag whose first run died on something outside the build (a
+repository outage, a missing secret) can be retried, but the `version` job rejects any ref that is
+not a `v<major>.<minor>.<patch>` tag, so dispatch cannot turn a branch into a release.
+
+Each workflow asserts the property it claims, against the bytes rather than against its own
+configuration. `[DEV] BUILD` fails if `app-release.apk` exists at all, since AGP only drops the
+`-unsigned` suffix when a signing config was applied — a signed APK appearing there would mean
+signing material had reached a pipeline that must never see it. `[PRD] BUILD` runs
+`apksigner verify --print-certs` on the APK it is about to upload (§10.2).
 
 Only the `release` job holds `contents: write`, and only to create the release; the jobs that
 compile and sign stay read-only. Run artifacts expire (90 days by default) and are addressed by run
@@ -787,10 +846,10 @@ id, which is why the tagged build is attached to a Release instead: a stable URL
 tag exists. The mapping file rides along with the APK it belongs to, since a crash report from the
 field cannot be de-obfuscated without the exact file from the build that produced that binary.
 
-Two things the pipeline does *not* do: there is no instrumented-test job, because
-`src/androidTest/` still holds only the generated stub (§9.2), and there is no separate lint job,
-because `assembleRelease` already runs `lintVitalRelease`. Adding either one is a matter of adding
-a job, not of reworking the workflow.
+Two things neither pipeline does: there is no instrumented-test job, because `src/androidTest/`
+still holds only the generated stub (§9.2), and there is no separate lint job, because
+`assembleRelease` already runs `lintVitalRelease`. Adding either one is a matter of adding a job,
+not of reworking a workflow.
 
 `assembleRelease` on every pull request is deliberate: R8 is the part of the build most likely to
 break from an ordinary dependency bump. It remains the necessary-but-not-sufficient check
@@ -816,22 +875,24 @@ built unsigned. That is what keeps `assembleRelease` runnable on a machine — o
 request — that has no keystore, and it replaces an earlier `getByName("release")` that failed the
 *configuration* of every Gradle task when no such config existed.
 
-**On CI** signing is reached only from a `v*` tag, and the four secrets are all-or-nothing:
+**On CI** the secrets are referenced in exactly one workflow, `[PRD] BUILD`, and they are
+required there rather than detected — that pipeline has one acceptable outcome, so a missing piece
+is a failure, not a request for an unsigned build:
 
 | Build | Outcome |
 |---|---|
-| Push to `main`, pull request, manual dispatch | `app-release-unsigned.apk`; the secrets are never put in front of Gradle |
-| `v*` tag, all four secrets | Keystore decoded to the runner's temp dir, `app-release.apk` signed |
-| `v*` tag, some secrets | Job fails — a half-configured set is a mistake, not a request for an unsigned build |
-| `v*` tag, no secrets | Job fails before R8 — a release tag must not publish an unsigned APK |
+| Anything in `[DEV] BUILD` | `app-release-unsigned.apk`; the workflow names no secret at all, so nothing is put in front of Gradle |
+| `[PRD] BUILD`, all four secrets | Keystore decoded to the runner's temp dir, `app-release.apk` signed |
+| `[PRD] BUILD`, any secret missing | Job fails before R8, naming the missing secrets — a release tag must not publish an unsigned APK |
 
 Two checks stand between the secrets and the uploaded artifact. The decode step opens the keystore
 with `keytool -list` (a truncated or wrongly encoded secret otherwise surfaces much later, as an
 opaque Gradle error), and after the build `apksigner verify --print-certs` asserts that the APK is
 actually signed and prints the certificate — the build falls back to unsigned whenever any part of
-the material fails to reach Gradle, so "the secrets are set" is not proof on its own. Note that the
-signed and unsigned outputs have different file names (`app-release.apk` vs.
-`app-release-unsigned.apk`); the upload step globs both.
+the material fails to reach Gradle, so "the secrets are set" is not proof on its own. The signed
+and unsigned outputs have different file names (`app-release.apk` vs. `app-release-unsigned.apk`),
+which is what lets each workflow assert its own outcome by file name (§10.1); the upload step globs
+both.
 
 Creating the keystore and the secrets, once:
 
@@ -849,9 +910,10 @@ and `keystore.properties` precisely so neither is committed by accident.
 
 ### 10.3 Version identity
 
-The version of a release comes from its tag. CI turns `v1.4.2` into `CAMERAS_VERSION_NAME=1.4.2`,
-and `app/build.gradle.kts` derives the version code from that same string, so the number and the
-name cannot disagree:
+The version of a release comes from its tag. The `version` job of `[PRD] BUILD` turns `v1.4.2`
+into `CAMERAS_VERSION_NAME=1.4.2` — once, as a job output the build job consumes — and
+`app/build.gradle.kts` derives the version code from that same string, so the number and the name
+cannot disagree:
 
 ```
 versionCode = major * 1_000_000 + minor * 1_000 + patch     # v1.4.2 -> 1_004_002
@@ -867,12 +929,14 @@ CAMERAS_VERSION_NAME=1.4.2 ./gradlew :app:assembleRelease
 ```
 
 Builds with no such variable — local, pull request, push to `main` — keep `versionCode 1` /
-`versionName "1.0"`. They are unsigned anyway, so the shared code costs nothing, and it is what
-makes an accidental release impossible to install over a real one.
+`versionName "1.0"`. The shared version code costs nothing, because an unsigned release APK does
+not install at all, which is what makes an accidental release impossible to install over a real
+one.
 
 Pre-release tags (`v1.4.2-rc1`) are deliberately not supported: this scheme cannot express them in
-a single increasing integer, and the tag step rejects anything that is not `v<major>.<minor>.<patch>`
-with the reason spelled out, instead of guessing a version code.
+a single increasing integer, and the `version` job rejects anything that is not
+`v<major>.<minor>.<patch>` with the reason spelled out, instead of guessing a version code. It
+rejects it before any other job starts, so a malformed tag costs one step rather than a full build.
 
 ---
 
