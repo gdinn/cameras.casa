@@ -1,0 +1,69 @@
+name: "[PAGES] DEPLOY"
+
+# Publishes the public site under pages/ — currently the privacy policies, which the Play Store
+# listing links to — to GitHub Pages.
+#
+# It exists as a workflow rather than as a Pages "deploy from a branch" setting because branch
+# publishing can only serve the repository root or /docs, and neither is what this site is: the
+# root is the Android project, and /docs is the internal architecture reference. Building from
+# an arbitrary directory is exactly what actions/jekyll-build-pages allows.
+#
+# One-time setup in the repository: Settings > Pages > Build and deployment > Source =
+# "GitHub Actions". Without that, this workflow's deploy job fails with "Pages is not enabled".
+on:
+  push:
+    branches: [main]
+    # Nothing outside the site can change the site, so an app-only push does not redeploy it.
+    paths:
+      - 'pages/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+# The deploy job needs to mint an OIDC token for the Pages deployment; the build job reads the
+# repository and nothing else.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time. Unlike the build pipelines, a run in flight is NOT cancelled: it is
+# publishing, and killing it half way is how a site ends up serving a partial deployment.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build the Jekyll site
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      # The site is plain Markdown plus one layout, so the github-pages gem this action ships is
+      # all the toolchain it needs — there is no Gemfile to resolve and no plugin to install.
+      - name: Build with Jekyll
+        uses: actions/jekyll-build-pages@v1
+        with:
+          source: ./pages
+          destination: ./_site
+
+      - name: Upload the built site
+        uses: actions/upload-pages-artifact@v3
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy the artifact
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,28 @@
+# Jekyll configuration for the Cameras App public site (privacy policies).
+#
+# This directory is the site root. It is NOT one of the two folders GitHub Pages can publish
+# from a branch (`/` and `/docs`), so publishing goes through .github/workflows/pages.yml, which
+# builds this directory with actions/jekyll-build-pages and deploys the result.
+#
+# There is deliberately no `baseurl` here. Every link in the site is relative, so the same build
+# is correct at https://gdinn.github.io/cameras.casa/ and at a custom apex domain. Setting a
+# baseurl would only create a value that has to be kept in sync with where the site is served.
+
+title: Cameras App
+description: >-
+  Privacy policy for Cameras App, the native Android client for watching IP cameras on your own
+  private network over a WireGuard tunnel.
+
+app_id: com.gdisys.cameras
+repository_url: https://github.com/gdinn/cameras.casa
+
+# kramdown is the only Markdown engine GitHub Pages supports, and it renders the tables the
+# policies rely on.
+markdown: kramdown
+kramdown:
+  input: GFM
+
+exclude:
+  - Gemfile
+  - Gemfile.lock
+  - vendor

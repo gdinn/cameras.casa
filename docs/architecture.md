@@ -75,7 +75,7 @@ Three product decisions shape most of the code:
 | Build | Gradle KTS + version catalog (`gradle/libs.versions.toml`) |
 | Coverage | JaCoCo 0.8.12, custom `:app:jacocoTestReport` + `:app:jacocoTestCoverageVerification` (90% LINE) |
 | Arch enforcement | Konsist 0.17.3 (`LayerDependencyTest`) |
-| CI | GitHub Actions — `[DEV] BUILD` and `[PRD] BUILD` (§10.1) |
+| CI | GitHub Actions — `[DEV] BUILD` and `[PRD] BUILD` (§10.1), `[PAGES] DEPLOY` (§10.4) |
 
 **SDK levels:** `minSdk 26`, `targetSdk 36`, `compileSdk 36`, Java 17.
 
@@ -800,7 +800,9 @@ violation or a host/XML mismatch fails `testDebugUnitTest` like any other regres
 
 ### 10.1 Continuous integration
 
-Two workflows, split by what they are allowed to produce rather than by what they run:
+Two workflows build the app, split by what they are allowed to produce rather than by what
+they run. (A third, `[PAGES] DEPLOY`, publishes the public site and touches no part of the
+Android build — §10.4.)
 
 | Workflow | File | Starts on |
 |---|---|---|
@@ -990,6 +992,37 @@ Pre-release tags (`v1.4.2-rc1`) are deliberately not supported: this scheme cann
 a single increasing integer, and the `version` job rejects anything that is not
 `v<major>.<minor>.<patch>` with the reason spelled out, instead of guessing a version code. It
 rejects it before any other job starts, so a malformed tag costs one step rather than a full build.
+
+
+### 10.4 The public site
+
+`pages/` holds a small Jekyll site — the privacy policies the Play Store listing has to link to,
+in en-US and pt-BR — published to GitHub Pages by `.github/workflows/pages.yml` (`[PAGES] DEPLOY`).
+
+| | |
+|---|---|
+| Source | `pages/` (`_config.yml`, `_layouts/default.html`, `index.md`, `privacy_policy/*.md`) |
+| Starts on | pushes to `main` touching `pages/**` or the workflow itself, and manual dispatch |
+| Builds with | `actions/jekyll-build-pages`, deployed by `actions/deploy-pages` |
+| Repository setting | Settings → Pages → Source must be **GitHub Actions** |
+
+Three decisions are worth knowing before editing it:
+
+**It is a workflow rather than a Pages branch setting** because branch publishing can only serve
+the repository root or `/docs`, and this site is neither — the root is the Android project and
+`/docs` is this document. Building from an arbitrary directory is what the Actions route buys.
+
+**The Markdown files are the source of truth.** Each policy carries front matter (`layout`,
+`permalink`, and the `alt_*` pair that renders the language switcher) and is otherwise the same
+document that reads correctly on GitHub. There is no generated HTML copy to drift from it.
+
+**Every link in the site is relative, and `_config.yml` sets no `baseurl`.** That is what makes
+one build correct both at `gdinn.github.io/cameras.casa/` and at a custom apex domain. The layout
+likewise ships no binary asset — the favicon and the header mark are inline SVG — so no URL in the
+page depends on where the site is mounted. Adding an image, or a `baseurl`, gives up that property.
+
+The unit tests do not cover this site; the build in CI is the only check, which is why the links
+between the two policies are relative and few.
 
 ---
 

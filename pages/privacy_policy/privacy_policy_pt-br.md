@@ -1,6 +1,18 @@
+---
+layout: default
+title: "Política de Privacidade — Cameras App"
+description: "Política de privacidade do Cameras App (com.gdisys.cameras): o que fica armazenado no seu dispositivo, o que nunca é coletado e por que cada permissão é necessária."
+lang: pt-BR
+permalink: /privacy-policy/pt-br/
+alt_href: "../en-us/"
+alt_lang: en-us
+alt_label: "English"
+home_href: "../../"
+---
+
 # Política de Privacidade — Cameras App
 
-**ID da aplicação:** `com.gdisys.cameras`
+**ID da aplicação:** `com.gdisys.cameras`  
 **Última atualização:** 22 de setembro de 2026
 
 ## Resumo
