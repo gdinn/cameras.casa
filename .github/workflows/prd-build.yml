@@ -1,14 +1,19 @@
 name: "[PRD] BUILD"
 
-# The release pipeline. A v* tag is the only thing that starts it, and everything it does is
-# downstream of the same quality gates the development pipeline applies: nothing is signed, and
-# nothing is published, until the unit tests and the coverage minimum have both passed.
+# The release pipeline. Everything it does is downstream of the same quality gates the development
+# pipeline applies: nothing is signed, and nothing is published, until the unit tests and the
+# coverage minimum have both passed.
+#
+# There is deliberately no automatic trigger. Releasing is a decision, and a `push: tags: ['v*']`
+# turns every tag into one — including a tag pushed to mark a milestone, to park an experiment, or
+# by mistake, none of which are requests to sign a binary and publish it under a permanent URL.
+# Dispatch makes the decision explicit and records who made it.
+#
+# The tag has not stopped being what identifies a release, though. It moved from being the trigger
+# to being a precondition: the `version` job below rejects any run whose ref is not a
+# v<major>.<minor>.<patch> tag, so "dispatched" never means "dispatched off whatever branch
+# happened to be selected".
 on:
-  push:
-    tags: ['v*']
-  # Re-running a release for a tag whose first attempt failed on something outside the build (a
-  # repository outage, a missing secret). The guard below still requires the run to be on a v* tag,
-  # so this cannot be used to sign an arbitrary branch.
   workflow_dispatch:
 
 # Two tags are two different releases, so a run is keyed by the tag and is never cancelled by
@@ -26,9 +31,9 @@ env:
   MINIMUM_LINE_COVERAGE: 90
 
 jobs:
-  # The version identity of the release, established before anything is built. It fails the run on
-  # a ref that is not a v<major>.<minor>.<patch> tag, which is what keeps `workflow_dispatch` from
-  # turning a branch into a release, and it is the single place the version is derived.
+  # The version identity of the release, established before anything is built — and, since dispatch
+  # is the only way in, also the gate that keeps a dispatch off an arbitrary branch from becoming a
+  # release. It is the single place the version is derived.
   version:
     name: Resolve the release version
     runs-on: ubuntu-latest
@@ -41,7 +46,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ "${GITHUB_REF_TYPE}" != "tag" ]; then
-            echo "::error::[PRD] BUILD only runs on a v* tag, but this run is on ${GITHUB_REF}. Tag the commit and push the tag, or dispatch this workflow against a tag."
+            echo "::error::[PRD] BUILD only releases from a v* tag, but this run is on ${GITHUB_REF}. Re-run it with a v<major>.<minor>.<patch> tag selected as the ref."
             exit 1
           fi
           version="${GITHUB_REF_NAME#v}"

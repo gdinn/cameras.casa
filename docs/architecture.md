@@ -805,7 +805,7 @@ Two workflows, split by what they are allowed to produce rather than by what the
 | Workflow | File | Starts on |
 |---|---|---|
 | `[DEV] BUILD` | `.github/workflows/dev-build.yml` | pull requests targeting `main`, pushes to `main`, manual dispatch |
-| `[PRD] BUILD` | `.github/workflows/prd-build.yml` | a `v*` tag, or a manual dispatch **on a `v*` tag** |
+| `[PRD] BUILD` | `.github/workflows/prd-build.yml` | **manual dispatch only**, and only on a `v*` tag |
 
 **The split is about the signing key, not about the checks.** Both workflows apply exactly the same
 quality gates — `:app:jacocoTestCoverageVerification`, which pulls in `jacocoTestReport` and
@@ -855,14 +855,29 @@ the same run rather than one after the other. In `[PRD] BUILD` `build` declares
 minimum have passed — a signed artifact built from code that failed its own gates would make the
 gates decorative.
 
-**A tag is what makes a release, not a push.** Pushes to `main` and pull requests compile, test and
-shrink, and their release APK is unsigned and carries version code 1; only a `v*` tag reaches the
-signing key, derives a real version, and publishes anything durable. That split keeps the release
-key off every ordinary push, and keeps "which build is the release" an answerable question — a
-signed artifact per commit, all sharing one version code, would answer it badly. `[PRD] BUILD`
-accepts `workflow_dispatch` so a tag whose first run died on something outside the build (a
-repository outage, a missing secret) can be retried, but the `version` job rejects any ref that is
-not a `v<major>.<minor>.<patch>` tag, so dispatch cannot turn a branch into a release.
+**Nothing releases automatically.** `[PRD] BUILD` has no `push` trigger at all: it runs only when
+someone dispatches it, and only when the ref they dispatch it on is a `v<major>.<minor>.<patch>`
+tag. Pushes to `main` and pull requests compile, test and shrink, and their release APK is unsigned
+and carries version code 1; nothing in the repository reaches the signing key on its own.
+
+The tag did not stop mattering — it moved from being the *trigger* to being a *precondition*. A
+`push: tags: ['v*']` trigger makes every tag a release request, and tags get pushed for reasons
+that are not that: marking a milestone, parking an experiment, a typo. Under it, the way to find
+out you had published something was to see the Release appear. Requiring a dispatch makes the
+decision explicit and records who made it, and the `version` job then rejects any ref that is not a
+proper version tag, so "dispatched" can never mean "dispatched off whatever branch happened to be
+selected". The cost is one deliberate step; releasing was never meant to be the path of least
+resistance.
+
+Two practical consequences. `workflow_dispatch` only lists a workflow once it exists on the
+**default branch**, so `[PRD] BUILD` is not dispatchable until it is merged to `main` — with no
+`push` trigger there is no other way in. And pushing a `v*` tag now does nothing by itself; the tag
+is what you *select* when dispatching, not what starts the run.
+
+This makes releases deliberate, not restricted: dispatch requires write access, so it bounds *when*
+a release happens, not *who* can cause one. Restricting that is a repository-configuration question
+(a tag ruleset, or an environment with required reviewers holding the signing secrets), not
+something this file can express.
 
 Each workflow asserts the property it claims, against the bytes rather than against its own
 configuration. `[DEV] BUILD` fails if `app-release.apk` exists at all, since AGP only drops the
