@@ -117,6 +117,29 @@ android {
   }
 
   buildTypes {
+    // The debug build installs alongside a release build rather than colliding with it. Without
+    // the suffix both variants claim `com.gdisys.cameras`, and Android then refuses to install
+    // either one over the other — the signing keys differ (debug key vs. release key), so it is
+    // rejected as a signature mismatch instead of treated as an update. Suffixing the debug id
+    // makes them two separate apps with separate data directories, separate Keystore entries and
+    // separate backup sets.
+    //
+    // This changes the *application id* only. The namespace stays `com.gdisys.cameras`, which is
+    // what the R class, `BuildConfig` and the relative component names in AndroidManifest.xml
+    // (`.MainActivity`, `.CamerasApp`, `.core.vpn.data.VpnLifecycleService`) resolve against — so
+    // none of them move, and Konsist's `LayerDependencyTest` still sees one package tree.
+    //
+    // Anything that asserts the installed package name has to allow for the suffix rather than
+    // hardcode one id: `ExampleInstrumentedTest` asserts the namespace prefix for this reason.
+    // (`BuildConfig.APPLICATION_ID` would be the other way to write it, but `buildConfig` is not
+    // among this module's `buildFeatures`, and a stub test is no reason to turn it on.)
+    debug {
+      applicationIdSuffix = ".debug"
+      // Distinguishes the two in Settings > Apps and in any crash report, which matters more here
+      // than usual: every non-tagged build otherwise reports the same "1.0".
+      versionNameSuffix = "-debug"
+    }
+
     release {
       // R8 in full mode (shrink + obfuscate + optimize). The keep rules live in
       // proguard-rules.pro, one commented block per reason: kotlinx.serialization (on-disk schema,

@@ -79,6 +79,32 @@ Three product decisions shape most of the code:
 
 **SDK levels:** `minSdk 26`, `targetSdk 36`, `compileSdk 36`, Java 17.
 
+**The two variants install side by side.** The debug build type sets
+`applicationIdSuffix = ".debug"`, so a debug APK and a release APK are two distinct apps with
+distinct data directories, Keystore entries and backup sets:
+
+| | Application id | `versionName` | Launcher label |
+|---|---|---|---|
+| `debug` | `com.gdisys.cameras.debug` | `1.0-debug` | Cameras (debug) |
+| `release` | `com.gdisys.cameras` | `1.0`, or the tag's version | Cameras |
+
+Without the suffix both claim `com.gdisys.cameras`, and because they are signed with different
+keys (the debug key vs. the release key) Android treats an install of one over the other as a
+signature mismatch and refuses it — the practical effect being that you cannot keep a development
+build and the real app on the same device. The `versionNameSuffix` and the debug-only `app_name`
+override in `src/debug/res/values*/` exist so the two are also *distinguishable* once installed;
+otherwise they differ only by an id nobody reads.
+
+This moves the **application id**, not the namespace. `com.gdisys.cameras` remains the namespace,
+which is what the R class and the relative component names in `AndroidManifest.xml`
+(`.MainActivity`, `.CamerasApp`, `.core.vpn.data.VpnLifecycleService`) resolve against — the merged
+debug manifest declares `package="com.gdisys.cameras.debug"` while still pointing at
+`com.gdisys.cameras.MainActivity`. So Konsist's `LayerDependencyTest` still sees one package tree,
+and `GoBackend$VpnService` is unaffected. Two caveats worth knowing: anything asserting the
+installed package name must allow for the suffix (`ExampleInstrumentedTest` asserts the namespace
+prefix rather than one literal id), and although both apps can be installed, Android still allows
+only one active VPN at a time, so only one of them can hold the tunnel up.
+
 Compose is configured by the Compose Compiler Gradle plugin (`libs.plugins.compose.compiler`), the
 only supported mechanism on Kotlin 2.x — there is no `composeOptions` block, and adding one back
 would be inert.
@@ -803,6 +829,10 @@ key, not about installability:
 | `app-debug.apk` | the debug key AGP generates | Yes — that is its purpose |
 | `app-release-unsigned.apk` | nothing | No |
 
+That debug APK installs *beside* a release build rather than fighting it: the debug variant
+carries `applicationIdSuffix = ".debug"`, so the two are different apps to Android (§2). Sideload
+it freely — it will not disturb an installed release.
+
 | Workflow | Job | What it runs | Artifacts |
 |---|---|---|---|
 | `[DEV] BUILD` | `unit-tests` | `:app:jacocoTestCoverageVerification` | test reports (HTML + XML), JaCoCo report |
@@ -928,10 +958,10 @@ build is reproducible off CI:
 CAMERAS_VERSION_NAME=1.4.2 ./gradlew :app:assembleRelease
 ```
 
-Builds with no such variable — local, pull request, push to `main` — keep `versionCode 1` /
-`versionName "1.0"`. The shared version code costs nothing, because an unsigned release APK does
-not install at all, which is what makes an accidental release impossible to install over a real
-one.
+Builds with no such variable — local, pull request, push to `main` — keep `versionCode 1`, and
+`versionName "1.0"` (`"1.0-debug"` on the debug variant, per §2). The shared version code costs
+nothing, because none of these builds can be installed over a real release anyway: the debug
+variant is a different app id entirely, and an unsigned release APK does not install at all.
 
 Pre-release tags (`v1.4.2-rc1`) are deliberately not supported: this scheme cannot express them in
 a single increasing integer, and the `version` job rejects anything that is not
