@@ -34,6 +34,52 @@ val releaseStorePassword = releaseSigningValue("storePassword", "CAMERAS_RELEASE
 val releaseKeyAlias = releaseSigningValue("keyAlias", "CAMERAS_RELEASE_KEY_ALIAS")
 val releaseKeyPassword = releaseSigningValue("keyPassword", "CAMERAS_RELEASE_KEY_PASSWORD")
 
+// The version identity of a release comes from its git tag: CI exports the tag's semantic version
+// (`v1.4.2` -> `1.4.2`) as CAMERAS_VERSION_NAME, and the version code is derived from that same
+// string, so the number and the name can never disagree. Deriving it here rather than in the
+// workflow keeps the rule reproducible off CI: `CAMERAS_VERSION_NAME=1.4.2 ./gradlew
+// :app:assembleRelease` produces byte-for-byte the versioning the tag would.
+//
+// Every other build — local, pull request, push to main — has no such variable and keeps the
+// development identity below. Those builds are not releasable anyway: they are unsigned, and they
+// all share version code 1.
+val developmentVersionCode = 1
+val developmentVersionName = "1.0"
+
+/**
+ * Maps `major.minor.patch` onto a single monotonically increasing integer: `major * 1_000_000 +
+ * minor * 1_000 + patch`. Android requires the version code to be a strictly increasing `Int`, so
+ * minor and patch are limited to three digits each, and the scheme runs out at major 2147.
+ */
+fun versionCodeOf(versionName: String): Int {
+  val parts = versionName.split(".")
+  if (parts.size != 3) {
+    throw GradleException("CAMERAS_VERSION_NAME must be major.minor.patch, but was '$versionName'.")
+  }
+  val (major, minor, patch) = parts.map { part ->
+    part.toIntOrNull()?.takeIf { it >= 0 }
+      ?: throw GradleException(
+        "CAMERAS_VERSION_NAME must be major.minor.patch with non-negative numbers, " +
+          "but was '$versionName'."
+      )
+  }
+  if (minor > 999 || patch > 999) {
+    throw GradleException(
+      "CAMERAS_VERSION_NAME '$versionName' is out of range: minor and patch must be at most 999, " +
+        "otherwise the derived version code stops increasing monotonically."
+    )
+  }
+  if (major > 2147) {
+    throw GradleException(
+      "CAMERAS_VERSION_NAME '$versionName' is out of range: major must be at most 2147, " +
+        "otherwise the derived version code overflows Int."
+    )
+  }
+  return major * 1_000_000 + minor * 1_000 + patch
+}
+
+val taggedVersionName = System.getenv("CAMERAS_VERSION_NAME")?.trim()?.takeIf { it.isNotEmpty() }
+
 android {
   namespace = "com.gdisys.cameras"
   compileSdk = 36
@@ -42,8 +88,8 @@ android {
     applicationId = "com.gdisys.cameras"
     minSdk = 26
     targetSdk = 36
-    versionCode = 1
-    versionName = "1.0"
+    versionCode = taggedVersionName?.let(::versionCodeOf) ?: developmentVersionCode
+    versionName = taggedVersionName ?: developmentVersionName
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     vectorDrawables {

@@ -769,10 +769,23 @@ requests targeting `main`, and on manual dispatch. Runs on the same ref cancel e
 |---|---|---|
 | `unit-tests` | `:app:testDebugUnitTest` + `:app:jacocoTestReport` | test reports (HTML + XML), JaCoCo report |
 | `build` | `:app:assembleDebug` + `:app:assembleRelease` | debug and release APKs, `mapping.txt` |
+| `release` (`v*` tags only) | attaches the signed build to a GitHub Release | `cameras-<version>.apk`, `mapping-<version>.txt` |
 
-Both jobs set up Temurin **JDK 21** — the version `gradle/gradle-daemon-jvm.properties` pins the
-daemon to, independent of the Java 17 the app compiles against — plus the Android SDK and
+The build jobs set up Temurin **JDK 21** — the version `gradle/gradle-daemon-jvm.properties` pins
+the daemon to, independent of the Java 17 the app compiles against — plus the Android SDK and
 `gradle/actions/setup-gradle`, which caches Gradle and validates the committed wrapper's checksum.
+
+**A tag is what makes a release, not a push.** Pushes to `main` and pull requests compile,
+test and shrink, and their release APK is unsigned and carries version code 1; only a `v*` tag
+reaches the signing key, derives a real version, and publishes anything durable. That split keeps
+the release key off every ordinary push, and keeps "which build is the release" an answerable
+question — a signed artifact per commit, all sharing one version code, would answer it badly.
+
+Only the `release` job holds `contents: write`, and only to create the release; the jobs that
+compile and sign stay read-only. Run artifacts expire (90 days by default) and are addressed by run
+id, which is why the tagged build is attached to a Release instead: a stable URL for as long as the
+tag exists. The mapping file rides along with the APK it belongs to, since a crash report from the
+field cannot be de-obfuscated without the exact file from the build that produced that binary.
 
 Two things the pipeline does *not* do: there is no instrumented-test job, because
 `src/androidTest/` still holds only the generated stub (§9.2), and there is no separate lint job,
@@ -803,14 +816,14 @@ built unsigned. That is what keeps `assembleRelease` runnable on a machine — o
 request — that has no keystore, and it replaces an earlier `getByName("release")` that failed the
 *configuration* of every Gradle task when no such config existed.
 
-**On CI** the `build` job treats the four secrets as all-or-nothing:
+**On CI** signing is reached only from a `v*` tag, and the four secrets are all-or-nothing:
 
-| Secrets | Outcome |
+| Build | Outcome |
 |---|---|
-| None | `app-release-unsigned.apk`, job green (forks and keystore-less setups) |
-| Some | Job fails — a half-configured set is a mistake, not a request for an unsigned build |
-| All four | Keystore decoded to the runner's temp dir, `app-release.apk` signed |
-| None, on a `v*` tag | Job fails before R8 — a release tag must not publish an unsigned APK |
+| Push to `main`, pull request, manual dispatch | `app-release-unsigned.apk`; the secrets are never put in front of Gradle |
+| `v*` tag, all four secrets | Keystore decoded to the runner's temp dir, `app-release.apk` signed |
+| `v*` tag, some secrets | Job fails — a half-configured set is a mistake, not a request for an unsigned build |
+| `v*` tag, no secrets | Job fails before R8 — a release tag must not publish an unsigned APK |
 
 Two checks stand between the secrets and the uploaded artifact. The decode step opens the keystore
 with `keytool -list` (a truncated or wrongly encoded secret otherwise surfaces much later, as an
@@ -833,6 +846,33 @@ PKCS12 does not support a key password different from the store password — `ke
 `RELEASE_STORE_PASSWORD`. Keep `release.jks` and its passwords outside the repository: losing them
 means no future build can update an installed app, and `.gitignore` covers `*.jks`, `*.keystore`
 and `keystore.properties` precisely so neither is committed by accident.
+
+### 10.3 Version identity
+
+The version of a release comes from its tag. CI turns `v1.4.2` into `CAMERAS_VERSION_NAME=1.4.2`,
+and `app/build.gradle.kts` derives the version code from that same string, so the number and the
+name cannot disagree:
+
+```
+versionCode = major * 1_000_000 + minor * 1_000 + patch     # v1.4.2 -> 1_004_002
+```
+
+Android requires a strictly increasing `Int`, so minor and patch are capped at 999 and major at
+2147; the build fails with the offending value named rather than silently producing a version code
+that stops increasing. The derivation lives in the build script, not in the workflow, so a release
+build is reproducible off CI:
+
+```bash
+CAMERAS_VERSION_NAME=1.4.2 ./gradlew :app:assembleRelease
+```
+
+Builds with no such variable — local, pull request, push to `main` — keep `versionCode 1` /
+`versionName "1.0"`. They are unsigned anyway, so the shared code costs nothing, and it is what
+makes an accidental release impossible to install over a real one.
+
+Pre-release tags (`v1.4.2-rc1`) are deliberately not supported: this scheme cannot express them in
+a single increasing integer, and the tag step rejects anything that is not `v<major>.<minor>.<patch>`
+with the reason spelled out, instead of guessing a version code.
 
 ---
 

@@ -114,13 +114,29 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      # Signing material is optional, but it is all-or-nothing: a half-configured set of secrets is
-      # a mistake, not a request for an unsigned build, so it fails here instead of quietly
-      # producing an APK nobody can install. With no secrets at all the release build type stays
-      # unsigned (see the signingConfigs block in app/build.gradle.kts) and R8 still runs, which is
-      # the path pull requests from forks take, since they are given no secrets.
+      # A v* tag is the only thing that produces a signed build. Pushes to main and pull requests
+      # still run R8 and publish app-release-unsigned.apk, which is what catches a shrinking
+      # failure early; what they do not do is touch the release key or mint an artifact that looks
+      # installable. Every such build also carries version code 1, so it could not be a release
+      # even if it were signed.
+      - name: Read the release version from the tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::Tag '$GITHUB_REF_NAME' is not v<major>.<minor>.<patch>, so no version code can be derived from it."
+            exit 1
+          fi
+          echo "CAMERAS_VERSION_NAME=$version" >> "$GITHUB_ENV"
+          echo "::notice::Building version $version from tag $GITHUB_REF_NAME."
+
+      # Signing material is all-or-nothing: a half-configured set of secrets is a mistake, not a
+      # request for an unsigned build, so it fails here instead of quietly producing an APK nobody
+      # can install.
       - name: Decode the release keystore
         id: signing
+        if: startsWith(github.ref, 'refs/tags/v')
         env:
           RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
           RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
@@ -166,11 +182,13 @@ jobs:
       - name: Assemble the debug APK
         run: ./gradlew :app:assembleDebug --stacktrace
 
+      # Off a tag these resolve to empty strings, and the build script ignores blank values - the
+      # passwords are not put in front of the build at all on an ordinary push.
       - name: Assemble the release APK
         env:
-          CAMERAS_RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
-          CAMERAS_RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
-          CAMERAS_RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+          CAMERAS_RELEASE_STORE_PASSWORD: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.RELEASE_STORE_PASSWORD || '' }}
+          CAMERAS_RELEASE_KEY_ALIAS: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.RELEASE_KEY_ALIAS || '' }}
+          CAMERAS_RELEASE_KEY_PASSWORD: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.RELEASE_KEY_PASSWORD || '' }}
         run: ./gradlew :app:assembleRelease --stacktrace
 
       # The build falls back to an unsigned APK whenever any part of the material fails to reach
@@ -207,3 +225,51 @@ jobs:
           name: release-mapping
           path: app/build/outputs/mapping/release/mapping.txt
           if-no-files-found: error
+
+  # Run artifacts expire (90 days by default) and are addressed by run id, which makes them a poor
+  # home for a released build. On a v* tag the signed APK and its mapping file are attached to a
+  # GitHub Release instead, where they keep a stable URL for as long as the tag exists.
+  release:
+    name: Publish the GitHub Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Narrower than it looks: only this job can write to the repository, and only to create the
+    # release. The jobs that compile and sign keep read-only access.
+    permissions:
+      contents: write
+    steps:
+      - name: Download the APKs
+        uses: actions/download-artifact@v4
+        with:
+          name: apks
+          path: artifacts
+
+      - name: Download the R8 mapping file
+        uses: actions/download-artifact@v4
+        with:
+          name: release-mapping
+          path: artifacts
+
+      # mapping.txt is worth keeping next to the APK it belongs to: without the exact file from the
+      # build that produced this binary, a crash report from the field cannot be de-obfuscated.
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          apk="artifacts/release/app-release.apk"
+          if [ ! -f "$apk" ]; then
+            echo "::error::No signed APK in the build artifacts; refusing to publish a release."
+            exit 1
+          fi
+          mv "$apk" "artifacts/cameras-$version.apk"
+          mv artifacts/mapping.txt "artifacts/mapping-$version.txt"
+          gh release create "$GITHUB_REF_NAME" \
+            "artifacts/cameras-$version.apk" \
+            "artifacts/mapping-$version.txt" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes
