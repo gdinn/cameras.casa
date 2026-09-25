@@ -269,7 +269,14 @@ jobs:
       # An App Bundle is not an APK, so apksigner does not apply: AGP signs it with a JAR (v1)
       # signature, which jarsigner verifies. Unlike the APK, the file name says nothing here — AGP
       # writes app-release.aab signed or not — and jarsigner exits 0 on an unsigned jar too, so the
-      # check is on its verdict line rather than its exit code.
+      # check is on its verdict line rather than its exit code. The verdict is matched from a
+      # here-string, not a pipe: `grep -q` exits on the first match, the writer then dies of SIGPIPE,
+      # and under pipefail that turns a verified bundle into a failed step.
+      #
+      # Recent JDKs follow the verdict with "signed in JarFile but is not signed in JarInputStream"
+      # for every entry. That is expected for a bundle: bundletool does not write META-INF/MANIFEST.MF
+      # as the first zip entry, which is all a JarInputStream can read a manifest from. It does not
+      # affect Google Play, which reads the bundle as a zip, so it is not treated as a failure.
       - name: Verify the release App Bundle signature
         run: |
           set -euo pipefail
@@ -278,8 +285,8 @@ jobs:
             echo "::error::Expected $aab; the release build produced $(ls app/build/outputs/bundle/release/ 2>/dev/null || echo 'no bundle at all')."
             exit 1
           fi
-          output=$(jarsigner -verify -verbose -certs "$aab" 2>&1 || true)
-          if ! printf '%s\n' "$output" | grep -q '^jar verified\.'; then
+          output=$(jarsigner -verify "$aab" 2>&1 || true)
+          if ! grep -q '^jar verified\.' <<< "$output"; then
             printf '%s\n' "$output" | tail -20
             echo "::error::$aab is not signed with a verifiable signature."
             exit 1

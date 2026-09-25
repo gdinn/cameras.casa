@@ -196,7 +196,9 @@ jobs:
 
       # The same claim about the App Bundle, which the file name cannot settle: AGP writes
       # app-release.aab whether it is signed or not. jarsigner exits 0 either way, so the check is
-      # on its verdict line — "jar is unsigned." is the only acceptable one here.
+      # on its verdict line — "jar is unsigned." is the only acceptable one here. It is matched from a
+      # here-string rather than a pipe, because `grep -q` exits on the first match and, under
+      # pipefail, the writer's SIGPIPE would fail the step.
       - name: Verify the release App Bundle is unsigned
         run: |
           set -euo pipefail
@@ -206,7 +208,7 @@ jobs:
             exit 1
           fi
           output=$(jarsigner -verify "$aab" 2>&1 || true)
-          if ! printf '%s\n' "$output" | grep -q '^jar is unsigned\.'; then
+          if ! grep -q '^jar is unsigned\.' <<< "$output"; then
             printf '%s\n' "$output" | tail -20
             echo "::error::jarsigner did not report $aab as unsigned. Only [PRD] BUILD may sign a release."
             exit 1
