@@ -722,7 +722,8 @@ Declared in `gradle/libs.versions.toml` and consumed via the version catalog.
 ### 8.3 Non-Gradle external asset
 
 `qr-code-gen/` holds a small Python utility (with its own virtualenv checked in) that turns a
-`vpn.json` file into a scannable QR code. It is not part of the Android build. **`vpn.json` and the
+`vpn.json` file (a JSON array with one credentials document per device) into one scannable QR
+code per entry (`qrcode-<index>.png`). It is not part of the Android build. **`vpn.json` and the
 QR codes it produces contain WireGuard private key material** and must never be committed with real
 values.
 

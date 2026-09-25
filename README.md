@@ -63,7 +63,7 @@ Instead of typing WireGuard configuration by hand, the app is provisioned by sca
 ```
 
 - **`vpnConfigDefaults`** — parameters shared by every device that connects to this VPN: the tunnel DNS server, the interface MTU, the server's public key, the allowed IP ranges to route through the tunnel, the server endpoint (`host:port`), and the keepalive interval. These come from the `[Interface]`/`[Peer]` sections of the server-side WireGuard config and stay the same across QR codes.
-- **`vpnConfigTokens`** — the credentials unique to a single device: its own WireGuard private key, the tunnel IP address assigned to it, and the pre-shared key negotiated with the peer. Each device you provision needs its own `vpn.json` (and therefore its own QR code) with a distinct `iPrk`/`iAddr`/`pPsk` combination — never reuse tokens across devices.
+- **`vpnConfigTokens`** — the credentials unique to a single device: its own WireGuard private key, the tunnel IP address assigned to it, and the pre-shared key negotiated with the peer. Each device you provision needs its own entry in `vpn.json` (and therefore its own QR code) with a distinct `iPrk`/`iAddr`/`pPsk` combination — never reuse tokens across devices.
 
 On the app side, [`ParseUserPreferencesFromQrCodeUseCase`](app/src/main/java/com/gdisys/cameras/core/storage/domain/usecase/ParseUserPreferencesFromQrCodeUseCase.kt) decodes the scanned string into this same structure, validates that every field is present, and only then saves it. From there, [`ConnectVpnUseCase`](app/src/main/java/com/gdisys/cameras/core/vpn/domain/usecase/ConnectVpnUseCase.kt) maps it into a [`VpnConfig`](app/src/main/java/com/gdisys/cameras/core/vpn/domain/model/VpnConfig.kt) and hands it to the WireGuard tunnel implementation.
 
@@ -71,16 +71,21 @@ On the app side, [`ParseUserPreferencesFromQrCodeUseCase`](app/src/main/java/com
 
 ## The QR code generator (`qr-code-gen/main.py`)
 
-A small Python script that turns `vpn.json` into a scannable QR code image (`qrcode.png`). It is not part of the Android build:
+A small Python script that turns `vpn.json` into scannable QR code images, one per device. It is not part of the Android build:
 
 ```python
-with open('vpn.json', 'r', encoding='utf-8') as arquivo:
-    vpn_data = json.load(arquivo)
+with open('vpn.json', 'r', encoding='utf-8') as file:
+    vpn_data = json.load(file)
 
-criar_qrcode(json.dumps(vpn_data, ensure_ascii=False), "qrcode.png")
+if not isinstance(vpn_data, list):
+    raise ValueError("'vpn.json' must contain a JSON array.")
+
+for number, item in enumerate(vpn_data):
+    file_name = f"qrcode-{number}.png"
+    create_qrcode(json.dumps(item, ensure_ascii=False), file_name)
 ```
 
-It loads `vpn.json`, re-serializes it to a compact JSON string, and feeds that string into the [`qrcode`](https://pypi.org/project/qrcode/) library to render a PNG. The QR is generated with error correction level `H` (recovers up to ~30% of the code even if partially damaged/obscured), which gives some headroom for the fairly large payload the credentials JSON produces.
+`vpn.json` holds a JSON **array**, where each entry is one device's credentials document (the `vpnConfigDefaults` + `vpnConfigTokens` object shown above). The script re-serializes each entry to a compact JSON string and feeds it into the [`qrcode`](https://pypi.org/project/qrcode/) library to render `qrcode-<index>.png`. This makes it easy to provision several devices (e.g. a batch of testers) in one run. The QR is generated with error correction level `H` (recovers up to ~30% of the code even if partially damaged/obscured), which gives some headroom for the fairly large payload the credentials JSON produces.
 
 ### Usage
 
@@ -91,16 +96,16 @@ source env_python/bin/activate
 pip install qrcode[pil]
 ```
 
-1. Edit `vpn.json` with the real `vpnConfigDefaults` (shared server/peer settings) and a fresh `vpnConfigTokens` block for the device you're provisioning.
+1. Edit `vpn.json` as an array with one entry per device: the real `vpnConfigDefaults` (shared server/peer settings) and a fresh `vpnConfigTokens` block for each device you're provisioning.
 2. Run the script:
 
 ```bash
 python main.py
 ```
 
-3. `qrcode.png` is generated in the same folder. Open it and scan it with the app's **Config** screen (or display it on another screen/printout) to provision that device's VPN credentials.
+3. `qrcode-0.png`, `qrcode-1.png`, ... are generated in the same folder, one per array entry, in order. Open one and scan it with the app's **Config** screen (or display it on another screen/printout) to provision that device's VPN credentials.
 
-Generate a new, unique `vpn.json` (with its own `iPrk`/`iAddr`/`pPsk`) for every device you want to grant access to.
+Every entry needs its own unique `iPrk`/`iAddr`/`pPsk`; never reuse tokens across devices. The `.gitignore` in `qr-code-gen/` ignores `vpn*.json`, the generated `qrcode*.png` files and a local `testers` folder, so real credentials stay out of version control.
 
 ## Architecture
 
