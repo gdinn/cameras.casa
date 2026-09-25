@@ -145,7 +145,9 @@ validated that way end to end on a physical device: QR scan, tunnel up, streams 
 Code shrinking lands the whole app in a single ~4.5 MB `classes.dex`, but the release APK is still
 ~82 MB: ~74 MB of that is native libraries (`libjingle_peerconnection`, `libbarhopper_v3`,
 `libwg-go`) shipped for four ABIs. Minification does not touch those — `isShrinkResources`, ABI
-splits or an App Bundle are the levers there, and none of them is enabled.
+splits or an App Bundle are the levers there. Both pipelines also produce an App Bundle (§10.1) — only `[PRD] BUILD` signs it —
+from which Google Play serves each device only its own ABI; the APK attached to a GitHub Release
+still carries all four.
 
 The build file also defines a bespoke `jacocoTestReport` task that narrows coverage to the
 "unit-testable" surface — it excludes generated code, DI, Compose UI, bootstrap, theme, and
@@ -830,6 +832,7 @@ key, not about installability:
 |---|---|---|
 | `app-debug.apk` | the debug key AGP generates | Yes — that is its purpose |
 | `app-release-unsigned.apk` | nothing | No |
+| `app-release.aab` | nothing | No — and Play rejects an unsigned bundle |
 
 That debug APK installs *beside* a release build rather than fighting it: the debug variant
 carries `applicationIdSuffix = ".debug"`, so the two are different apps to Android (§2). Sideload
@@ -838,11 +841,17 @@ it freely — it will not disturb an installed release.
 | Workflow | Job | What it runs | Artifacts |
 |---|---|---|---|
 | `[DEV] BUILD` | `unit-tests` | `:app:jacocoTestCoverageVerification` | test reports (HTML + XML), JaCoCo report |
-| | `build` | `:app:assembleDebug` + `:app:assembleRelease` | debug and **unsigned** release APKs, `mapping.txt` |
+| | `build` | `:app:assembleDebug` + `:app:assembleRelease :app:bundleRelease` | debug and **unsigned** release APKs, **unsigned** release App Bundle, `mapping.txt` |
 | `[PRD] BUILD` | `version` | resolves `v1.4.2` → `1.4.2`, fails on any other ref | — |
 | | `unit-tests` | `:app:jacocoTestCoverageVerification` | test reports (HTML + XML), JaCoCo report |
-| | `build` | `:app:assembleDebug` + `:app:assembleRelease`, signed | debug and **signed** release APKs, `mapping.txt` |
-| | `release` | attaches the signed build to a GitHub Release | `cameras-<version>.apk`, `mapping-<version>.txt` |
+| | `build` | `:app:assembleDebug` + `:app:assembleRelease :app:bundleRelease`, signed | debug and **signed** release APKs, **signed** release App Bundle, `mapping.txt` |
+| | `release` | attaches the signed build to a GitHub Release | `cameras-<version>.apk`, `cameras-<version>.aab`, `mapping-<version>.txt` |
+
+In both pipelines the release APK and the App Bundle come from one Gradle invocation, so both consume the same
+`minifyReleaseWithR8` output: R8 runs once, and the one `mapping.txt` de-obfuscates crashes from
+either artifact. The bundle is the format Google Play requires for new apps; the APK stays for
+sideloading. Play re-signs the APKs it generates from the bundle, so once the app is enrolled in
+Play App Signing the release key of §10.2 acts as the *upload* key.
 
 Both set up Temurin **JDK 21** — the version `gradle/gradle-daemon-jvm.properties` pins the daemon
 to, independent of the Java 17 the app compiles against — plus the Android SDK and
@@ -892,8 +901,11 @@ ownership rather than enforcing it.
 Each workflow asserts the property it claims, against the bytes rather than against its own
 configuration. `[DEV] BUILD` fails if `app-release.apk` exists at all, since AGP only drops the
 `-unsigned` suffix when a signing config was applied — a signed APK appearing there would mean
-signing material had reached a pipeline that must never see it. `[PRD] BUILD` runs
-`apksigner verify --print-certs` on the APK it is about to upload (§10.2).
+signing material had reached a pipeline that must never see it. It also requires `jarsigner -verify`
+to report the App Bundle as `jar is unsigned.`, since the bundle's file name is the same either way.
+`[PRD] BUILD` runs
+`apksigner verify --print-certs` on the APK it is about to upload, and `jarsigner -verify` on the
+App Bundle (§10.2).
 
 Only the `release` job holds `contents: write`, and only to create the release; the jobs that
 compile and sign stay read-only. Run artifacts expire (90 days by default) and are addressed by run
@@ -936,7 +948,7 @@ is a failure, not a request for an unsigned build:
 
 | Build | Outcome |
 |---|---|
-| Anything in `[DEV] BUILD` | `app-release-unsigned.apk`; the workflow names no secret at all, so nothing is put in front of Gradle |
+| Anything in `[DEV] BUILD` | `app-release-unsigned.apk` and an unsigned `app-release.aab`; the workflow names no secret at all, so nothing is put in front of Gradle |
 | `[PRD] BUILD`, all four secrets | Keystore decoded to the runner's temp dir, `app-release.apk` signed |
 | `[PRD] BUILD`, any secret missing | Job fails before R8, naming the missing secrets — a release tag must not publish an unsigned APK |
 
@@ -948,6 +960,12 @@ the material fails to reach Gradle, so "the secrets are set" is not proof on its
 and unsigned outputs have different file names (`app-release.apk` vs. `app-release-unsigned.apk`),
 which is what lets each workflow assert its own outcome by file name (§10.1); the upload step globs
 both.
+
+The App Bundle needs a different check. It is not an APK, so `apksigner` does not apply: AGP signs
+it with a JAR (v1) signature, which `jarsigner -verify` checks. Its file name is `app-release.aab`
+whether it is signed or not, and `jarsigner` exits 0 on an unsigned jar too, so the step asserts on
+the `jar verified.` verdict line rather than on the name or the exit code, then prints the
+certificate with `keytool -printcert -jarfile`.
 
 Creating the keystore and the secrets, once:
 
