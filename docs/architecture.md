@@ -965,7 +965,15 @@ The App Bundle needs a different check. It is not an APK, so `apksigner` does no
 it with a JAR (v1) signature, which `jarsigner -verify` checks. Its file name is `app-release.aab`
 whether it is signed or not, and `jarsigner` exits 0 on an unsigned jar too, so the step asserts on
 the `jar verified.` verdict line rather than on the name or the exit code, then prints the
-certificate with `keytool -printcert -jarfile`.
+certificate with `keytool -printcert -jarfile`. The verdict is matched from a here-string, never
+through a pipe into `grep -q`: `grep` exits on the first match, the writer dies of SIGPIPE, and
+under `set -o pipefail` a verified bundle would fail the step — which is exactly how the first
+`v1.0.1` run failed.
+
+Recent JDKs follow that verdict with one `signed in JarFile but is not signed in JarInputStream`
+line per entry. It is expected for a bundle and is not a failure: bundletool does not write
+`META-INF/MANIFEST.MF` as the first zip entry, which is the only place a `JarInputStream` can read a
+manifest from, and Google Play reads the bundle as a zip, not as a stream.
 
 Creating the keystore and the secrets, once:
 
