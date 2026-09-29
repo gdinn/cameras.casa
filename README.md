@@ -48,7 +48,7 @@ Instead of typing WireGuard configuration by hand, the app is provisioned by sca
 {
   "vpnConfigDefaults": {
     "iDns": "fd00:10::1",
-    "iMtu": "1420",
+    "iMtu": "1280",
     "pPuk": "<server / peer public key>",
     "pAllowedips": "::/0, 0.0.0.0/0",
     "pEndpoint": "example.com:4567",
