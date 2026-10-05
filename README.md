@@ -80,12 +80,19 @@ with open('vpn.json', 'r', encoding='utf-8') as file:
 if not isinstance(vpn_data, list):
     raise ValueError("'vpn.json' must contain a JSON array.")
 
+addresses = []
 for number, item in enumerate(vpn_data):
-    file_name = f"qrcode-{number}.png"
-    create_qrcode(json.dumps(item, ensure_ascii=False), file_name)
+    i_addr = item.get("vpnConfigTokens", {}).get("iAddr") if isinstance(item, dict) else None
+    address = i_addr.split("/")[0].strip() if isinstance(i_addr, str) else ""
+    if not address:
+        raise ValueError(f"Entry {number} in 'vpn.json' has no vpnConfigTokens.iAddr.")
+    addresses.append(address)
+
+for item, address in zip(vpn_data, addresses):
+    create_qrcode(json.dumps(item, ensure_ascii=False), f"qrcode-{address}.png")
 ```
 
-`vpn.json` holds a JSON **array**, where each entry is one device's credentials document (the `vpnConfigDefaults` + `vpnConfigTokens` object shown above). The script re-serializes each entry to a compact JSON string and feeds it into the [`qrcode`](https://pypi.org/project/qrcode/) library to render `qrcode-<index>.png`. This makes it easy to provision several devices (e.g. a batch of testers) in one run. The QR is generated with error correction level `H` (recovers up to ~30% of the code even if partially damaged/obscured), which gives some headroom for the fairly large payload the credentials JSON produces.
+`vpn.json` holds a JSON **array**, where each entry is one device's credentials document (the `vpnConfigDefaults` + `vpnConfigTokens` object shown above). The script re-serializes each entry to a compact JSON string and feeds it into the [`qrcode`](https://pypi.org/project/qrcode/) library to render `qrcode-<iAddr>.png`, named after the device's tunnel address without the prefix length (e.g. `qrcode-fd00:10::c:5.png`). Every entry is checked first: if any of them lacks `iAddr`, the script stops with an error before writing a single image. This makes it easy to provision several devices (e.g. a batch of clients) in one run and to tell which image belongs to which device. The QR is generated with error correction level `H` (recovers up to ~30% of the code even if partially damaged/obscured), which gives some headroom for the fairly large payload the credentials JSON produces.
 
 ### Usage
 
@@ -103,9 +110,9 @@ pip install qrcode[pil]
 python main.py
 ```
 
-3. `qrcode-0.png`, `qrcode-1.png`, ... are generated in the same folder, one per array entry, in order. Open one and scan it with the app's **Config** screen (or display it on another screen/printout) to provision that device's VPN credentials.
+3. One `qrcode-<iAddr>.png` per array entry (e.g. `qrcode-fd00:10::c:5.png`) is generated in the same folder. Open one and scan it with the app's **Config** screen (or display it on another screen/printout) to provision that device's VPN credentials.
 
-Every entry needs its own unique `iPrk`/`iAddr`/`pPsk`; never reuse tokens across devices. The `.gitignore` in `qr-code-gen/` ignores `vpn*.json`, the generated `qrcode*.png` files and a local `testers` folder, so real credentials stay out of version control.
+Every entry needs its own unique `iPrk`/`iAddr`/`pPsk`; never reuse tokens across devices. The `.gitignore` in `qr-code-gen/` ignores `vpn*.json`, the generated `qrcode*.png` files and the local `peers` folder, so real credentials stay out of version control.
 
 ## Architecture
 

@@ -29,8 +29,17 @@ with open('vpn.json', 'r', encoding='utf-8') as file:
 if not isinstance(vpn_data, list):
     raise ValueError("'vpn.json' must contain a JSON array.")
 
+# Each QR code is named after the peer's tunnel address (e.g. qrcode-fd00:10::c:5.png).
+# Every entry is checked before any file is written, so a bad entry never leaves a partial batch.
+addresses = []
 for number, item in enumerate(vpn_data):
-    file_name = f"qrcode-{number}.png"
-    create_qrcode(json.dumps(item, ensure_ascii=False), file_name)
+    i_addr = item.get("vpnConfigTokens", {}).get("iAddr") if isinstance(item, dict) else None
+    address = i_addr.split("/")[0].strip() if isinstance(i_addr, str) else ""
+    if not address:
+        raise ValueError(f"Entry {number} in 'vpn.json' has no vpnConfigTokens.iAddr.")
+    addresses.append(address)
+
+for item, address in zip(vpn_data, addresses):
+    create_qrcode(json.dumps(item, ensure_ascii=False), f"qrcode-{address}.png")
 
 print(f"🎉 Done! {len(vpn_data)} QR Code(s) generated.")
