@@ -9,6 +9,8 @@ This repository holds the Android client. It's one piece of a larger self-hosted
 - A **WireGuard VPN over IPv6** provides direct, point-to-point remote access — no cloud relay in the middle of the video traffic.
 - This **Android app** reads the VPN credentials from a QR code, brings the tunnel up only while it's in the foreground, and renders the camera streams.
 
+> To build the network side yourself — MikroTik router, firewalled zones, IPv6 WireGuard VPN, Raspberry Pi firewall and peer/QR code generation — follow the step-by-step **[infrastructure guide](reports/infra_guide.md)** (also published at **[gdinn.github.io/cameras-casa-infra](https://gdinn.github.io/cameras-casa-infra/)**).
+
 > For a deep, file-level walkthrough of the codebase — layering rules, per-screen MVVM breakdowns, data-flow diagrams and known consistency gaps — see **[docs/architecture.md](docs/architecture.md)**.
 
 ## Features
@@ -177,6 +179,7 @@ The `jacocoTestReport` task narrows coverage to the unit-testable surface — it
 ## Documentation
 
 - **[docs/architecture.md](docs/architecture.md)** — full technical reference: route inventory, per-feature MVVM breakdowns, core packages, data flow, external resources and known consistency gaps.
+- **[reports/infra_guide.md](reports/infra_guide.md)** — step-by-step guide to build the infrastructure from a blank MikroTik RB750Gr3: HOME/DMZ/CAM zones, IPv4 and IPv6 firewalls, the IPv6-only WireGuard VPN, DDNS, ufw on the Raspberry Pi and VPN peer generation. Each step ends with a test. Published at [gdinn.github.io/cameras-casa-infra](https://gdinn.github.io/cameras-casa-infra/).
 - **`docs/diagrams/`** — Mermaid sources for every diagram, kept in version control so the PNGs in `docs/images/` are reproducible. Regeneration instructions are in [§12 of the architecture doc](docs/architecture.md#12-regenerating-the-diagrams).
 
 ## Requirements
