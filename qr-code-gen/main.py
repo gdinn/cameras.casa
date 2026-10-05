@@ -1,31 +1,45 @@
 import qrcode
 import json
 
-def criar_qrcode(texto_entrada, nome_arquivo):
-    # Configurações do layout do QR Code
+
+def create_qrcode(input_text, file_name):
+    # QR Code layout settings
     qr = qrcode.QRCode(
-        version=1,  # Controla o tamanho do QR Code (de 1 a 40. 1 é uma matriz 21x21)
-        error_correction=qrcode.constants.ERROR_CORRECT_H, # Nível de correção de erro (H permite até 30% de recuperação)
-        box_size=10, # Tamanho de cada "quadradinho" em pixels
-        border=4,    # Espessura da borda branca (4 é o mínimo padrão)
+        version=1,  # Controls the QR Code size (1 to 40; 1 is a 21x21 matrix)
+        error_correction=qrcode.constants.ERROR_CORRECT_H,  # Error correction level (H allows up to 30% recovery)
+        box_size=10,  # Size of each "box" in pixels
+        border=4,     # Thickness of the white border (4 is the standard minimum)
     )
 
-    # Adiciona a string de entrada ao objeto
-    qr.add_data(texto_entrada)
-    qr.make(fit=True) # Ajusta o tamanho automaticamente caso o texto seja muito grande
+    # Add the input string to the object
+    qr.add_data(input_text)
+    qr.make(fit=True)  # Automatically adjusts the size if the text is too large
 
-    # Gera a imagem propriamente dita
-    imagem = qr.make_image(fill_color="black", back_color="white")
+    # Generate the actual image
+    image = qr.make_image(fill_color="black", back_color="white")
 
-    # Salva a imagem no formato especificado
-    imagem.save(nome_arquivo)
-    print(f"✅ QR Code gerado e salvo com sucesso como '{nome_arquivo}'!")
-
-
-with open('vpn.json', 'r', encoding='utf-8') as arquivo:
-    vpn_data = json.load(arquivo)
+    # Save the image in the specified format
+    image.save(file_name)
+    print(f"✅ QR Code generated and successfully saved as '{file_name}'!")
 
 
-meu_arquivo = "qrcode.png"
+with open('vpn.json', 'r', encoding='utf-8') as file:
+    vpn_data = json.load(file)
 
-criar_qrcode(json.dumps(vpn_data, ensure_ascii=False), meu_arquivo)
+if not isinstance(vpn_data, list):
+    raise ValueError("'vpn.json' must contain a JSON array.")
+
+# Each QR code is named after the peer's tunnel address (e.g. qrcode-fd00:10::c:5.png).
+# Every entry is checked before any file is written, so a bad entry never leaves a partial batch.
+addresses = []
+for number, item in enumerate(vpn_data):
+    i_addr = item.get("vpnConfigTokens", {}).get("iAddr") if isinstance(item, dict) else None
+    address = i_addr.split("/")[0].strip() if isinstance(i_addr, str) else ""
+    if not address:
+        raise ValueError(f"Entry {number} in 'vpn.json' has no vpnConfigTokens.iAddr.")
+    addresses.append(address)
+
+for item, address in zip(vpn_data, addresses):
+    create_qrcode(json.dumps(item, ensure_ascii=False), f"qrcode-{address}.png")
+
+print(f"🎉 Done! {len(vpn_data)} QR Code(s) generated.")
