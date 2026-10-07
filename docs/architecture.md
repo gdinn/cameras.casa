@@ -568,7 +568,14 @@ device into a build failure.
 
 ### 6.7 `ui/theme`
 
-`CamerasTheme` with Material 3 dynamic color on API 31+, defaulting to `darkTheme = true`.
+`CamerasTheme` with Material 3 dynamic color on API 31+. Light and dark themes are both supported:
+`darkTheme` defaults to `isSystemInDarkTheme()`, so the app follows the system setting. The window
+theme (`res/values/themes.xml` and `res/values-night/themes.xml`) mirrors it so the launch window
+matches before Compose draws.
+
+UI code takes colors from `MaterialTheme.colorScheme` only. The exceptions are deliberate and stay
+fixed across themes: the black letterbox behind video and the dark scrim/white overlays drawn on top
+of video frames (drag handle, drag preview).
 
 ---
 

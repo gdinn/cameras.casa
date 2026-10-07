@@ -23,7 +23,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
@@ -54,7 +53,8 @@ fun ConfigButton(
   ) {
     Icon(
       imageVector = imageVector,
-      contentDescription = ""
+      contentDescription = "",
+      tint = MaterialTheme.colorScheme.onPrimary,
     )
     Spacer(Modifier.width(8.dp))
     Column(
@@ -62,17 +62,19 @@ fun ConfigButton(
     ) {
       Text(
         text = title,
+        color = MaterialTheme.colorScheme.onPrimary,
         fontWeight = FontWeight.Bold
       )
       Text(
-        text = subTitle
+        text = subTitle,
+        color = MaterialTheme.colorScheme.onPrimary,
       )
     }
     Row(
       modifier = modifier
           .size(30.dp)
           .clip(RoundedCornerShape(30.dp, 30.dp, 30.dp, 30.dp))
-          .background(MaterialTheme.colorScheme.inversePrimary),
+          .background(MaterialTheme.colorScheme.onPrimary),
       horizontalArrangement = Arrangement.Center,
       verticalAlignment = Alignment.CenterVertically
     ) {
@@ -80,14 +82,15 @@ fun ConfigButton(
         is ConfigButtonState.Done -> {
           Icon(
             imageVector = Icons.Default.Check,
-            contentDescription = ""
+            contentDescription = "",
+            tint = MaterialTheme.colorScheme.primary
           )
         }
 
         is ConfigButtonState.Loading -> {
           CircularProgressIndicator(
             modifier = Modifier.padding(4.dp),
-            color = Color.White
+            color = MaterialTheme.colorScheme.primary
           )
         }
 
@@ -95,7 +98,8 @@ fun ConfigButton(
         is ConfigButtonState.Error -> {
           Icon(
             imageVector = Icons.Default.Error,
-            contentDescription = ""
+            contentDescription = "",
+            tint = MaterialTheme.colorScheme.error
           )
         }
       }

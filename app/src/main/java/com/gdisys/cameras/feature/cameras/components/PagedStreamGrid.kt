@@ -22,6 +22,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -253,7 +254,7 @@ private fun PagerControls(currentPage: Int, pageCount: Int, onGoToPage: (Int) ->
     }
     Text(
       text = stringResource(R.string.home_screen_page_indicator, currentPage + 1, pageCount),
-      color = Color.White
+      color = MaterialTheme.colorScheme.onSurfaceVariant
     )
     IconButton(onClick = { onGoToPage(currentPage + 1) }, enabled = hasNext) {
       Icon(
@@ -265,5 +266,8 @@ private fun PagerControls(currentPage: Int, pageCount: Int, onGoToPage: (Int) ->
   }
 }
 
-private fun pagerControlTint(enabled: Boolean): Color =
-  if (enabled) Color.White else Color.White.copy(alpha = 0.3f)
+@Composable
+private fun pagerControlTint(enabled: Boolean): Color {
+  val color = MaterialTheme.colorScheme.onSurfaceVariant
+  return if (enabled) color else color.copy(alpha = 0.38f)
+}
