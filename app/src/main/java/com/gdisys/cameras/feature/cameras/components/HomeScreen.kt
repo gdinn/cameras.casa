@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -85,11 +86,17 @@ fun HomeScreen(
     LocalWebRtcConnection provides webRtcConnection,
     LocalStreamResolutions provides streamResolutions
   ) {
-    Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+    // The display cutout still pads the content once the bars are hidden, so in focus mode the
+    // container itself must be black or that strip shows the theme background.
+    Scaffold(
+      modifier = Modifier.fillMaxSize(),
+      containerColor = if (focusedStream != null) Color.Black else MaterialTheme.colorScheme.background
+    ) { innerPadding ->
       Box(
         modifier = Modifier
           .padding(innerPadding)
           .fillMaxSize()
+          // Letterbox behind video stays black regardless of the theme.
           .background(Color.Black),
         contentAlignment = Alignment.Center
       ) {
@@ -151,7 +158,7 @@ private fun DynamicStreamGrid(
       onStreamsReordered = onStreamsReordered,
       modifier = Modifier
         .fillMaxSize()
-        .background(Color.DarkGray)
+        .background(MaterialTheme.colorScheme.surfaceVariant)
         .nestedScroll(overscrollReconfigure.nestedScrollConnection)
     ) { url, dragHandleModifier ->
       CameraGridItem(
@@ -196,7 +203,7 @@ private fun FixedStreamGrid(
   BoxWithConstraints(
     modifier = Modifier
       .fillMaxSize()
-      .background(Color.DarkGray)
+      .background(MaterialTheme.colorScheme.surfaceVariant)
   ) {
     PagedStreamGrid(
       streams = streams,
