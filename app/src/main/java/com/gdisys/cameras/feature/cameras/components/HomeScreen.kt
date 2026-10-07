@@ -86,7 +86,12 @@ fun HomeScreen(
     LocalWebRtcConnection provides webRtcConnection,
     LocalStreamResolutions provides streamResolutions
   ) {
-    Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+    // The display cutout still pads the content once the bars are hidden, so in focus mode the
+    // container itself must be black or that strip shows the theme background.
+    Scaffold(
+      modifier = Modifier.fillMaxSize(),
+      containerColor = if (focusedStream != null) Color.Black else MaterialTheme.colorScheme.background
+    ) { innerPadding ->
       Box(
         modifier = Modifier
           .padding(innerPadding)

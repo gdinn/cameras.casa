@@ -429,6 +429,11 @@ waiting for a tunnel with nothing to connect to would show a permanent spinner.
 - **`movableContentOf` per stream URL.** `HomeScreen` memoizes one movable composable per URL, so
   the same `WebRtcVideoPlayer` instance (renderer + WHEP session) moves between the grid and the
   focused view without being disposed. Toggling focus therefore does not restart the video.
+- **Focus mode is immersive.** `rememberSystemBarsController` hides status and navigation bars
+  while a stream is focused and forces light bar icons (a swipe shows the bars transiently over the
+  video); it restores both, matching the theme, when focus is cleared or the screen leaves. The
+  `Scaffold` container turns black in focus mode because the display-cutout inset keeps padding the
+  content even with the bars hidden.
 - **Aspect ratio is discovered, not assumed.** `StreamResolutionRegistry` is a `mutableStateMap`
   fed by `RendererCommon.RendererEvents.onFrameResolutionChanged` (handling 90°/270° rotation). It
   returns 16:9 until the first frame arrives, and the grid re-measures itself once the real value
