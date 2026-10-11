@@ -95,6 +95,14 @@ The VPN is **IPv6 only** on purpose. The ISP router does NAT on IPv4, so the Mik
    ```
 
 4. **Placeholders** look like `<THIS>`. Never commit real keys, MACs or tokens.
+5. **Comments in shell commands.** Many commands in this guide end with a `# comment`. zsh, the default shell on macOS, does not treat `#` as a comment when typing or pasting at the prompt, so the comment becomes extra arguments: `ifconfig en0 | grep 'inet6 fd00:30'  # SLAAC address` fails or gives a misleading result. Enable comments on the HOME computer, or drop the comment before pressing Enter. The first line enables them in the current session, the second in every new one (this block has no comments on purpose):
+
+   ```bash
+   setopt INTERACTIVE_COMMENTS
+   echo 'setopt INTERACTIVE_COMMENTS' >> ~/.zshrc
+   ```
+
+   bash (Linux, and the Pi) already accepts comments at the prompt.
 
 ---
 
