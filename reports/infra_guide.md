@@ -18,8 +18,8 @@ A step-by-step guide to build, on a blank **RB750Gr3 (hEX)**, the exact router c
 - [Part 5 — IPv6 firewall](#part-5--ipv6-firewall) (steps 16–19)
 - [Part 6 — IPv6 on the WAN](#part-6--ipv6-on-the-wan) (step 20)
 - [Part 7 — DNS name and DDNS](#part-7--dns-name-and-ddns) (steps 21–22)
-- [Part 8 — Raspberry Pi firewall (ufw)](#part-8--raspberry-pi-firewall-ufw) (steps 23–26)
-- [Part 9 — Generating VPN access](#part-9--generating-vpn-access) (steps 27–33)
+- [Part 8 — Generating VPN access](#part-8--generating-vpn-access) (steps 23–29)
+- [Part 9 — Raspberry Pi firewall (ufw)](#part-9--raspberry-pi-firewall-ufw) (steps 30–33)
 
 ---
 
@@ -80,7 +80,7 @@ The VPN is **IPv6 only** on purpose. The ISP router does NAT on IPv4, so the Mik
 - The **Pi**: the Raspberry Pi that lives in the DMZ (`ether4`). Commands marked "On the Pi" run on it.
 - The Raspberry Pi, already running MediaMTX, with its network managed by NetworkManager.
 - A Cloudflare zone for the DDNS hostname and an API token limited to `Zone → DNS → Edit` on that zone.
-- `wireguard-tools`, `jq` and Python 3 on the HOME computer, for Part 9.
+- `wireguard-tools`, `jq` and Python 3 on the HOME computer, for Part 8.
 - The ISP router must let inbound IPv6 UDP reach the MikroTik on port 14079. Check this in its firewall settings before you start.
 
 ### 0.5 Working rules
@@ -235,6 +235,17 @@ Now pin the bridge MAC. By default, a bridge copies the MAC of one of its ports,
 
 **Test** (on the HOME computer)
 
+The commands below and later in this guide use `en0` (macOS) and `eth0` (Linux) as example interface names. They are not always the cable: on many Macs `en0` is Wi-Fi, and the wired port (or a USB/Thunderbolt adapter) is `en1`, `en5` or similar. Find the name of the interface that is plugged into the router and use it wherever the guide shows `en0` or `eth0`:
+
+```bash
+# macOS: the "Device" under the Ethernet / USB LAN / Thunderbolt port
+networksetup -listallhardwareports
+# Linux: wired names start with "en" or "eth", wireless with "wl"
+ip -br link
+```
+
+Turn Wi-Fi off while building the network. Otherwise the computer may send internet traffic through Wi-Fi, and tests like the `curl` below pass without going through the router.
+
 ```bash
 # macOS (use your interface name: en0, en1, ...)
 ipconfig getifaddr en0             # 192.168.89.x
@@ -354,11 +365,21 @@ The cameras will never have internet access, and the Pi uses the router as its c
 /system ntp server set enabled=yes
 ```
 
-**Test** (on the Pi)
+**Test**
+
+First confirm the router itself is synchronized:
+
+```routeros
+/system ntp client print ; # status=synchronized
+```
+
+Then, on the Pi:
 
 ```bash
 ntpdate -q 192.168.91.1     # or: chronyc sources, after pointing chrony to it
 ```
+
+If the Pi answers `Response dropped: leap not in sync` / `no eligible servers`, the router replied but marked its own clock as unsynchronized (leap indicator 3). This happens for a few minutes after a reset or reboot, until the NTP client from Step 2 reaches `synchronized`. Wait and repeat the test. Cameras and the Pi retry on their own, so this window needs no fix after a reboot.
 
 Save checkpoint `part2`.
 
@@ -412,6 +433,13 @@ The DHCP server reads its packets before the firewall, so DHCP keeps working eve
 
 **Test**
 
+The `dig` command is not installed by default on Raspberry Pi OS. Install it on the Pi first:
+
+```bash
+# On the Pi
+sudo apt-get update && sudo apt-get install -y bind9-dnsutils
+```
+
 | Where | Command | Expected |
 |---|---|---|
 | HOME computer | Winbox / `ssh admin@192.168.89.1` | ✅ |
@@ -422,6 +450,18 @@ The DHCP server reads its packets before the firewall, so DHCP keeps working eve
 | Pi | `ssh admin@192.168.89.1` | ❌ timeout (still traffic *to the router*, so it is in `input`) |
 
 ### Step 11 — IPv4 forward (traffic through the router)
+
+> **Keep an SSH session to the Pi open before applying this step.** These rules close HOME → DMZ, so no new SSH connection from the HOME computer reaches the Pi. From here on, the Pi is managed only through the VPN, which only works after Part 4 and Part 5. Several "On the Pi" commands come before that (this step's tests, Step 12, Step 15). Open a session with `ssh <user>@192.168.91.2` from the HOME computer now and leave it open. The established/related rule keeps it working.
+>
+> If that session drops, temporarily disable the final drop rule from the HOME computer (Winbox or `ssh admin@192.168.89.1`), open a new session to the Pi, and enable the rule again right away:
+>
+> ```routeros
+> /ip firewall filter disable [find comment="FORWARD: Drop everything else"]
+> # open a new SSH session to the Pi, then:
+> /ip firewall filter enable [find comment="FORWARD: Drop everything else"]
+> ```
+>
+> While the rule is disabled, every zone can reach every other zone, including CAM → DMZ and DMZ → HOME. Keep that window as short as possible.
 
 ```routeros
 /ip firewall filter
@@ -476,6 +516,14 @@ add action=drop chain=forward \
 
 **Test the CAM zone with a laptop** (before connecting the real cameras). Plug a laptop into `ether5`:
 
+> **This test needs a second computer.** The laptop on `ether5` must be a different machine from the HOME computer, because several rows below need the CAM laptop and another device working at the same time:
+>
+> - **Router rows:** the router only accepts management from HOME. From CAM, Winbox and SSH are dropped by the `input` rules of Step 10, so the router must be reached from the HOME computer while the laptop is on CAM (for example, to add the laptop to `cam-internet-temp` and ping again).
+> - **Pi rows:** they need a shell on the Pi while the laptop is serving on CAM. HOME → DMZ is closed by this step, so that shell is the SSH session opened before applying it, and it runs from the HOME computer. If the HOME computer moves to `ether5`, the session drops.
+> - **HOME computer row:** it tests HOME → CAM, so it needs one machine on HOME and another one on CAM.
+>
+> **On the laptop**, use the interface plugged into `ether5` in place of `en0` / `eth0` (see [Step 5](#step-5--home-bridge-dhcp-and-nat44)) and turn its Wi-Fi off. Otherwise the `ping 8.8.8.8` below goes out through Wi-Fi and answers, and the CAM block looks broken when it is not.
+
 | Where | Command | Expected |
 |---|---|---|
 | Laptop on CAM | macOS: `ipconfig getifaddr en0`; Linux: `ip -4 addr show eth0` | `192.168.90.1xx` |
@@ -520,6 +568,35 @@ The cameras keep their dynamic address until they renew the lease. Power-cycle t
 ffprobe -rtsp_transport tcp "rtsp://<user>:<pass>@192.168.90.10:554/<stream-path>"
 ```
 
+**Optional: watch a camera's RTSP from HOME**
+
+This is only for those who want to see the cameras' RTSP streams from the HOME computer before connecting MediaMTX (for example, to check the stream path or adjust the framing). The setup does not need it, and it can be skipped.
+
+The firewall only lets the Pi reach the cameras on TCP 554. A HOME computer falls to `FORWARD: Drop everything else`. Add a temporary rule, limited to `cam-admin-temp` like the web UI rule, and put the HOME computer on that list:
+
+```routeros
+/ip firewall filter add action=accept chain=forward dst-port=554 \
+    in-interface-list=LAN out-interface-list=CAM protocol=tcp \
+    src-address-list=cam-admin-temp comment="TEMP: HOME -> cameras RTSP" \
+    place-before=[find comment="FORWARD: Drop everything else"]
+/ip firewall address-list add list=cam-admin-temp address=<home-ip> timeout=10m
+```
+
+Then play the stream on the HOME computer with ffmpeg's `ffplay`, forcing RTSP over TCP:
+
+```bash
+# On the HOME computer
+ffplay -rtsp_transport tcp "rtsp://<user>:<pass>@192.168.90.10:554/<stream-path>"
+```
+
+In VLC, enable *Preferences → Input/Codecs → RTSP over TCP* first. VLC usually asks for the media over UDP, which the rule does not allow: the connection opens, but no image appears.
+
+When done, remove the rule. The `cam-admin-temp` entry expires on its own, but the rule should not stay in the firewall:
+
+```routeros
+/ip firewall filter remove [find comment="TEMP: HOME -> cameras RTSP"]
+```
+
 Set each camera's NTP server to `192.168.90.1` and turn off its cloud/P2P features. Save checkpoint `part3`.
 
 ---
@@ -544,7 +621,7 @@ add address=fd00:30::1/64 interface=bridge \
 ```
 
 - The tunnel MTU is **1280**, the IPv6 minimum. The common default of 1420 assumes a 1500-byte path, which some ISPs and mobile carriers do not provide; when the path is smaller, the tunnel connects but traffic stalls. Every IPv6 path must carry 1280-byte packets, so this value works everywhere.
-- The router generates its WireGuard key pair when the interface is created. The public key goes into every QR code (Part 9).
+- The router generates its WireGuard key pair when the interface is created. The public key goes into every QR code (Part 8).
 - `fd00:30::/64` is advertised (`advertise=yes` is the default), so HOME devices build an address by SLAAC. `fd00:20::/64` is not advertised, because the Pi uses a fixed address.
 
 **Test**
@@ -571,6 +648,8 @@ The comment of an `/ipv6 nd` entry is not shown by `print` or `export`. Read it 
 
 **Test** (on the HOME computer)
 
+Replace `en0` / `eth0` with the interface that is plugged into the router (`en1`, `en10`, `enp3s0`, ...; see [Step 5](#step-5--home-bridge-dhcp-and-nat44)). Keep the computer connected **only** to HOME: no Wi-Fi on another network at the same time. Every network that sends router advertisements adds its own default route and DNS servers, so the results below would mix both networks, and a test could pass through the other one.
+
 ```bash
 # macOS
 ifconfig en0 | grep 'inet6 fd00:30'        # SLAAC address
@@ -584,6 +663,22 @@ ip -6 route show default                   # default via fe80::... dev eth0
 resolvectl dns eth0                        # includes fd00:30::1 (systemd-resolved)
 ping -6 -c2 fd00:30::1
 ```
+
+If the address, route and ping pass but `fd00:30::1` is missing from the DNS list, look for DNS servers left over from an earlier manual setup. Manual DNS servers replace the ones from the RA, so the router's announcement is ignored. Clear them and reconnect the cable:
+
+```bash
+# macOS: find the service of the interface, then clear its manual DNS
+networksetup -listallnetworkservices
+networksetup -getdnsservers "<service>"      # must say "There aren't any DNS Servers set"
+sudo networksetup -setdnsservers "<service>" empty
+
+# Linux (NetworkManager)
+nmcli -g ipv6.dns,ipv6.ignore-auto-dns con show "<connection>"   # must be empty and "no"
+sudo nmcli con mod "<connection>" ipv6.dns "" ipv6.ignore-auto-dns no
+sudo nmcli con up "<connection>"
+```
+
+If no manual DNS is set and `fd00:30::1` still does not show up, check on the router that the RA carries it: `/ipv6 nd print detail` must show `dns=fd00:30::1` and `advertise-dns=yes` on the `bridge` entry.
 
 ### Step 15 — Fixed IPv6 address on the Pi
 
@@ -633,7 +728,7 @@ add action=drop chain=prerouting in-interface=!bridge \
 
 **Why**
 
-- **`vpn-admin`** is an *allow list*: addresses in `fd00:10::a:0/112` (`fd00:10::a:1`, `::a:2`, …) get admin rights, and every other VPN address gets only what the app needs. The `/112` ends exactly at a group boundary, so each profile is one list entry and the profile can be read from the address itself: `a` for admin, `c` for client. See Part 9.
+- **`vpn-admin`** is an *allow list*: addresses in `fd00:10::a:0/112` (`fd00:10::a:1`, `::a:2`, …) get admin rights, and every other VPN address gets only what the app needs. The `/112` ends exactly at a group boundary, so each profile is one list entry and the profile can be read from the address itself: `a` for admin, `c` for client. See Part 8.
 - **`vpn-clients`** is not referenced by any rule. It only documents the client block (`fd00:10::c:0/112`); the allow-list model already gives the minimum to anyone outside `vpn-admin`.
 - **Raw anti-spoofing.** Every IPv6 rule that follows trusts the *source address* (`vpn-admin`, `cameras.casa`). Inside the tunnel, the source is trustworthy: WireGuard only accepts from a peer packets whose source is in that peer's `allowed-address`. Outside the tunnel nothing guarantees it. Without these rules, a host on the ISP router's network could send a packet with an admin source address toward the router. The `raw` table drops such packets before connection tracking. Only the project's three prefixes are dropped, not all of `fd00::/8`, because many ISP routers use a ULA of their own on the WAN side.
 
@@ -706,9 +801,9 @@ add action=drop chain=input \
 | Pi | `dig @fd00:20::1 example.com +short` | ✅ |
 | Pi | `ping6 -c2 fd00:20::1` | ✅ (ICMPv6 comes before the Rpi drop) |
 | Pi | `ssh -6 admin@fd00:20::1` | ❌ timeout |
-| Laptop on CAM (as in Step 11) | macOS: `ping6 -c2 ff02::1%en0`; Linux: `ping -6 -c2 ff02::1%eth0`. The router's link-local must not answer | ❌ no reply from the router |
+| Laptop on CAM (as in Step 11: cabled interface, Wi-Fi off) | macOS: `ping6 -c2 ff02::1%en0`; Linux: `ping -6 -c2 ff02::1%eth0`. The router's link-local must not answer. With the Wi-Fi interface, the ping goes to another link and the test passes without testing anything | ❌ no reply from the router |
 
-The VPN rules (SSH and DNS from the tunnel) are tested in Step 33.
+The VPN rules (SSH and DNS from the tunnel) are tested in Step 29.
 
 ### Step 18 — IPv6 forward
 
@@ -764,7 +859,7 @@ add action=drop chain=forward \
 | Rule | Reason |
 |---|---|
 | No IPv6 from/to CAM | Same idea as in `input`: the cameras are IPv4 only. These drops come before established/related, so not even a reply can cross. |
-| Nothing initiates toward VPN peers | No zone may open a connection to a VPN peer, and a peer may not open one to another peer. This protects clients' phones from each other and from the Pi. Replies to connections the peer opened are already accepted by the rule above it. Testing peer-to-peer needs two connected peers (Step 33). |
+| Nothing initiates toward VPN peers | No zone may open a connection to a VPN peer, and a peer may not open one to another peer. This protects clients' phones from each other and from the Pi. Replies to connections the peer opened are already accepted by the rule above it. Testing peer-to-peer needs two connected peers (Step 29). |
 | Invalid | Same as `input`. |
 | ICMPv6 errors (types 1–4) | Errors that belong to a tracked connection already pass as `related`, and errors that do not are `invalid`. These four rules rarely match, and they are kept as an explicit statement that IPv6 error messages must never be blocked. Check their counters (`print stats`) over time; if they stay at zero, they can be removed. |
 | VPN ping → Pi | Diagnostics: any peer can check that the Pi is reachable. |
@@ -802,9 +897,9 @@ add action=masquerade chain=srcnat in-interface=wireguard-ipv6 out-interface=eth
 **Why**
 
 - **MSS clamp.** When a TCP connection starts, it announces its maximum segment size based on the local MTU. Across the 1280-byte tunnel, a 1500-based MSS would produce packets that are too large. If ICMPv6 "packet too big" is lost on the way, the connection hangs after the handshake. Rewriting the MSS in SYN packets avoids depending on PMTUD. The router computes 1220 for the tunnel.
-- **NAT66.** The ISP gives the router a single `/128` and no prefix, so internal ULAs have nowhere to be routed. Masquerade gives HOME and the VPN admins IPv6 internet through the router's own address. There is no NAT between the VPN and the Pi: the Pi sees each peer's real address, so its own firewall (ufw, Part 8) can apply the same admin/client split.
+- **NAT66.** The ISP gives the router a single `/128` and no prefix, so internal ULAs have nowhere to be routed. Masquerade gives HOME and the VPN admins IPv6 internet through the router's own address. There is no NAT between the VPN and the Pi: the Pi sees each peer's real address, so its own firewall (ufw, Part 9) can apply the same admin/client split.
 
-These rules can only be tested once the WAN has IPv6 (Step 20) and peers exist (Step 33).
+These rules can only be tested once the WAN has IPv6 (Step 20) and peers exist (Step 29).
 
 Save checkpoint `part5`.
 
@@ -858,7 +953,7 @@ A HOME device that has only a ULA prefers IPv4 for dual-stack destinations (RFC 
 | `ping6 -c2 <ether1 IPv6>` (Linux: `ping -6`) | ✅ (ICMPv6 is accepted) |
 | `nc -6 -vz -w3 <ether1 IPv6> 22` | ❌ timeout |
 
-If the ping fails, check the ISP router's IPv6 firewall: it must let inbound traffic reach the MikroTik, at least UDP 14079. The final proof is the VPN handshake in Step 33.
+If the ping fails, check the ISP router's IPv6 firewall: it must let inbound traffic reach the MikroTik, at least UDP 14079. The final proof is the VPN handshake in Step 29.
 
 Save checkpoint `part6`.
 
@@ -1021,148 +1116,11 @@ Save checkpoint `part7`. The router is now complete, except for VPN peers.
 
 ---
 
-## Part 8 — Raspberry Pi firewall (ufw)
-
-The router already decides who reaches the Pi. The Pi's own firewall repeats the same policy as a **second layer**: if a router rule is ever wrong, or someone plugs another device into the DMZ, the Pi still only accepts what the app and the admins need. Since there is no NAT between the VPN and the DMZ (Step 19), the Pi sees each peer's real address and can tell admins from clients by itself.
-
-This part assumes a Pi with no firewall configured yet.
-
-### Step 23 — Install ufw and set the defaults
-
-```bash
-# On the Pi
-sudo apt update && sudo apt install -y ufw
-grep '^IPV6=' /etc/default/ufw     # must be IPV6=yes (the default)
-
-# Nothing comes in, the Pi may reach out, and it is not a router
-sudo ufw default deny incoming
-sudo ufw default allow outgoing
-sudo ufw default deny routed
-sudo ufw logging low
-```
-
-| Setting | Reason |
-|---|---|
-| `IPV6=yes` | Every rule in this part is IPv6. With `no`, ufw ignores them and IPv6 stays open |
-| `deny incoming` | Anything not listed in Step 24 is dropped (silently, so a scan sees a timeout and not a refusal). This also covers the MediaMTX ports that must stay local: RTSP server (8554), API (9997), metrics (9998) |
-| `allow outgoing` | The Pi starts its own connections: RTSP to the cameras, package updates over IPv4, DNS and NTP to the router. What it may reach is already limited by the router (Steps 11 and 18) |
-| `deny routed` | The Pi does not forward traffic between interfaces. If IP forwarding were ever enabled by mistake, it still could not act as a bridge between the DMZ and anything else |
-| `logging low` | Blocked packets are logged with rate limiting (`journalctl -k \| grep 'UFW BLOCK'`) |
-
-ufw is installed **inactive**, so nothing is enforced yet.
-
-**Test** (on the Pi)
-
-```bash
-sudo ufw status verbose
-# Status: inactive (the defaults show once it is enabled in Step 25)
-```
-
-### Step 24 — Add the rules
-
-```bash
-# On the Pi
-# Every VPN peer (the app): WHEP signaling and WebRTC media
-sudo ufw allow from fd00:10::/64 to any port 8889 proto tcp comment 'VPN peers: WHEP signaling'
-sudo ufw allow from fd00:10::/64 to any port 8189 proto udp comment 'VPN peers: WebRTC ICE'
-
-# VPN admins only (same block as the router's vpn-admin list)
-sudo ufw allow from fd00:10::a:0/112 to any port 22 proto tcp comment 'VPN admins: SSH'
-sudo ufw allow from fd00:10::a:0/112 to any port 80 proto tcp comment 'VPN admins: web'
-sudo ufw allow from fd00:10::a:0/112 to any port 445 proto tcp comment 'VPN admins: Samba'
-sudo ufw allow from fd00:10::a:0/112 to any port 8888 proto tcp comment 'VPN admins: HLS'
-```
-
-**Why each rule exists**
-
-| Rule | Reason |
-|---|---|
-| 8889/TCP and 8189/UDP from `fd00:10::/64` | What the app needs, for every peer. The whole `/64` matches the router, which also allows these ports to every peer |
-| 22, 80, 445, 8888/TCP from `fd00:10::a:0/112` | SSH, web, Samba (recordings) and HLS for admins only. The block is the router's `vpn-admin` list. The router also allows 443 for admins; open it here only if some service on the Pi uses HTTPS |
-| No IPv4 rules | Nothing needs to open a connection *to* the Pi over IPv4: the VPN is IPv6 only, and RTSP is started by the Pi |
-
-ufw's built-in rules (`/etc/ufw/before.rules` and `before6.rules`) already accept established connections, DHCP replies, the ICMPv6 that IPv6 needs (neighbor discovery, "packet too big") and ping. That is why `ping6 fd00:20::cafe` keeps working for every peer, matching the router's `VPN ping -> Rpi` rule.
-
-**Test** (on the Pi)
-
-```bash
-sudo ufw show added
-# Exactly the 6 rules above, all with a fd00:10:: source
-```
-
-### Step 25 — Enable with a safety net
-
-The admin manages the Pi over SSH **through the VPN** (HOME has no access to the Pi). If a rule is wrong, enabling ufw cuts that session. Schedule an automatic `ufw disable` first, the same idea as Safe Mode on the router:
-
-```bash
-# On the Pi
-sudo systemd-run --unit=ufw-rollback --on-active=10m /usr/sbin/ufw disable
-sudo ufw --force enable
-```
-
-Open a **new** SSH session to the Pi through the VPN as an admin, without closing the current one. If it works, cancel the rollback:
-
-```bash
-# On the Pi
-sudo systemctl stop ufw-rollback.timer
-systemctl list-timers ufw-rollback.timer    # 0 timers listed
-```
-
-If the new session fails, wait for the rollback (10 minutes), reconnect and fix the rules before enabling again.
-
-**Test** (on the Pi)
-
-```bash
-sudo ufw status verbose
-# Status: active
-# Default: deny (incoming), allow (outgoing), deny (routed)
-# 6 rules, all with a fd00:10:: source
-systemctl is-enabled ufw                     # enabled: survives a reboot
-```
-
-### Step 26 — Test ufw on its own, from the router
-
-The router's firewall blocks the same things as ufw, so a test through the VPN cannot show which of the two did the blocking. The router can test ufw alone: traffic **it** generates does not pass through its own `forward` rules, and it can pick a source address. `fd00:20::1` (the router on the DMZ) is outside both VPN blocks, and `fd00:10::1` (the router on the tunnel) is in `fd00:10::/64` but outside the admin block. A dropped request hangs; stop it with `Ctrl+C` after about 10 seconds.
-
-```routeros
-# Source fd00:20::1: not a VPN peer, so ufw drops everything (hangs until timeout)
-/tool fetch url="http://[fd00:20::cafe]:8889/" src-address=fd00:20::1 output=none
-# Source fd00:10::1: counts as a VPN peer. 8889 answers (any HTTP status, e.g. 404)
-/tool fetch url="http://[fd00:20::cafe]:8889/" src-address=fd00:10::1 output=none
-# Same source, admin port: not in fd00:10::a:0/112, so dropped (timeout)
-/tool fetch url="http://[fd00:20::cafe]:8888/" src-address=fd00:10::1 output=none
-# IPv4: no IPv4 rule, so dropped (timeout)
-/tool fetch url="http://192.168.91.2:8889/" output=none
-# Ping is always allowed
-/ping fd00:20::cafe count=2
-```
-
-| Source | Port | Expected |
-|---|---|---|
-| `fd00:20::1` | 8889 | ❌ timeout |
-| `fd00:10::1` | 8889 | ✅ HTTP answer (any status) |
-| `fd00:10::1` | 8888 | ❌ timeout |
-| `192.168.91.1` (IPv4) | 8889 | ❌ timeout |
-| any | ping | ✅ |
-
-On the Pi, the blocked attempts appear in the log:
-
-```bash
-# On the Pi
-sudo journalctl -k --since "-5 min" | grep 'UFW BLOCK'
-```
-
-The admin side (`fd00:10::a:N` on 22, 80, 445 and 8888) is tested with a real admin peer in Step 33.
-
-**Keeping ufw in sync with the router.** The two layers must use the same blocks: `fd00:10::/64` for the app ports and the router's `vpn-admin` (`fd00:10::a:0/112`) for the admin ports. If `vpn-admin` ever changes, for example to one `/128` per admin device, change both, in the same session.
-
----
-
-## Part 9 — Generating VPN access
+## Part 8 — Generating VPN access
 
 Each person or device gets its **own** WireGuard peer, its own `/128` address and its own QR code. The QR code holds a JSON document that the Android app reads at setup time.
 
-### Step 27 — Address plan
+### Step 23 — Address plan
 
 | Block | Profile | Gets |
 |---|---|---|
@@ -1173,11 +1131,11 @@ Each person or device gets its **own** WireGuard peer, its own `/128` address an
 
 The last group (`N`, `1`–`ffff` in hex) is just a counter, so each profile has room for 65,535 devices and needs no range arithmetic.
 
-The profile is decided **only by the address**: a client issued `fd00:10::a:7` is an admin. The generator in Step 29 derives the block from the chosen profile and only asks for the index, so the block is never typed by hand. Keep a record of every address handed out. For an even stricter setup, keep only one `/128` per admin device in `vpn-admin`, at the cost of editing the list (and the Pi's ufw) for every new admin.
+The profile is decided **only by the address**: a client issued `fd00:10::a:7` is an admin. The generator in Step 25 derives the block from the chosen profile and only asks for the index, so the block is never typed by hand. Keep a record of every address handed out. For an even stricter setup, keep only one `/128` per admin device in `vpn-admin`, at the cost of editing the list (and the Pi's ufw) for every new admin.
 
-The Pi's ufw (Part 8) uses the same blocks: `fd00:10::/64` for ports 8889/TCP and 8189/UDP, and `fd00:10::a:0/112` for 22, 80, 445 and 8888/TCP.
+The Pi's ufw (Part 9) uses the same blocks: `fd00:10::/64` for ports 8889/TCP and 8189/UDP, and `fd00:10::a:0/112` for 22, 80, 445 and 8888/TCP.
 
-### Step 28 — Collect the shared values
+### Step 24 — Collect the shared values
 
 These go into every QR code (`vpnConfigDefaults`):
 
@@ -1196,18 +1154,19 @@ These go into every QR code (`vpnConfigDefaults`):
 
 `::/0, 0.0.0.0/0` sends all of the device's traffic through the tunnel while the app is open. Clients have no internet through the tunnel, so with this value their phone loses internet while the app is in the foreground. To avoid that for clients, use a split tunnel: `"pAllowedips": "fd00:20::cafe/128, fd00:10::1/128"`.
 
-### Step 29 — Generate keys and entries (interactive script)
+### Step 25 — Generate keys and entries (interactive script)
 
 Generate keys on the HOME computer, not on the router. The router only needs each peer's **public** key and the preshared key. A private key stored on the router ends up in every `export show-sensitive` and backup. (Creating a peer in Winbox with client config generation stores the private key on the router.)
 
-The script asks for the profile, the number of peers and the first index, then writes the RouterOS commands and the `vpn.json` entries from the same data, so the router and the QR codes cannot disagree. Before asking anything, it shows the RouterOS commands that list the addresses already in use in each block, so that you pick a free index.
+The script asks for the profile, the number of peers and the first index, then writes the RouterOS commands, the `vpn.json` entries and one WireGuard desktop config per peer from the same data, so the router, the QR codes and the desktop configs cannot disagree. Before asking anything, it shows the RouterOS commands that list the addresses already in use in each block, so that you pick a free index.
 
 Save as `qr-code-gen/gen-peers.sh` on the HOME computer and fill in the two values at the top:
 
 ```bash
 #!/usr/bin/env bash
-# Interactive WireGuard peer generator: RouterOS commands + vpn.json entries
-# for the QR generator (main.py). Admins: fd00:10::a:N, clients: fd00:10::c:N.
+# Interactive WireGuard peer generator: RouterOS commands, vpn.json entries
+# for the QR generator (main.py) and one .conf per peer for WireGuard desktop.
+# Admins: fd00:10::a:N, clients: fd00:10::c:N.
 set -euo pipefail
 
 SERVER_PUB="<router public key>"
@@ -1270,6 +1229,7 @@ umask 077
 mkdir -p "$OUT"
 : > "$OUT/peers.rsc"
 : > "$OUT/index.txt"
+rm -f "$OUT"/*.conf
 entries=()
 
 for ((i = 0; i < COUNT; i++)); do
@@ -1282,7 +1242,23 @@ for ((i = 0; i < COUNT; i++)); do
 
     printf '/interface wireguard peers add interface=wireguard-ipv6 name=%s public-key="%s" preshared-key="%s" allowed-address=%s\n' \
         "$name" "$pub" "$psk" "$addr" >> "$OUT/peers.rsc"
-    printf 'qrcode-%s.png\t%s\n' "${addr%/128}" "$name" >> "$OUT/index.txt"
+    printf 'qrcode-%s.png\t%s.conf\t%s\n' "${addr%/128}" "$name" "$name" >> "$OUT/index.txt"
+
+    # WireGuard desktop (file name = tunnel name, at most 15 characters)
+    cat > "$OUT/$name.conf" <<CONF
+[Interface]
+PrivateKey = $priv
+Address = $addr
+DNS = fd00:10::1
+MTU = 1280
+
+[Peer]
+PublicKey = $SERVER_PUB
+PresharedKey = $psk
+AllowedIPs = $ALLOWED
+Endpoint = $ENDPOINT
+PersistentKeepalive = 25
+CONF
 
     entries+=("$(jq -n --arg dns fd00:10::1 --arg mtu 1280 --arg puk "$SERVER_PUB" \
         --arg allowed "$ALLOWED" --arg ep "$ENDPOINT" --arg ka 25 \
@@ -1293,7 +1269,7 @@ for ((i = 0; i < COUNT; i++)); do
 done
 
 printf '%s\n' "${entries[@]}" | jq -s . > "$OUT/vpn.json"
-echo "Wrote $OUT/peers.rsc, $OUT/vpn.json and $OUT/index.txt"
+echo "Wrote $OUT/peers.rsc, $OUT/vpn.json, $OUT/index.txt and $COUNT .conf file(s)"
 ```
 
 ```bash
@@ -1312,14 +1288,14 @@ First address: fd00:10::c:5
 
 About to generate 3 client peer(s): fd00:10::c:5 to fd00:10::c:7
 Proceed? [y/N] y
-Wrote peers/peers.rsc, peers/vpn.json and peers/index.txt
+Wrote peers/peers.rsc, peers/vpn.json, peers/index.txt and 3 .conf file(s)
 ```
 
-Each run overwrites `peers.rsc`, `vpn.json` and `index.txt` in `peers/`. Finish Steps 30 and 31 for one batch before generating the next.
+Each run overwrites `peers.rsc`, `vpn.json` and `index.txt` in `peers/` and removes the `.conf` files of the previous batch. Finish Steps 26 and 27 for one batch before generating the next.
 
-The `peers/` folder, `vpn*.json` and `qrcode*.png` hold private keys and must never be committed. Make sure `qr-code-gen/.gitignore` lists all three, and confirm with `git status` that nothing new shows up.
+The `peers/` folder (including the `.conf` files), `vpn*.json` and `qrcode*.png` hold private keys and must never be committed. Make sure `qr-code-gen/.gitignore` lists all three, and confirm with `git status` that nothing new shows up.
 
-### Step 30 — Add the peers on the router
+### Step 26 — Add the peers on the router
 
 ```bash
 # On the HOME computer
@@ -1346,7 +1322,7 @@ scp ./peers/peers.rsc admin@192.168.89.1:~/
 # Expected: no output
 ```
 
-### Step 31 — Render the QR codes
+### Step 27 — Render the QR codes
 
 `main.py` reads `vpn.json` from the current folder and writes one PNG per entry, named after the peer's address: `qrcode-fd00:10::c:5.png`, `qrcode-fd00:10::a:3.png` and so on. The file name already tells which peer it belongs to.
 
@@ -1356,16 +1332,16 @@ cd qr-code-gen
 python3 -m venv env_python && source env_python/bin/activate
 pip install 'qrcode[pil]'
 cd peers && python ../main.py
-cat index.txt          # PNG file and peer name on the router
+cat index.txt          # PNG file, desktop config and peer name on the router
 ```
 
-Each PNG contains a private key. Send each one through a private channel to its owner only, and delete the PNG and `vpn.json` once they are delivered.
+Each PNG contains a private key. Send each one through a private channel to its owner only, and delete the PNG, the `.conf` and `vpn.json` once they are delivered. The `.conf` is the same secret in another format: send it only to peers that use a computer.
 
-### Step 32 — Install on the device
+### Step 28 — Install on the device
 
 In the app: **Config → scan QR code → grant VPN permission → configure stream URLs** (`http://[fd00:20::cafe]:8889/cam_160/whep` and so on). The tunnel comes up when the Home screen opens.
 
-For a computer (admin with Samba, for example), the same values fit a standard WireGuard config:
+For a computer (admin with Samba, for example), import `peers/<peer-name>.conf` in the WireGuard app (**Import tunnel(s) from file**; on Linux, `sudo wg-quick up ./<peer-name>.conf`). The file name becomes the tunnel name. It holds the same values as the QR code:
 
 ```ini
 [Interface]
@@ -1382,7 +1358,7 @@ Endpoint = <vpn-hostname>:14079
 PersistentKeepalive = 25
 ```
 
-### Step 33 — Validate each profile
+### Step 29 — Validate each profile
 
 ```routeros
 /interface wireguard peers print detail where name=<peer-name>
@@ -1399,7 +1375,6 @@ PersistentKeepalive = 25
 | `curl -6 https://ipv6.icanhazip.com` | ❌ | ✅ the router's ether1 address (NAT66) |
 | Ping another peer's `fd00:10::` address | ❌ | ❌ |
 | On the Pi: `echo $SSH_CLIENT` in a new SSH session | — | the peer's real `fd00:10::` address (no NAT) |
-| On the Pi: `sudo journalctl -k --since "-10 min" \| grep 'UFW BLOCK'` after the client tests | — | nothing from the client: the router dropped it first |
 | Large Samba copy through the tunnel | — | ✅ no stalls (MSS clamp, Step 19) |
 
 Also run these from inside the home (computer on HOME with the VPN up): the tunnel must work there too, since HOME has IPv6 via NAT66 and the endpoint is AAAA-only.
@@ -1411,3 +1386,146 @@ Also run these from inside the home (computer on HOME with the VPN up): the tunn
 ```
 
 The QR code stops working immediately. Reusing the address later is safe, because the old QR code's key no longer exists on the router. Still, prefer the next free index, so that logs and address records stay unambiguous.
+
+---
+
+## Part 9 — Raspberry Pi firewall (ufw)
+
+The router already decides who reaches the Pi. The Pi's own firewall repeats the same policy as a **second layer**: if a router rule is ever wrong, or someone plugs another device into the DMZ, the Pi still only accepts what the app and the admins need. Since there is no NAT between the VPN and the DMZ (Step 19), the Pi sees each peer's real address and can tell admins from clients by itself.
+
+This part assumes a Pi with no firewall configured yet, and at least one admin peer installed and working (Part 8). Step 32 reaches the Pi over SSH through the VPN with that peer.
+
+### Step 30 — Install ufw and set the defaults
+
+```bash
+# On the Pi
+sudo apt update && sudo apt install -y ufw
+grep '^IPV6=' /etc/default/ufw     # must be IPV6=yes (the default)
+
+# Nothing comes in, the Pi may reach out, and it is not a router
+sudo ufw default deny incoming
+sudo ufw default allow outgoing
+sudo ufw default deny routed
+sudo ufw logging low
+```
+
+| Setting | Reason |
+|---|---|
+| `IPV6=yes` | Every rule in this part is IPv6. With `no`, ufw ignores them and IPv6 stays open |
+| `deny incoming` | Anything not listed in Step 31 is dropped (silently, so a scan sees a timeout and not a refusal). This also covers the MediaMTX ports that must stay local: RTSP server (8554), API (9997), metrics (9998) |
+| `allow outgoing` | The Pi starts its own connections: RTSP to the cameras, package updates over IPv4, DNS and NTP to the router. What it may reach is already limited by the router (Steps 11 and 18) |
+| `deny routed` | The Pi does not forward traffic between interfaces. If IP forwarding were ever enabled by mistake, it still could not act as a bridge between the DMZ and anything else |
+| `logging low` | Blocked packets are logged with rate limiting (`journalctl -k \| grep 'UFW BLOCK'`) |
+
+ufw is installed **inactive**, so nothing is enforced yet.
+
+**Test** (on the Pi)
+
+```bash
+sudo ufw status verbose
+# Status: inactive (the defaults show once it is enabled in Step 32)
+```
+
+### Step 31 — Add the rules
+
+```bash
+# On the Pi
+# Every VPN peer (the app): WHEP signaling and WebRTC media
+sudo ufw allow from fd00:10::/64 to any port 8889 proto tcp comment 'VPN peers: WHEP signaling'
+sudo ufw allow from fd00:10::/64 to any port 8189 proto udp comment 'VPN peers: WebRTC ICE'
+
+# VPN admins only (same block as the router's vpn-admin list)
+sudo ufw allow from fd00:10::a:0/112 to any port 22 proto tcp comment 'VPN admins: SSH'
+sudo ufw allow from fd00:10::a:0/112 to any port 80 proto tcp comment 'VPN admins: web'
+sudo ufw allow from fd00:10::a:0/112 to any port 445 proto tcp comment 'VPN admins: Samba'
+sudo ufw allow from fd00:10::a:0/112 to any port 8888 proto tcp comment 'VPN admins: HLS'
+```
+
+**Why each rule exists**
+
+| Rule | Reason |
+|---|---|
+| 8889/TCP and 8189/UDP from `fd00:10::/64` | What the app needs, for every peer. The whole `/64` matches the router, which also allows these ports to every peer |
+| 22, 80, 445, 8888/TCP from `fd00:10::a:0/112` | SSH, web, Samba (recordings) and HLS for admins only. The block is the router's `vpn-admin` list. The router also allows 443 for admins; open it here only if some service on the Pi uses HTTPS |
+| No IPv4 rules | Nothing needs to open a connection *to* the Pi over IPv4: the VPN is IPv6 only, and RTSP is started by the Pi |
+
+ufw's built-in rules (`/etc/ufw/before.rules` and `before6.rules`) already accept established connections, DHCP replies, the ICMPv6 that IPv6 needs (neighbor discovery, "packet too big") and ping. That is why `ping6 fd00:20::cafe` keeps working for every peer, matching the router's `VPN ping -> Rpi` rule.
+
+**Test** (on the Pi)
+
+```bash
+sudo ufw show added
+# Exactly the 6 rules above, all with a fd00:10:: source
+```
+
+### Step 32 — Enable with a safety net
+
+The admin manages the Pi over SSH **through the VPN**, with the admin peer from Part 8 (HOME has no access to the Pi). If a rule is wrong, enabling ufw cuts that session. Schedule an automatic `ufw disable` first, the same idea as Safe Mode on the router:
+
+```bash
+# On the Pi
+sudo systemd-run --unit=ufw-rollback --on-active=10m /usr/sbin/ufw disable
+sudo ufw --force enable
+```
+
+Open a **new** SSH session to the Pi through the VPN as an admin, without closing the current one. If it works, cancel the rollback:
+
+```bash
+# On the Pi
+sudo systemctl stop ufw-rollback.timer
+systemctl list-timers ufw-rollback.timer    # 0 timers listed
+```
+
+If the new session fails, wait for the rollback (10 minutes), reconnect and fix the rules before enabling again.
+
+**Test** (on the Pi)
+
+```bash
+sudo ufw status verbose
+# Status: active
+# Default: deny (incoming), allow (outgoing), deny (routed)
+# 6 rules, all with a fd00:10:: source
+systemctl is-enabled ufw                     # enabled: survives a reboot
+```
+
+### Step 33 — Test ufw on its own, from the router
+
+The router's firewall blocks the same things as ufw, so a test through the VPN cannot show which of the two did the blocking. The router can test ufw alone: traffic **it** generates does not pass through its own `forward` rules, and it can pick a source address. `fd00:20::1` (the router on the DMZ) is outside both VPN blocks, and `fd00:10::1` (the router on the tunnel) is in `fd00:10::/64` but outside the admin block. A dropped request hangs; stop it with `Ctrl+C` after about 10 seconds.
+
+```routeros
+# Source fd00:20::1: not a VPN peer, so ufw drops everything (hangs until timeout)
+/tool fetch url="http://[fd00:20::cafe]:8889/" src-address=fd00:20::1 output=none
+# Source fd00:10::1: counts as a VPN peer. 8889 answers (any HTTP status, e.g. 404)
+/tool fetch url="http://[fd00:20::cafe]:8889/" src-address=fd00:10::1 output=none
+# Same source, admin port: not in fd00:10::a:0/112, so dropped (timeout)
+/tool fetch url="http://[fd00:20::cafe]:8888/" src-address=fd00:10::1 output=none
+# IPv4: no IPv4 rule, so dropped (timeout)
+/tool fetch url="http://192.168.91.2:8889/" output=none
+# Ping is always allowed
+/ping fd00:20::cafe count=2
+```
+
+| Source | Port | Expected |
+|---|---|---|
+| `fd00:20::1` | 8889 | ❌ timeout |
+| `fd00:10::1` | 8889 | ✅ HTTP answer (any status) |
+| `fd00:10::1` | 8888 | ❌ timeout |
+| `192.168.91.1` (IPv4) | 8889 | ❌ timeout |
+| any | ping | ✅ |
+
+On the Pi, the blocked attempts appear in the log:
+
+```bash
+# On the Pi
+sudo journalctl -k --since "-5 min" | grep 'UFW BLOCK'
+```
+
+**Test with real peers.** With ufw active, repeat the Step 29 table with an admin and a client peer. The results must not change: the admin side (`fd00:10::a:N` on 22, 80, 445 and 8888) still works, and the client is still blocked. Then check that the client's attempts never reached the Pi:
+
+```bash
+# On the Pi, after the client tests
+sudo journalctl -k --since "-10 min" | grep 'UFW BLOCK'
+# Nothing from the client's address: the router dropped it first
+```
+
+**Keeping ufw in sync with the router.** The two layers must use the same blocks: `fd00:10::/64` for the app ports and the router's `vpn-admin` (`fd00:10::a:0/112`) for the admin ports. If `vpn-admin` ever changes, for example to one `/128` per admin device, change both, in the same session.
