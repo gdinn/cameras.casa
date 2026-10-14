@@ -1,0 +1,38 @@
+[Unit]
+Description=NVR Recording - %i
+# The recorder pulls RTSP straight from the camera, it does not depend on MediaMTX.
+After=network-online.target
+Wants=network-online.target
+# Never record to the SD card: start only while the USB disk is mounted.
+RequiresMountsFor=/mnt/backup_cams
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=nvr
+Group=nvr
+ExecStart=/usr/local/bin/nvr-record %i
+Restart=always
+RestartSec=15
+
+# Hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/mnt/backup_cams
+# Files 640, directories 750: the smb_viewer group reads, others get nothing.
+UMask=0027
+PrivateTmp=yes
+
+# Graceful shutdown: SIGTERM -> wait 30 s -> SIGKILL
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=nvr-%i
+
+[Install]
+WantedBy=multi-user.target

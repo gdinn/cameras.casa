@@ -1,0 +1,7 @@
+# /etc/fstab
+proc            /proc           proc    defaults          0       0
+PARTUUID=XXXX-01  /boot/firmware  vfat    defaults          0       2
+PARTUUID=XXXX-02  /               ext4    defaults,noatime  0       1
+# Recordings disk (ext4). <disk-uuid>: `sudo blkid` on the USB disk partition.
+# nofail: the Pi still boots without the disk; the units that use it require the mount.
+UUID=<disk-uuid>  /mnt/backup_cams  ext4  defaults,nofail,noatime,nosuid,nodev,noexec  0  2

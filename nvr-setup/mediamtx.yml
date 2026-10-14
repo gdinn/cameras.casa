@@ -1,0 +1,55 @@
+# mediamtx.yml
+# Only settings that differ from the MediaMTX defaults are listed here.
+
+###############################################
+# Global settings
+
+# Maximum size of outgoing UDP payloads (WebRTC media). The tunnel MTU is 1280:
+# 1280 - 40 (IPv6) - 8 (UDP) = 1232, minus room for the SRTP overhead.
+udpMaxPayloadSize: 1200
+
+# Authentication
+authInternalUsers:
+  # Only the Pi itself may publish.
+- user: any
+  pass:
+  ips: ['127.0.0.1', '::1']
+  permissions:
+  - action: publish
+  # Anyone that reaches the Pi may read. The router and ufw decide who that is.
+- user: any
+  pass:
+  ips: []
+  permissions:
+  - action: read
+
+# Unused protocols. Pulling RTSP from the cameras does not need the RTSP server.
+rtsp: false
+rtmp: false
+srt: false
+
+# WebRTC: announce only the fixed DMZ address to clients.
+webrtcIPsFromInterfaces: false
+webrtcAdditionalHosts: ['fd00:20::cafe']
+
+###############################################
+# Default path settings
+
+pathDefaults:
+  # Connect to a camera only while someone is watching it.
+  sourceOnDemand: yes
+  # The router only allows TCP 554 from the Pi to the cameras.
+  rtspTransport: tcp
+
+###############################################
+# Path settings
+
+paths:
+  cam_10:
+    source: rtsp://<user>:<pass>@192.168.90.10:554/Channels/101
+  cam_11:
+    source: rtsp://<user>:<pass>@192.168.90.11:554/Channels/101
+  cam_12:
+    source: rtsp://<user>:<pass>@192.168.90.12:554/Channels/101
+  cam_13:
+    source: rtsp://<user>:<pass>@192.168.90.13:554/Channels/101
