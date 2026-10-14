@@ -381,10 +381,20 @@ First confirm the router itself is synchronized:
 /system ntp client print ; # status=synchronized
 ```
 
-Then, on the Pi:
+Then, on the Pi. Raspberry Pi OS does not ship `ntpdate`, so install it first. The `ntpsec-ntpdate` package provides it and only adds the query tool: it does not replace `systemd-timesyncd`, which keeps the Pi's clock.
 
 ```bash
-ntpdate -q 192.168.91.1     # or: chronyc sources, after pointing chrony to it
+# On the Pi
+sudo apt update
+sudo apt install -y ntpsec-ntpdate
+command -v ntpdate || ls /usr/sbin/ntpdate    # installed in /usr/sbin
+```
+
+`/usr/sbin` is not in a regular user's `PATH` on Raspberry Pi OS, so run it with `sudo` (or call `/usr/sbin/ntpdate`). `-q` only queries the server and does not change the clock:
+
+```bash
+# On the Pi
+sudo ntpdate -q 192.168.91.1     # or: chronyc sources, after pointing chrony to it
 ```
 
 If the Pi answers `Response dropped: leap not in sync` / `no eligible servers`, the router replied but marked its own clock as unsynchronized (leap indicator 3). This happens for a few minutes after a reset or reboot, until the NTP client from Step 2 reaches `synchronized`. Wait and repeat the test. Cameras and the Pi retry on their own, so this window needs no fix after a reboot.
@@ -522,7 +532,7 @@ sudo apt-get update && sudo apt-get install -y bind9-dnsutils
 | HOME computer | Winbox / `ssh -i ~/.ssh/cameras_router admin@192.168.89.1` | ✅ |
 | Pi | `ping -c2 192.168.91.1` | ✅ |
 | Pi | `dig @192.168.91.1 example.com +short` and `dig +tcp @192.168.91.1 example.com +short` | ✅ both answer |
-| Pi | `ntpdate -q 192.168.91.1` | ✅ |
+| Pi | `sudo ntpdate -q 192.168.91.1` | ✅ |
 | Pi | `ssh admin@192.168.91.1` | ❌ timeout |
 | Pi | `ssh admin@192.168.89.1` | ❌ timeout (still traffic *to the router*, so it is in `input`) |
 
@@ -1000,6 +1010,8 @@ RouterOS prints a notice that a **reboot is required** for the new IPv6 settings
 ```routeros
 /system reboot
 ```
+
+> **The reboot drops the SSH session to the Pi** that has been open since Step 12. The router loses its connection tracking, and Step 12 blocks new HOME → DMZ connections, so `ssh -i ~/.ssh/cameras_pi <user>@192.168.91.2` from the HOME computer now times out. This is expected. The next steps up to Step 29 run on the router and the HOME computer only, and from Step 30 the Pi is reached through the VPN (`ssh -i ~/.ssh/cameras_pi <user>@fd00:20::cafe`). If you need the Pi before that, use the temporary procedure from Step 12: disable `FORWARD: Drop everything else` from the HOME computer (Winbox or `ssh -i ~/.ssh/cameras_router admin@192.168.89.1`), open a new session to the Pi, and enable the rule again right away.
 
 After the reboot, the ISP may hand `ether1` a different IPv6 address. If the ISP router's firewall has an inbound rule for UDP 14079, it points to a specific address: check that it matches the address printed in the test below, and update it whenever that address changes. A rule pointing to an old address leaves the VPN unreachable even though everything on the MikroTik looks correct.
 
