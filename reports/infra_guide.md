@@ -2,7 +2,7 @@
 
 A step-by-step guide to build, on a blank **RB750Gr3 (hEX)**, the exact router configuration behind the cameras app: an IPv6-only WireGuard VPN that exposes a single Raspberry Pi to remote viewers, with the home network, the Pi and the IP cameras split into three firewalled zones.
 
-- **RouterOS:** 7.20.2.
+- **RouterOS:** 7.24.5.
 - **Internet setup:** the MikroTik sits behind the ISP router, gets a private IPv4 by DHCP and a single IPv6 address by DHCPv6 (no prefix delegation).
 - **How to use it:** each step is small and ends with a test. Do not move on until the test passes. Firewall rules that cannot be tested inside this project are explained instead.
 
@@ -75,7 +75,7 @@ The VPN is **IPv6 only** on purpose. The ISP router does NAT on IPv4, so the Mik
 
 ### 0.4 What you need
 
-- An RB750Gr3 with RouterOS 7.20.2 or newer (same major version).
+- An RB750Gr3 with RouterOS 7.24.5 or newer (same major version).
 - A **HOME computer** (macOS or Linux) with Winbox and an SSH client. It is connected to `ether2` or `ether3` and is where every "On the HOME computer" command runs.
 - The **Pi**: the Raspberry Pi that lives in the DMZ (`ether4`). Commands marked "On the Pi" run on it.
 - The Raspberry Pi, already running MediaMTX, with its network managed by NetworkManager.
@@ -130,7 +130,7 @@ After the reboot, upgrade the RouterBOOT firmware to match:
 **Test**
 
 ```routeros
-/system resource print ; # version 7.20.2 (or newer 7.x), board-name hEX
+/system resource print ; # version 7.24.5 (or newer 7.x), board-name hEX
 /system routerboard print ; # current-firmware = upgrade-firmware
 ```
 
@@ -553,7 +553,7 @@ sudo apt-get update && sudo apt-get install -y bind9-dnsutils
 ```routeros
 /ip firewall filter
 add action=fasttrack-connection chain=forward connection-state=established,related \
-    hw-offload=yes comment="FORWARD: Fasttrack established IPv4"
+    comment="FORWARD: Fasttrack established IPv4"
 add action=accept chain=forward connection-state=established,related \
     comment="FORWARD: Accept established/related"
 add action=drop chain=forward connection-state=invalid \
@@ -582,7 +582,7 @@ add action=drop chain=forward \
 
 | Rule | Reason |
 |---|---|
-| Fasttrack (`hw-offload=yes`) | Once a connection is allowed, its packets skip the rest of the firewall. This matters because camera RTSP crosses zones (CAM → DMZ), so every packet is routed by the CPU rather than switched in hardware. The policy does not change: only established connections are fasttracked, and the first packet still went through every rule. `hw-offload=yes` only helps if the switch chip has L3 hardware offload and it is enabled (`/interface ethernet switch print`); otherwise fasttrack runs in software. Offloaded flows do not show up in rule counters or in `monitor-traffic`. |
+| Fasttrack | Once a connection is allowed, its packets skip the rest of the firewall. This matters because camera RTSP crosses zones (CAM → DMZ), so every packet is routed by the CPU rather than switched in hardware. The policy does not change: only established connections are fasttracked, and the first packet still went through every rule. Fasttrack runs in software here: the RB750Gr3 switch chip has no L3 hardware offload, so the rule carries no `hw-offload` option (RouterOS 7.24.5 does not accept it on this board). Fasttracked packets do not increase the counters of the rules below it. |
 | Established/related, drop invalid | Same reasoning as in `input`. |
 | HOME → Internet | Normal browsing. |
 | Pi → Internet | Package updates. Limited to the Pi's address, so another device plugged into `ether4` gets nothing. |
@@ -722,14 +722,15 @@ add address=fd00:30::1/64 interface=bridge \
 
 ```routeros
 /ipv6 nd set [find default=yes] disabled=yes
-/ipv6 nd add interface=bridge dns=fd00:30::1 hop-limit=64 reachable-time=5m
-/ipv6 nd add interface=ether4 dns=fd00:20::1 hop-limit=64 reachable-time=5m
+/ipv6 nd add interface=bridge dns=fd00:30::1 advertise-dns=yes hop-limit=64 reachable-time=5m
+/ipv6 nd add interface=ether4 dns=fd00:20::1 advertise-dns=yes hop-limit=64 reachable-time=5m
 ```
 
 The default entry would send router advertisements on **every** interface, including the tunnel, the WAN and CAM. It is disabled and replaced by explicit entries for HOME and DMZ only:
 
 - **HOME:** announces the router as the default gateway, the `fd00:30::/64` prefix for SLAAC, and `fd00:30::1` as the DNS server. The ULA is used for DNS instead of the bridge's link-local because it is fixed by configuration and is the same on every operating system, while a link-local DNS server needs an interface scope that some operating systems handle poorly.
 - **DMZ:** announces the router as the default gateway and `fd00:20::1` as DNS, with no prefix.
+- **`advertise-dns=yes`** is required on both entries. It defaults to `no`, and then the `dns=` value is stored but never sent in the RA.
 
 The comment of an `/ipv6 nd` entry is not shown by `print` or `export`. Read it with `:put [/ipv6 nd get <n> comment]`.
 
@@ -1111,12 +1112,18 @@ The router's IPv6 address can change when the ISP renews it. A script publishes 
 ```routeros
 /certificate import file-name=root-ca.pem passphrase=""
 /certificate print ; # the imported CA must show the "T" (trusted) flag
-/certificate settings set builtin-trust-anchors=not-trusted
+/certificate settings print ; # note the current builtin-trust-store value, to restore it later if needed
+/certificate settings set builtin-trust-store=untrusted
 /tool fetch url="https://api.cloudflare.com/client/v4/" check-certificate=yes output=none
 # Expected: "status 400" (an HTTP answer after TLS validated), not a certificate error
+/tool fetch url="https://letsencrypt.org" check-certificate=yes output=none
+# Expected: failure "SSL: ssl: no trusted CA certificate found": the built-in CAs are no longer trusted
 ```
 
-> **Trade-off.** Trusting one root narrows who can impersonate Cloudflare, but if Cloudflare switches to another CA, DDNS fails until you import the new root. If that maintenance is not worth it, keep `builtin-trust-anchors=trusted`. Never use `check-certificate=no`: the script sends the API token in a header.
+- `builtin-trust-store=untrusted` stops trusting the CAs bundled with RouterOS. Older 7.x releases called this setting `builtin-trust-anchors=not-trusted`; RouterOS 7.24.5 no longer accepts that name.
+- The second fetch is the negative test: it needs a site whose chain does **not** end in GlobalSign Root CA. Let's Encrypt chains to ISRG Root X1, so it must fail. Do not use a Google site for this test: like Cloudflare, Google uses Google Trust Services, cross-signed by GlobalSign Root CA, so it passes either way.
+
+> **Trade-off.** Trusting one root narrows who can impersonate Cloudflare, but if Cloudflare switches to another CA, DDNS fails until you import the new root. If that maintenance is not worth it, keep the built-in CAs trusted: leave `builtin-trust-store` at the value `print` showed before the change. Never use `check-certificate=no`: the script sends the API token in a header.
 
 **b) The script.** Save the block below as `ddns.rsc` on the HOME computer and fill in the four values. The file only carries the commands: `/import` runs them, and the script is created with the name given by `name=` (`update-ddns-cloudflare`), whatever the file is called. The scheduler calls the script by that same name.
 ```routeros
