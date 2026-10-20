@@ -1052,13 +1052,18 @@ Save checkpoint `part6`.
 
 ## Part 7 — DNS name and DDNS
 
-### Step 22 — Local name for the Pi
+### Step 22 — Local names for the Pi and the router
 
 ```routeros
 /ip dns static add address=fd00:20::cafe name=<site>.cameras.casa ttl=3m type=AAAA
+/ip dns static add address=fd00:10::1 name=mk.cameras.casa ttl=3m type=AAAA
 ```
 
-A convenience name for admins (SSH, Samba, browser), resolved by the router for HOME, DMZ and the VPN. The app does not use it: it uses the literal `[fd00:20::cafe]`.
+Convenience names for admins (SSH, Samba, browser, Winbox), resolved by the router for HOME, DMZ and the VPN. The app does not use them: it uses the literal `[fd00:20::cafe]`. This skips the DNS lookup when the Home screen opens, so the video starts sooner. `mk.cameras.casa` points to the router's VPN address, the one admins use for SSH through the tunnel.
+
+Admins can SSH to either name (`ssh -i ~/.ssh/cameras_router admin@mk.cameras.casa`, `ssh -i ~/.ssh/cameras_pi <user>@<site>.cameras.casa`). The literal addresses (`fd00:10::1`, `fd00:20::cafe`) still work the same way.
+
+Use the Pi's hostname as `<site>`, so the DNS name matches the shell prompt. Check it with `hostname` on the Pi.
 
 This is a split-horizon record: it only exists for devices that use the router as their resolver. If you do not control the public zone of the domain you use, prefer a name under `home.arpa` (RFC 8375), so that nobody else can answer for it outside the tunnel.
 
@@ -1066,6 +1071,7 @@ This is a split-horizon record: it only exists for devices that use the router a
 
 ```bash
 dig AAAA <site>.cameras.casa @192.168.89.1 +short    # fd00:20::cafe
+dig AAAA mk.cameras.casa @192.168.89.1 +short        # fd00:10::1
 ```
 
 ### Step 23 — DDNS for the VPN endpoint
@@ -1492,6 +1498,7 @@ Run the table from a computer with each profile's tunnel up (the `.conf` from St
 |---|---|---|
 | `ping6 fd00:20::cafe` | ✅ | ✅ |
 | `dig @fd00:10::1 <site>.cameras.casa AAAA +short` | ✅ `fd00:20::cafe` | ✅ |
+| `dig @fd00:10::1 mk.cameras.casa AAAA +short` | ✅ `fd00:10::1` | ✅ |
 | `ssh -i ~/.ssh/cameras_router admin@fd00:10::1` (router) | ❌ timeout | ✅ |
 | `curl -m5 -so /dev/null -w '%{http_code}\n' 'http://[fd00:20::cafe]:8889/'` (app port) | ✅ `200` | ✅ `200` |
 | The same `curl` on `:8888` and on `:445` (admin ports) | ❌ `000` | ✅ `200` |
