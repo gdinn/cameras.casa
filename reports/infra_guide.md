@@ -74,9 +74,9 @@ The Pi's services continue in a second guide, [pi_services_guide.md](pi_services
 | DMZ (Pi) | ✅ IPv4 only (updates) | DHCP, DNS, NTP, ping | — | ✅ TCP 554 (RTSP) | ❌ |
 | CAM | ❌, except a temporary allow list | DHCP, NTP | ❌ | (same switch) | ❌ |
 | VPN, every peer | ❌ | DNS, ping | ✅ TCP 8889, UDP 8189, ping | ❌ | ❌ |
-| VPN, admin | ✅ IPv6 (NAT66) | + SSH | + TCP 22 (SSH), 445 (Samba), 8888 (HLS) | ❌ | ❌ |
+| VPN, admin | ❌ | + SSH | + TCP 22 (SSH), 445 (Samba), 8888 (HLS) | ❌ | ❌ |
 
-VPN peers never talk to each other, and nothing can open a connection toward a VPN peer.
+VPN peers never talk to each other, and nothing can open a connection toward a VPN peer. The VPN only gives access to the Pi and the router, not to the internet: peers use a split tunnel (Step 25), and the rest of their traffic leaves through their own network.
 
 The VPN is **IPv6 only** on purpose. The ISP router does NAT on IPv4, so the MikroTik is not reachable on IPv4 from outside. Its IPv6 address is reachable, so the VPN endpoint is published as an AAAA record kept up to date by a DDNS script.
 
@@ -697,7 +697,7 @@ Set each camera's NTP server to `192.168.90.1` and turn off its cloud/P2P featur
 
 ## Part 4 — IPv6 inside the router
 
-The ISP only hands the router a single IPv6 address, with no prefix to delegate to the inside. Every internal zone therefore uses a ULA (`fd00::/8`, private IPv6) prefix, and NAT66 gives HOME and the VPN admins internet access. IPv6 on the WAN stays off until the firewall is ready (Part 6).
+The ISP only hands the router a single IPv6 address, with no prefix to delegate to the inside. Every internal zone therefore uses a ULA (`fd00::/8`, private IPv6) prefix, and NAT66 gives HOME internet access. IPv6 on the WAN stays off until the firewall is ready (Part 6).
 
 ### Step 14 — WireGuard interface and the ULAs
 
@@ -931,9 +931,6 @@ add action=accept chain=forward dst-address-list=cameras.casa dst-port=8889 \
 add action=accept chain=forward dst-address-list=cameras.casa dst-port=8189 \
     in-interface=wireguard-ipv6 protocol=udp \
     comment="FORWARD: VPN -> Rpi (WebRTC ICE/UDP)"
-add action=accept chain=forward in-interface=wireguard-ipv6 \
-    out-interface-list=WAN src-address-list=vpn-admin \
-    comment="FORWARD: VPN admin -> Internet (NAT66)"
 add action=accept chain=forward dst-address-list=cameras.casa \
     dst-port=22,445,8888 in-interface=wireguard-ipv6 protocol=tcp \
     src-address-list=vpn-admin comment="FORWARD: VPN admin -> Rpi (SSH, SMB, HLS)"
@@ -959,9 +956,8 @@ add action=drop chain=forward \
 | ICMPv6 errors (types 1–4) | Errors that belong to a tracked connection already pass as `related`, and errors that do not are `invalid`. These four rules rarely match, and they are kept as an explicit statement that IPv6 error messages must never be blocked. Check their counters (`print stats`) over time; if they stay at zero, they can be removed. |
 | VPN ping → Pi | Diagnostics: any peer can check that the Pi is reachable. |
 | VPN → Pi, TCP 8889 and UDP 8189 | What the app needs: WHEP signaling (HTTP) and WebRTC media (ICE over UDP). Every peer, admin or client. |
-| VPN admin → Internet | Admins can route all their traffic through home. Clients cannot: their traffic to the internet is dropped. |
 | VPN admin → Pi, admin ports | SSH (22), Samba (445, the recordings) and HLS (8888, the streams in a browser). Admins only. |
-| Drop everything else from VPN | Closes everything else for the tunnel: HOME, CAM, the rest of the DMZ. |
+| Drop everything else from VPN | Closes everything else for the tunnel: HOME, CAM, the rest of the DMZ, and the internet. The tunnel only carries the Pi and the router (split tunnel, Step 25), so no peer, admin or client, uses the home connection as an internet exit. |
 | LAN → WAN | IPv6 internet for HOME (through NAT66, Step 20). |
 | Drop unsolicited from WAN | Nothing from the internet may open a connection inside. Redundant with the final drop; kept for a separate counter. |
 | Rpi initiates nothing over IPv6 | The Pi only *answers* over IPv6. It has no IPv6 internet path anyway (no NAT66 for the DMZ); this rule makes the intent explicit. Its IPv4 updates are handled in Step 12. |
@@ -985,14 +981,12 @@ add action=change-mss chain=forward new-mss=clamp-to-pmtu protocol=tcp tcp-flags
 /ipv6 firewall nat
 add action=masquerade chain=srcnat in-interface=bridge out-interface=ether1 \
     comment="NAT66: HOME -> Internet (no prefix delegation from ISP)"
-add action=masquerade chain=srcnat in-interface=wireguard-ipv6 out-interface=ether1 \
-    src-address-list=vpn-admin comment="NAT66: VPN admin -> Internet"
 ```
 
 **Why**
 
 - **MSS clamp.** When a TCP connection starts, it announces its maximum segment size based on the local MTU. Across the 1280-byte tunnel, a 1500-based MSS would produce packets that are too large. If ICMPv6 "packet too big" is lost on the way, the connection hangs after the handshake. Rewriting the MSS in SYN packets avoids depending on PMTUD. The router computes 1220 for the tunnel.
-- **NAT66.** The ISP gives the router a single `/128` and no prefix, so internal ULAs have nowhere to be routed. Masquerade gives HOME and the VPN admins IPv6 internet through the router's own address. There is no NAT between the VPN and the Pi: the Pi sees each peer's real address, so its own firewall (ufw, Part 9) can apply the same admin/client split.
+- **NAT66.** The ISP gives the router a single `/128` and no prefix, so internal ULAs have nowhere to be routed. Masquerade gives HOME IPv6 internet through the router's own address. VPN peers get no NAT66, because they have no internet through the tunnel (Step 25). There is no NAT between the VPN and the Pi: the Pi sees each peer's real address, so its own firewall (ufw, Part 9) can apply the same admin/client split.
 
 These rules can only be tested once the WAN has IPv6 (Step 21) and peers exist (Step 30).
 
@@ -1251,11 +1245,18 @@ These go into every QR code (`vpnConfigDefaults`):
 | `iDns` | `fd00:10::1` |
 | `iMtu` | `1280` |
 | `pPuk` | router public key (above) |
-| `pAllowedips` | `::/0, 0.0.0.0/0` |
+| `pAllowedips` | `fd00:20::cafe/128, fd00:10::1/128` |
 | `pEndpoint` | `<vpn-hostname>:14079` |
 | `pPersistentKeepAlive` | `25` |
 
-`::/0, 0.0.0.0/0` sends all of the device's traffic through the tunnel while the app is open. Clients have no internet through the tunnel, so with this value their phone loses internet while the app is in the foreground. To avoid that for clients, use a split tunnel: `"pAllowedips": "fd00:20::cafe/128, fd00:10::1/128"`.
+The VPN exists only to reach the Pi and the router, so the tunnel carries only those two addresses (a split tunnel), for admins and clients alike:
+
+- `fd00:20::cafe/128`, the Pi: the app (WHEP and WebRTC) for every peer; SSH, Samba and HLS for admins.
+- `fd00:10::1/128`, the router: DNS (`iDns`) for every peer, and SSH for admins. The DNS server must be routed through the tunnel, or the device loses name resolution while the tunnel is up.
+
+Everything else, IPv4 and IPv6, leaves through the device's own network, so other apps keep working while the tunnel is up. This is not a privacy VPN: on an untrusted network, that other traffic is as exposed as it would be without the tunnel.
+
+`AllowedIPs` only decides what the device sends into the tunnel. What each peer may reach is decided on the router (its `/128` `allowed-address` and the IPv6 firewall). A peer that widens its own `AllowedIPs` (to `::/0`, for example) gains nothing: the router has no rule that forwards VPN traffic to the internet (Step 19), so that traffic is dropped.
 
 ### Step 26 — Generate keys and entries (interactive script)
 
@@ -1274,7 +1275,7 @@ set -euo pipefail
 
 SERVER_PUB="<router public key>"
 ENDPOINT="<vpn-hostname>:14079"
-ALLOWED="::/0, 0.0.0.0/0"
+ALLOWED="fd00:20::cafe/128, fd00:10::1/128"
 OUT=peers
 
 cat <<'INFO'
@@ -1458,7 +1459,7 @@ MTU = 1280
 [Peer]
 PublicKey = <pPuk>
 PresharedKey = <pPsk>
-AllowedIPs = ::/0, 0.0.0.0/0
+AllowedIPs = fd00:20::cafe/128, fd00:10::1/128
 Endpoint = <vpn-hostname>:14079
 PersistentKeepalive = 25
 ```
@@ -1495,8 +1496,8 @@ Run the table from a computer with each profile's tunnel up (the `.conf` from St
 | `curl -m5 -so /dev/null -w '%{http_code}\n' 'http://[fd00:20::cafe]:8889/'` (app port) | ✅ `200` | ✅ `200` |
 | The same `curl` on `:8888` and on `:445` (admin ports) | ❌ `000` | ✅ `200` |
 | `ssh -i ~/.ssh/cameras_pi <user>@fd00:20::cafe` | ❌ timeout | ✅ |
-| `curl -6 https://ipv6.icanhazip.com` | ❌ | ✅ the router's ether1 address (NAT66) |
-| Ping another peer's `fd00:10::` address | ❌ | ❌ |
+| `curl -6 https://ipv6.icanhazip.com` and `curl -4 https://ipv4.icanhazip.com` | ✅ the local network's addresses, never the router's ether1 address (an error is fine if the local network lacks that IP version) | ✅ the same |
+| Ping another peer's `fd00:10::` address, with `fd00:10::/64` temporarily added to `AllowedIPs` in the `.conf` (the split tunnel does not route it, so without this the ping never reaches the router). Restore the `.conf` afterwards | ❌ | ❌ |
 | On the Pi: `echo $SSH_CLIENT` in a new SSH session | — | the peer's real `fd00:10::` address (no NAT) |
 | `curl -so /dev/null -w '%{size_download}\n' 'http://[fd00:20::cafe]:8888/big.bin'` | — | ✅ `52428800`, no stalls (MSS clamp, Step 20) |
 

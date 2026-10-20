@@ -2,7 +2,7 @@
   "vpnConfigDefaults": {
     "iDns": "fd00:10::1",
     "iMtu": "1420",
-    "pAllowedips": "::/0, 0.0.0.0/0",
+    "pAllowedips": "fd00:20::cafe/128, fd00:10::1/128",
     "pEndpoint": "example.com:4567",
     "pPersistentKeepAlive": "25",
     "pPuk": "EPLh6pVel06dND8cE4Prix9GP4hGLYNhQhn5mSN2yzM="
