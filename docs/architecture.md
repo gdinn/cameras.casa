@@ -1037,17 +1037,21 @@ rejects it before any other job starts, so a malformed tag costs one step rather
 
 ### 10.4 The public site
 
-`pages/` holds a small Jekyll site — the privacy policies the Play Store listing has to link to,
-in en-US and pt-BR — published to GitHub Pages by `.github/workflows/pages.yml` (`[PAGES] DEPLOY`).
+`pages/` holds a small Jekyll site, published to GitHub Pages by `.github/workflows/pages.yml`
+(`[PAGES] DEPLOY`). Its root page links to three things: the privacy policy the Play Store listing
+has to link to (`/privacy-policy/`, in en-US and pt-BR; the listing uses `/privacy-policy/en-us/`),
+the infrastructure guide (`/infra-guide/`) and the Raspberry Pi services guide
+(`/pi-services-guide/`). The migration guide (`/migration-split-tunnel/`) is published too, linked
+only from the infrastructure guide.
 
 | | |
 |---|---|
-| Source | `pages/` (`_config.yml`, `_layouts/default.html`, `index.md`, `privacy_policy/*.md`) |
-| Starts on | pushes to `main` touching `pages/**` or the workflow itself, and manual dispatch |
+| Source | `pages/` (`_config.yml`, `_layouts/default.html`, `index.md`, `privacy_policy/*.md`), plus `reports/*.md` copied in at build time |
+| Starts on | pushes to `main` touching `pages/**`, `reports/**`, the copy script or the workflow itself, and manual dispatch |
 | Builds with | `actions/jekyll-build-pages`, deployed by `actions/deploy-pages` |
 | Repository setting | Settings → Pages → Source must be **GitHub Actions** |
 
-Three decisions are worth knowing before editing it:
+Four decisions are worth knowing before editing it:
 
 **It is a workflow rather than a Pages branch setting** because branch publishing can only serve
 the repository root or `/docs`, and this site is neither — the root is the Android project and
@@ -1057,13 +1061,20 @@ the repository root or `/docs`, and this site is neither — the root is the And
 `permalink`, and the `alt_*` pair that renders the language switcher) and is otherwise the same
 document that reads correctly on GitHub. There is no generated HTML copy to drift from it.
 
+**The guides are copied, not duplicated.** `reports/*.md` is their only source. Before the Jekyll
+build, `.github/scripts/copy-guides-to-pages.py` copies them into `pages/guides/` (ignored by git)
+with their front matter (`permalink`, `body_class: guide` for the layout), turns the links between
+them into relative links to the permalinks, unescapes the `\|` that GitHub needs inside table code
+spans and kramdown would print, and wraps them in `{% raw %}` so that nothing in a guide is read as
+Liquid. A new guide needs an entry in the script's `GUIDES` table.
+
 **Every link in the site is relative, and `_config.yml` sets no `baseurl`.** That is what makes
 one build correct both at `gdinn.github.io/cameras.casa/` and at a custom apex domain. The layout
 likewise ships no binary asset — the favicon and the header mark are inline SVG — so no URL in the
 page depends on where the site is mounted. Adding an image, or a `baseurl`, gives up that property.
 
 The unit tests do not cover this site; the build in CI is the only check, which is why the links
-between the two policies are relative and few.
+between the pages are relative and few.
 
 ---
 

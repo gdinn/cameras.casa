@@ -9,7 +9,7 @@ This repository holds the Android client. It's one piece of a larger self-hosted
 - A **WireGuard VPN over IPv6** provides direct, point-to-point remote access — no cloud relay in the middle of the video traffic.
 - This **Android app** reads the VPN credentials from a QR code, brings the tunnel up only while it's in the foreground, and renders the camera streams.
 
-> To build the network side yourself — MikroTik router, firewalled zones, IPv6 WireGuard VPN, peer/QR code generation and Raspberry Pi firewall — follow the step-by-step **[infrastructure guide](reports/infra_guide.md)** (also published at **[gdinn.github.io/cameras-casa-infra](https://gdinn.github.io/cameras-casa-infra/)**).
+> To build the network side yourself — MikroTik router, firewalled zones, IPv6 WireGuard VPN, peer/QR code generation and Raspberry Pi firewall — follow the step-by-step **[infrastructure guide](reports/infra_guide.md)** (also published at **[gdinn.github.io/cameras.casa/infra-guide](https://gdinn.github.io/cameras.casa/infra-guide/)**).
 
 > For a deep, file-level walkthrough of the codebase — layering rules, per-screen MVVM breakdowns, data-flow diagrams and known consistency gaps — see **[docs/architecture.md](docs/architecture.md)**.
 
@@ -181,7 +181,9 @@ The `jacocoTestReport` task narrows coverage to the unit-testable surface — it
 ## Documentation
 
 - **[docs/architecture.md](docs/architecture.md)** — full technical reference: route inventory, per-feature MVVM breakdowns, core packages, data flow, external resources and known consistency gaps.
-- **[reports/infra_guide.md](reports/infra_guide.md)** — step-by-step guide to build the infrastructure from a blank MikroTik RB750Gr3: HOME/DMZ/CAM zones, IPv4 and IPv6 firewalls, the IPv6-only WireGuard VPN, DDNS, VPN peer generation and ufw on the Raspberry Pi. Each step ends with a test. Published at [gdinn.github.io/cameras-casa-infra](https://gdinn.github.io/cameras-casa-infra/).
+- **[reports/infra_guide.md](reports/infra_guide.md)** — step-by-step guide to build the infrastructure from a blank MikroTik RB750Gr3: HOME/DMZ/CAM zones, IPv4 and IPv6 firewalls, the IPv6-only WireGuard VPN, DDNS, VPN peer generation and ufw on the Raspberry Pi. Each step ends with a test. Published at [gdinn.github.io/cameras.casa/infra-guide](https://gdinn.github.io/cameras.casa/infra-guide/).
+- **[reports/pi_services_guide.md](reports/pi_services_guide.md)** — continues the infrastructure guide on the Raspberry Pi: the ext4 recordings disk, MediaMTX, the 24/7 recorder and Samba. Published at [gdinn.github.io/cameras.casa/pi-services-guide](https://gdinn.github.io/cameras.casa/pi-services-guide/).
+- **[reports/migration_split_tunnel.md](reports/migration_split_tunnel.md)** — brings an installation built from an earlier version of the infrastructure guide (full tunnel, internet for admins) to the split tunnel. Published at [gdinn.github.io/cameras.casa/migration-split-tunnel](https://gdinn.github.io/cameras.casa/migration-split-tunnel/).
 - **`docs/diagrams/`** — Mermaid sources for every diagram, kept in version control so the PNGs in `docs/images/` are reproducible. Regeneration instructions are in [§12 of the architecture doc](docs/architecture.md#12-regenerating-the-diagrams).
 
 ## Requirements
