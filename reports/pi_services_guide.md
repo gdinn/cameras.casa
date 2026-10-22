@@ -402,6 +402,15 @@ Size the retention to the disk. A camera recording at **N Mbit/s** fills about *
 | `MIN_FREE_SPACE_MB` | `204800` | 200 GB. Below it, the oldest files are deleted even inside the retention, at night and before each new recording session. Keep it above one day of recording |
 | `RTSP_TRANSPORT` | `tcp` | The router only allows TCP 554 to the cameras |
 
+**Old recordings are deleted automatically.** Nothing has to be run by hand: the installer already enabled the timer (Step 40). Deletion happens at two moments:
+
+| When | What runs | What it deletes |
+|---|---|---|
+| Every night, at 03:00 (up to 10 min later, at random) | `nvr-cleanup.timer` starts `nvr-cleanup` | 1. Every file older than `RETENTION_DAYS`, and the empty day folders. 2. If free space is still below `MIN_FREE_SPACE_MB`: the oldest files of **any** camera, one at a time, until it is above again |
+| Before each recording session (when the recorder starts, or `ffmpeg` reconnects after the camera drops) | `nvr-record` | If free space is below `MIN_FREE_SPACE_MB`: up to 20 of the oldest files of **that** camera. If it is still below, the recorder waits and tries again, instead of filling the disk |
+
+If the Pi is off at 03:00, the nightly cleanup runs as soon as it boots (`Persistent=true`). While a recording session runs without interruption, the recorder does not check the space: the nightly cleanup is what keeps the disk from filling. This is why `MIN_FREE_SPACE_MB` must stay above one day of recording.
+
 Start the four recorders:
 
 ```bash
@@ -434,13 +443,16 @@ When a 15-minute file is complete, check that it plays:
 sudo ffprobe -v error -show_entries format=duration -of csv=p=0 "<a complete file>"   # about 900
 ```
 
-**Cleanup**
+**Cleanup.** It runs on its own every night (Step 41). To test it now, start it by hand once:
 
 ```bash
 # On the Pi
+systemctl list-timers nvr-cleanup.timer      # NEXT: tonight, around 03:00
 sudo systemctl start nvr-cleanup.service
 journalctl -u nvr-cleanup -n 15 --no-pager   # retention, free space and usage per camera
 ```
+
+After the first night, `journalctl -u nvr-cleanup --since today` shows the automatic run.
 
 **Missing disk.** Stop the recorders, unmount the disk and **unplug it**:
 
@@ -582,6 +594,8 @@ smbclient //localhost/backup_cams -U <name> -c 'put /etc/hostname test.txt'
 |---|---|
 | Overall status | `sudo nvr-status` |
 | Logs | `journalctl -u mediamtx -f`, `journalctl -u nvr@cam_10 -f`, `journalctl -u nvr-cleanup` |
+| Delete old recordings | Nothing to do: automatic every night and when the disk runs low (Step 41). Last and next run: `systemctl list-timers nvr-cleanup.timer` |
+| Keep recordings longer or shorter | Change `RETENTION_DAYS` in `/etc/nvr/nvr.conf`. The next nightly run uses it, with no restart |
 | Change the camera password | Change it in **both** `/opt/mediamtx/mediamtx.yml` and `/etc/nvr/nvr.conf`, then `sudo systemctl restart mediamtx nvr@cam_10 nvr@cam_11 nvr@cam_12 nvr@cam_13` |
 | Add a camera (for example `192.168.90.14`) | Fixed lease on the router (Step 13); path `cam_14` in `mediamtx.yml`; `cam_14` in `CAMERAS` plus `CAM_14_URL` and `CAM_14_NAME` in `nvr.conf`; `sudo systemctl restart mediamtx`, `sudo systemctl enable --now nvr@cam_14`; the stream URL in the app |
 | Update MediaMTX | Download and check the new release as in Step 37, replace `/opt/mediamtx/mediamtx`, `sudo systemctl restart mediamtx`, and read the log for configuration errors (Step 39) |
