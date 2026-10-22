@@ -1,7 +1,8 @@
 name: "[PAGES] DEPLOY"
 
-# Publishes the public site under pages/ — currently the privacy policies, which the Play Store
-# listing links to — to GitHub Pages.
+# Publishes the public site under pages/ to GitHub Pages: the privacy policies, which the Play
+# Store listing links to (/privacy-policy/en-us/), and the guides from reports/, which are copied
+# into the site at build time so that reports/ stays their only source.
 #
 # It exists as a workflow rather than as a Pages "deploy from a branch" setting because branch
 # publishing can only serve the repository root or /docs, and neither is what this site is: the
@@ -16,6 +17,8 @@ on:
     # Nothing outside the site can change the site, so an app-only push does not redeploy it.
     paths:
       - 'pages/**'
+      - 'reports/**'
+      - '.github/scripts/copy-guides-to-pages.py'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 
@@ -43,6 +46,10 @@ jobs:
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
+
+      # Front matter, permalinks and kramdown fixes for the guides; see the script's docstring.
+      - name: Copy the guides into the site
+        run: python3 .github/scripts/copy-guides-to-pages.py
 
       # The site is plain Markdown plus one layout, so the github-pages gem this action ships is
       # all the toolchain it needs — there is no Gemfile to resolve and no plugin to install.

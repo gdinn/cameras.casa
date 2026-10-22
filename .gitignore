@@ -18,3 +18,6 @@ local.properties
 keystore.properties
 *.jks
 *.keystore
+
+# Copied from reports/ by .github/scripts/copy-guides-to-pages.py at build time
+/pages/guides/

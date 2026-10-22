@@ -1,4 +1,4 @@
-# Jekyll configuration for the Cameras App public site (privacy policies).
+# Jekyll configuration for the Cameras App public site (privacy policies and guides).
 #
 # This directory is the site root. It is NOT one of the two folders GitHub Pages can publish
 # from a branch (`/` and `/docs`), so publishing goes through .github/workflows/pages.yml, which
@@ -10,8 +10,8 @@
 
 title: Cameras App
 description: >-
-  Privacy policy for Cameras App, the native Android client for watching IP cameras on your own
-  private network over a WireGuard tunnel.
+  Privacy policy and infrastructure guides for Cameras App, the native Android client for watching
+  IP cameras on your own private network over a WireGuard tunnel.
 
 app_id: com.gdisys.cameras
 repository_url: https://github.com/gdinn/cameras.casa

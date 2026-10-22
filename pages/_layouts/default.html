@@ -152,8 +152,9 @@
       color: var(--accent);
     }
 
-    /* The "Application ID / Last updated" block that opens each policy. */
-    h1 + p {
+    /* The "Application ID / Last updated" block that opens each policy. The guides open with a
+       regular paragraph, so they keep the body style. */
+    body:not(.guide) h1 + p {
       margin-top: -.5rem;
       color: var(--text-muted);
       font-size: .9rem;
@@ -173,7 +174,44 @@
       word-break: break-word;
     }
 
+    /* Code blocks, used by the guides. Long commands scroll inside the block instead of
+       widening the page. */
+    pre {
+      margin: 0 0 1.25rem;
+      padding: .9rem 1rem;
+      overflow-x: auto;
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      font-size: .85rem;
+      line-height: 1.55;
+    }
+
+    pre code {
+      background: none;
+      padding: 0;
+      font-size: inherit;
+      word-break: normal;
+      white-space: pre;
+    }
+
+    /* The guides' warnings ("Do not connect the cameras yet", ...). */
+    blockquote {
+      margin: 0 0 1.25rem;
+      padding: .75rem 1rem;
+      border-left: 4px solid var(--accent);
+      background: var(--accent-soft);
+      border-radius: 0 10px 10px 0;
+    }
+    blockquote > :last-child { margin-bottom: 0; }
+
+    h4 { font-size: 1rem; margin: 1.5rem 0 .5rem; }
+
     hr { border: 0; border-top: 1px solid var(--border); margin: 2.5rem 0; }
+
+    /* The guides separate every part with "---" before its heading, and h2 already draws a
+       rule: keep a single line. */
+    .guide hr + h2 { border-top: 0; padding-top: 0; margin-top: 0; }
 
     /* ---------- Tables ---------- */
 
@@ -238,7 +276,7 @@
     }
   </style>
 </head>
-<body>
+<body{% if page.body_class %} class="{{ page.body_class }}"{% endif %}>
 
   <header class="site-header">
     <div class="site-header__inner">
