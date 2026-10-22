@@ -28,6 +28,8 @@ The Pi's services continue in a second guide, [pi_services_guide.md](pi_services
 - [Part 12 — Recorder (NVR)](pi_services_guide.md#part-12--recorder-nvr) (steps 40–42)
 - [Part 13 — Samba](pi_services_guide.md#part-13--samba) (steps 43–45)
 
+Installation built from an earlier version of this guide, with a full tunnel and internet for admins? See [migration_split_tunnel.md](migration_split_tunnel.md).
+
 ---
 
 ## Part 0 — Design and prerequisites
@@ -1228,7 +1230,7 @@ Each person or device gets its **own** WireGuard peer, its own `/128` address an
 | Block | Profile | Gets |
 |---|---|---|
 | `fd00:10::1` | Router | — |
-| `fd00:10::a:0/112` → `fd00:10::a:N` | **Admin** (`vpn-admin`) | App + SSH/Samba/HLS on the Pi + SSH on the router + internet through the tunnel |
+| `fd00:10::a:0/112` → `fd00:10::a:N` | **Admin** (`vpn-admin`) | App + SSH/Samba/HLS on the Pi + SSH on the router |
 | `fd00:10::c:0/112` → `fd00:10::c:N` | **Client** (`vpn-clients`, documentation only) | App only: TCP 8889 and UDP 8189 to the Pi, DNS and ping |
 | Anything else in `fd00:10::/64` | Not assigned | Same as client, if ever used |
 
