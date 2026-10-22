@@ -3,7 +3,7 @@
 # Mini NVR — Installer
 #
 # Usage: sudo ./install.sh
-# The recordings disk must already be mounted (see fstab).
+# The recordings disk must already be mounted (see Step 36 of reports/pi_services_guide.md).
 # ============================================================
 set -euo pipefail
 

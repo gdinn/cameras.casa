@@ -59,7 +59,7 @@ The recorder pulls RTSP straight from each camera, all the time. MediaMTX pulls 
 
 ### Copy the files to the Pi
 
-Every configuration file comes from the `nvr-setup/` folder of the repository. The values to fill in are placeholders (`<user>`, `<pass>`, `<disk-uuid>`). Fill them in **on the Pi**, never in the repository.
+Every configuration file comes from the `nvr-setup/` folder of the repository. The values to fill in are placeholders (`<user>`, `<pass>`). Fill them in **on the Pi**, never in the repository.
 
 ```bash
 # On the admin computer, from the repository root
@@ -68,7 +68,6 @@ scp -i ~/.ssh/cameras_pi -r nvr-setup '<user>@[fd00:20::cafe]:~/'
 
 | File | Used in |
 |---|---|
-| `fstab` | Step 36 (only the last line) |
 | `mediamtx.yml`, `mediamtx.service` | Steps 38–39 |
 | `install.sh`, `nvr.conf`, `bin/`, `service/` | Step 40 |
 | `smb.conf` | Step 43 |
@@ -81,15 +80,43 @@ The disk is **ext4**. It only holds recordings and is never plugged into another
 
 ### Step 35 — Format the disk as ext4
 
-Find the disk. The SD card is `mmcblk0`; the USB disk is usually `sda`. Check the size and the model before going on: **everything on the device below is erased**. If one of its partitions shows a `MOUNTPOINT`, unmount it first (`sudo umount <mountpoint>`).
+**a) Find the disk.** Plug in the USB disk and list the block devices:
 
 ```bash
 # On the Pi
-lsblk -o NAME,SIZE,FSTYPE,LABEL,MOUNTPOINT,MODEL
-DISK=/dev/<disk>                         # the whole disk, for example /dev/sda
+lsblk -o NAME,TYPE,SIZE,FSTYPE,LABEL,MOUNTPOINT,MODEL
 ```
 
-Create a single partition and the filesystem:
+The output looks like this (names, sizes and models vary):
+
+```
+NAME        TYPE  SIZE FSTYPE LABEL   MOUNTPOINT     MODEL
+sda         disk  3.6T                               Expansion HDD
+└─sda1      part  3.6T ntfs   Seagate /media/pi/...
+mmcblk0     disk 29.7G
+├─mmcblk0p1 part  512M vfat   bootfs  /boot/firmware
+└─mmcblk0p2 part 29.2G ext4   rootfs  /
+```
+
+How to read it:
+
+- Each line with `TYPE` **`disk`** is a whole device. The lines below it, drawn with `├─` and `└─`, are its partitions (`TYPE` **`part`**). `sda1` is the first partition **of** `sda`; it is not a folder inside it.
+- `mmcblk0` is the SD card the Pi boots from (`/` and `/boot/firmware`). **Never use it.**
+- The USB disk is the other `disk`, usually `sda`. Confirm it by its `SIZE` and `MODEL`: unplug it, run `lsblk` again, and it is the line that disappears.
+
+**b) Set `DISK` to the whole disk**, not to a partition: the name from the `disk` line, with `/dev/` in front. In the example above:
+
+```bash
+# On the Pi
+DISK=/dev/sda                            # the whole disk: not /dev/sda1, not /dev/sda/sda1
+lsblk -dno NAME,TYPE,SIZE,MODEL "$DISK"  # sda disk 3.6T Expansion HDD
+```
+
+The check must print `disk` and the size and model of the USB disk. If it prints `part`, `DISK` points to a partition: remove the number at the end. The commands below erase the whole disk and create its new partition themselves, which is why they need the disk and not an old partition. They refer to that new partition as `${DISK}1` (`/dev/sda1`), here and in Step 36.
+
+**c) Unmount it if needed.** If a partition of the disk shows a `MOUNTPOINT` (the Pi desktop mounts USB disks automatically under `/media`), unmount it first, for example `sudo umount /dev/sda1`. **Everything on the disk is erased** in the next commands.
+
+**d) Create a single partition and the filesystem:**
 
 ```bash
 # On the Pi
@@ -129,7 +156,13 @@ ls -A /mnt/backup_cams                   # empty
 sudo chattr +i /mnt/backup_cams
 ```
 
-**b) Add the disk to `/etc/fstab`.** Take the last line of `nvr-setup/fstab` and put in the UUID of the new partition (`DISK` is the one set in Step 35). Run it **once**: each run appends another line.
+**b) Add the disk to `/etc/fstab`.** The disk needs one line, identified by the UUID of its partition:
+
+```
+UUID=<disk-uuid>  /mnt/backup_cams  ext4  defaults,nofail,noatime,nosuid,nodev,noexec  0  2
+```
+
+The commands below read the UUID of the new partition (`DISK` is the one set in Step 35) and append the line. The other lines of `/etc/fstab` (`/proc`, `/boot/firmware` and `/`) stay as they are. Run it **once**: each run appends another line.
 
 ```bash
 # On the Pi
@@ -174,20 +207,35 @@ MediaMTX pulls RTSP from the cameras and serves it as WebRTC (WHEP) to the app, 
 
 ### Step 37 — Install the binary and its user
 
-MediaMTX is a single binary, published on [GitHub](https://github.com/bluenviron/mediamtx/releases). Pick the latest stable release and download the archive that matches the Pi:
+MediaMTX is a single binary, published on [GitHub](https://github.com/bluenviron/mediamtx/releases). The Pi finds the latest stable release by itself: GitHub redirects `releases/latest` to the page of that release, and the tag is the last part of its address. Pre-releases are never `latest`.
 
 ```bash
 # On the Pi
-uname -m        # aarch64: 64-bit system, use linux_arm64. armv7l: use linux_armv7
-VER=<version>   # the release tag, for example v1.x.y
-ARCH=linux_arm64
+VER=$(curl -fsSLI -o /dev/null -w '%{url_effective}' \
+    https://github.com/bluenviron/mediamtx/releases/latest)
+VER=${VER##*/}                           # keep only the tag
+echo "$VER"                              # v1.x.y
+```
+
+If `echo` prints `latest` or nothing, the Pi did not reach GitHub: check its internet access (`Rpi -> Internet`, Step 12) and try again.
+
+Pick the archive that matches the Pi's system and download it with its checksums:
+
+```bash
+# On the Pi
+case "$(uname -m)" in
+    aarch64) ARCH=linux_arm64 ;;         # 64-bit system
+    armv7l)  ARCH=linux_armv7 ;;         # 32-bit system
+    *)       echo "unsupported: $(uname -m)" ;;
+esac
+echo "$ARCH"
 cd /tmp
 curl -fLO "https://github.com/bluenviron/mediamtx/releases/download/${VER}/mediamtx_${VER}_${ARCH}.tar.gz"
 curl -fLO "https://github.com/bluenviron/mediamtx/releases/download/${VER}/checksums.sha256"
 grep "mediamtx_${VER}_${ARCH}.tar.gz" checksums.sha256 | sha256sum -c -
 ```
 
-Check the exact file names on the release page before downloading; if the checksums file has another name there, use that one. `sha256sum -c` must print `OK`.
+`sha256sum -c` must print `OK`. If a download fails with `404`, the release changed its file names: open the release page (`https://github.com/bluenviron/mediamtx/releases/tag/$VER`), and use the names listed there.
 
 Install only the binary. The example configuration in the archive is replaced in Step 38:
 
