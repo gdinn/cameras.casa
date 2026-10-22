@@ -50,7 +50,9 @@ Three product decisions shape most of the code:
 
 1. **The tunnel is foreground-only.** It is raised on `Lifecycle.Event.ON_RESUME` of the Home route
    and dropped on `ON_PAUSE`, with `VpnLifecycleService` as the safety net for task removal. The
-   tunnel is IPv6-only and routes `::/0`, so leaving it up would degrade unrelated apps.
+   tunnel is an IPv6 split tunnel that only carries the Pi and the router, so this is not about
+   other apps' traffic: it limits how long the device stays connected to the home network and the
+   battery cost of the 25-second persistent keepalive.
 2. **Everything persisted is encrypted at rest.** Both DataStore files are AES-encrypted with a
    key held in the Android Keystore, because one of them holds WireGuard private key material.
 3. **The stream set is user-configurable.** URLs, display order (per orientation) and grid geometry

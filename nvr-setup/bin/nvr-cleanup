@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# ============================================================
+# nvr-cleanup — Applies the retention policy and frees space
+#
+# Runs daily from the nvr-cleanup.timer systemd timer
+# ============================================================
+set -euo pipefail
+
+CONF_FILE="/etc/nvr/nvr.conf"
+source "$CONF_FILE"
+
+STORAGE_DIR="${STORAGE_DIR:-/mnt/backup_cams}"
+RETENTION_DAYS="${RETENTION_DAYS:-30}"
+MIN_FREE_SPACE_MB="${MIN_FREE_SPACE_MB:-1024}"
+
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [cleanup] $*"
+}
+
+log "Starting cleanup (retention: ${RETENTION_DAYS} days)"
+
+# --- Counters --------------------------------------------------------
+total_removed=0
+total_bytes_freed=0
+
+# --- Delete files past the retention --------------------------------
+while IFS= read -r -d '' file; do
+    size=$(stat -c%s "$file" 2>/dev/null || echo 0)
+    rm -f "$file"
+    total_removed=$((total_removed + 1))
+    total_bytes_freed=$((total_bytes_freed + size))
+done < <(find "$STORAGE_DIR" -name "*.mp4" -type f -mtime +"$RETENTION_DAYS" -print0 2>/dev/null)
+
+# --- Delete empty day directories ------------------------------------
+find "$STORAGE_DIR" -mindepth 2 -type d -empty -delete 2>/dev/null || true
+
+# --- Check free space ------------------------------------------------
+get_free_mb() {
+    df --output=avail -BM "$STORAGE_DIR" | tail -1 | tr -d ' M'
+}
+
+free_mb=$(get_free_mb)
+if (( free_mb < MIN_FREE_SPACE_MB )); then
+    log "WARNING: low space (${free_mb}MB). Deleting the oldest files..."
+
+    # Process substitution (not a pipe) so the counters survive the loop
+    while read -r _ts size filepath; do
+        rm -f "$filepath"
+        total_removed=$((total_removed + 1))
+        total_bytes_freed=$((total_bytes_freed + size))
+        free_mb=$(get_free_mb)
+        if (( free_mb >= MIN_FREE_SPACE_MB )); then
+            log "Space recovered: ${free_mb}MB free."
+            break
+        fi
+    done < <(find "$STORAGE_DIR" -name "*.mp4" -type f -printf '%T+ %s %p\n' 2>/dev/null | sort)
+
+    find "$STORAGE_DIR" -mindepth 2 -type d -empty -delete 2>/dev/null || true
+fi
+
+# --- Report ----------------------------------------------------------
+freed_mb=$((total_bytes_freed / 1024 / 1024))
+free_mb=$(get_free_mb)
+
+log "Done: $total_removed files deleted (~${freed_mb}MB freed)"
+log "Current free space: ${free_mb}MB"
+
+# --- Usage per camera ------------------------------------------------
+log "--- Usage per camera ---"
+for cam_dir in "$STORAGE_DIR"/cam*; do
+    if [[ -d "$cam_dir" ]]; then
+        cam_name=$(basename "$cam_dir")
+        cam_size=$(du -sh "$cam_dir" 2>/dev/null | cut -f1)
+        cam_files=$(find "$cam_dir" -name "*.mp4" -type f | wc -l)
+        log "  $cam_name: $cam_size ($cam_files files)"
+    fi
+done

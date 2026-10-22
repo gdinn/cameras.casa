@@ -1,0 +1,17 @@
+[Unit]
+Description=NVR Cleanup - Retention Policy
+After=network.target
+RequiresMountsFor=/mnt/backup_cams
+
+[Service]
+Type=oneshot
+User=nvr
+Group=nvr
+ExecStart=/usr/local/bin/nvr-cleanup
+ReadWritePaths=/mnt/backup_cams
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=nvr-cleanup

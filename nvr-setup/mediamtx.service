@@ -1,0 +1,32 @@
+[Unit]
+Description=MediaMTX - WebRTC/HLS server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Unprivileged user: mediamtx.yml holds the camera credentials, keep it root:mediamtx 640.
+User=mediamtx
+Group=mediamtx
+ExecStart=/opt/mediamtx/mediamtx /opt/mediamtx/mediamtx.yml
+WorkingDirectory=/opt/mediamtx/
+
+# Restart automatically if the process fails
+Restart=always
+RestartSec=5
+
+# Hardening: every listener is above 1024 and nothing is written to disk.
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

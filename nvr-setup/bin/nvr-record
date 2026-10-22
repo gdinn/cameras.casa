@@ -1,0 +1,212 @@
+#!/usr/bin/env bash
+# ============================================================
+# nvr-record — Records a camera stream as MP4 (H.264) segments
+#
+# Usage: nvr-record <camera_id>
+# E.g.:  nvr-record cam_10
+#
+# Meant to run as a systemd service (nvr@cam_10.service)
+# ============================================================
+set -euo pipefail
+
+CAMERA_ID="${1:?Usage: nvr-record <camera_id>  (e.g. cam_10)}"
+CONF_FILE="/etc/nvr/nvr.conf"
+
+# --- Load the configuration -----------------------------------------
+if [[ ! -f "$CONF_FILE" ]]; then
+    echo "[ERROR] Configuration file not found: $CONF_FILE" >&2
+    exit 1
+fi
+source "$CONF_FILE"
+
+# --- Resolve the camera URL -----------------------------------------
+CAM_VAR="${CAMERA_ID^^}_URL"   # cam_10 -> CAM_10_URL
+STREAM_URL="${!CAM_VAR:-}"
+
+NAME_VAR="${CAMERA_ID^^}_NAME"
+CAM_NAME="${!NAME_VAR:-$CAMERA_ID}"
+
+if [[ -z "$STREAM_URL" ]]; then
+    echo "[ERROR] No URL configured for $CAMERA_ID ($CAM_VAR)" >&2
+    exit 1
+fi
+
+# Same URL without the credentials, for the logs
+SAFE_URL="$(sed -E 's#//[^/@]*@#//***@#' <<<"$STREAM_URL")"
+
+# --- Settings with defaults -----------------------------------------
+SEGMENT_DURATION="${SEGMENT_DURATION:-900}"
+VIDEO_CODEC="${VIDEO_CODEC:-copy}" # Use 'libx264' if the source stream is not H.264
+STORAGE_DIR="${STORAGE_DIR:-/mnt/backup_cams}"
+FFMPEG_LOG_LEVEL="${FFMPEG_LOG_LEVEL:-error}"
+RTSP_TRANSPORT="${RTSP_TRANSPORT:-tcp}"
+RTSP_TIMEOUT="${RTSP_TIMEOUT:-5000000}"
+MAX_RECONNECT_ATTEMPTS="${MAX_RECONNECT_ATTEMPTS:-0}"
+RECONNECT_DELAY="${RECONNECT_DELAY:-10}"
+MIN_FREE_SPACE_MB="${MIN_FREE_SPACE_MB:-1024}"
+
+# --- Helpers ---------------------------------------------------------
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [$CAMERA_ID/$CAM_NAME] $*"
+}
+
+get_free_space_mb() {
+    df --output=avail -BM "$STORAGE_DIR" | tail -1 | tr -d ' M'
+}
+
+check_disk_space() {
+    local free
+    free=$(get_free_space_mb)
+    if (( free < MIN_FREE_SPACE_MB )); then
+        log "WARNING: low disk space (${free}MB free). Running emergency cleanup..."
+        emergency_cleanup
+        free=$(get_free_space_mb)
+        if (( free < MIN_FREE_SPACE_MB )); then
+            log "ERROR: not enough space even after cleanup (${free}MB). Pausing..."
+            return 1
+        fi
+    fi
+    return 0
+}
+
+emergency_cleanup() {
+    # Delete this camera's oldest files until enough space is free
+    local cam_dir="$STORAGE_DIR/$CAMERA_ID"
+    find "$cam_dir" -name "*.mp4" -type f -printf '%T+ %p\n' 2>/dev/null \
+        | sort \
+        | head -20 \
+        | while read -r _ts filepath; do
+            log "Emergency cleanup: deleting $filepath"
+            rm -f "$filepath"
+            local free
+            free=$(get_free_space_mb)
+            if (( free >= MIN_FREE_SPACE_MB )); then
+                break
+            fi
+        done
+
+    # Delete empty directories
+    find "$cam_dir" -mindepth 1 -type d -empty -delete 2>/dev/null || true
+}
+
+# Create today's AND tomorrow's directories
+ensure_dirs() {
+    local cam_base="$STORAGE_DIR/$CAMERA_ID"
+    mkdir -p "$cam_base/$(date '+%Y/%m/%d')"
+    mkdir -p "$cam_base/$(date -d tomorrow '+%Y/%m/%d')"
+}
+
+# ffmpeg does not create directories: when a segment starts on a new day, its
+# directory must already exist. Keep today's and tomorrow's in place for as long
+# as the session runs (the daily cleanup may also delete an empty one).
+keep_dirs() {
+    while true; do
+        ensure_dirs || true
+        sleep 600
+    done
+}
+
+# Output pattern with strftime placeholders in the full path
+get_output_path() {
+    local cam_base="$STORAGE_DIR/$CAMERA_ID"
+    ensure_dirs
+    echo "$cam_base/%Y/%m/%d/${CAMERA_ID}_%Y-%m-%d_%H-%M-%S.mp4"
+}
+
+# --- Signal handling ------------------------------------------------
+cleanup() {
+    log "Stop signal received. Stopping FFmpeg..."
+    # Kill the whole child process group
+    kill -- -$$ 2>/dev/null || true
+    wait 2>/dev/null || true
+    log "Stopped."
+    exit 0
+}
+
+trap cleanup SIGTERM SIGINT SIGHUP
+
+# --- Main loop with reconnection ------------------------------------
+main() {
+    log "Starting recording"
+    log "  Stream: $SAFE_URL"
+    log "  Segments: ${SEGMENT_DURATION}s"
+    log "  Destination: $STORAGE_DIR/$CAMERA_ID/"
+
+    keep_dirs &
+    KEEPER_PID=$!
+    trap 'kill "$KEEPER_PID" 2>/dev/null || true' EXIT
+
+    local attempt=0
+    while true; do
+        if ! check_disk_space; then
+            sleep "$RECONNECT_DELAY"
+            continue
+        fi
+
+        local output_pattern
+        output_pattern=$(get_output_path)
+
+        log "Connecting to the stream..."
+
+        local ffmpeg_args=()
+        ffmpeg_args+=(-hide_banner -loglevel "$FFMPEG_LOG_LEVEL" -y)
+
+        if [[ "$STREAM_URL" == rtsp://* ]]; then
+            ffmpeg_args+=(
+                -rtsp_transport "$RTSP_TRANSPORT"
+                -timeout "$RTSP_TIMEOUT"
+            )
+        elif [[ "$STREAM_URL" == http* ]]; then
+            ffmpeg_args+=(
+                -reconnect 1
+                -reconnect_streamed 1
+                -reconnect_delay_max 10
+            )
+        fi
+
+        # Avoid needless input buffering for live streams
+        ffmpeg_args+=(-fflags +nobuffer)
+
+        ffmpeg_args+=(
+            -i "$STREAM_URL"
+            -c:v "$VIDEO_CODEC"
+            -c:a copy
+            # The avc1 tag keeps H.264 in MP4 compatible with most players (e.g. Apple)
+            -tag:v avc1
+            -f segment
+            -segment_time "$SEGMENT_DURATION"
+            -segment_format mp4
+            -segment_atclocktime 1
+            -reset_timestamps 1
+            -strftime 1
+            -movflags +faststart
+            "$output_pattern"
+        )
+
+        local exit_code
+        set +e
+        # ffmpeg prints the input URL in its errors: hide the credentials there too
+        ffmpeg "${ffmpeg_args[@]}" 2> >(sed -u -E 's#//[^/@ ]*@#//***@#g' >&2)
+        exit_code=$?
+        set -e
+
+        if [[ $exit_code -eq 255 ]] || [[ $exit_code -eq 130 ]]; then
+            log "Stopped by a signal (exit=$exit_code). Exiting."
+            break
+        fi
+
+        attempt=$((attempt + 1))
+        if [[ "$MAX_RECONNECT_ATTEMPTS" -gt 0 ]] && [[ $attempt -ge "$MAX_RECONNECT_ATTEMPTS" ]]; then
+            log "ERROR: maximum attempts ($MAX_RECONNECT_ATTEMPTS) reached. Exiting."
+            exit 1
+        fi
+
+        log "Stream disconnected (exit=$exit_code). Reconnecting in ${RECONNECT_DELAY}s... (attempt $attempt)"
+        sleep "$RECONNECT_DELAY"
+    done
+
+    log "Recording finished."
+}
+
+# --- Run -------------------------------------------------------------
+main

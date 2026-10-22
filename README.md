@@ -39,8 +39,10 @@ The app has five navigation destinations, declared as type-safe `@Serializable` 
 
 An important design decision: **the VPN tunnel is only active while the app is in the foreground.** It's raised on the Home route's `ON_RESUME` and torn down on `ON_PAUSE`, with a `VpnLifecycleService` as a safety net if the task is removed. This exists for two reasons:
 
-- to avoid routing the device's traffic through the camera network when the app isn't actively in use;
-- because the tunnel is IPv6-only and routes `::/0`, so some apps/services stop working correctly while it's connected — minimizing exposure time limits that side effect.
+- to keep the device connected to the home network only while the cameras are being watched, which limits exposure;
+- to save battery: the 25-second persistent keepalive wakes the device's radio for as long as the tunnel is up.
+
+The tunnel is a split tunnel: it only carries the Raspberry Pi (`fd00:20::cafe`) and the router (`fd00:10::1`, the tunnel's DNS server). The rest of the device's traffic keeps using its own network, so other apps are not affected while it's connected.
 
 ## The `vpn.json` file and QR code provisioning
 
@@ -52,7 +54,7 @@ Instead of typing WireGuard configuration by hand, the app is provisioned by sca
     "iDns": "fd00:10::1",
     "iMtu": "1280",
     "pPuk": "<server / peer public key>",
-    "pAllowedips": "::/0, 0.0.0.0/0",
+    "pAllowedips": "fd00:20::cafe/128, fd00:10::1/128",
     "pEndpoint": "example.com:4567",
     "pPersistentKeepAlive": "25"
   },
