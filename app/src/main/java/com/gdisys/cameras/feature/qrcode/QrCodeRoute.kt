@@ -1,11 +1,9 @@
 package com.gdisys.cameras.feature.qrcode
 
-import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
-import com.gdisys.cameras.core.DEBUG_TAG
 import com.gdisys.cameras.core.components.ToastDisplayer
 import com.gdisys.cameras.feature.qrcode.components.QrCodeScreen
 
@@ -26,8 +24,9 @@ fun QrCodeRoute(
   }
 
   LaunchedEffect(viewModel) {
+    // The raw value is never logged: a real QR code carries the WireGuard private key and the
+    // preshared key, and logcat is readable by anyone with adb access and ends up in test artifacts.
     viewModel.qrCodeScannedEvent.collect { rawValue ->
-      Log.d(DEBUG_TAG, "QrCodeRoute: $rawValue")
       onCodeScanned(rawValue)
     }
   }

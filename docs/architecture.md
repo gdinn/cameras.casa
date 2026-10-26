@@ -357,6 +357,12 @@ holds a plain `hasScanned` boolean (deliberately not state) to make the scan sin
 between scanner visits. `QrCodeAnalyzer` keeps its own `isScanned` guard, so debouncing exists at
 both levels.
 
+**The payload is never logged.** A real QR code carries the WireGuard private key and the
+preshared key, and logcat is readable over adb and ends up in test artifacts. So neither
+`QrCodeAnalyzer` nor `QrCodeRoute` logs the raw value, and `ConfigViewModel` logs only the
+exception *type* of a failed decode — kotlinx.serialization quotes the offending JSON input in its
+exception messages, which would leak the same keys.
+
 ### 5.4 `feature/streamurls` — stream and grid configuration
 
 ![MVVM — StreamURLs route](images/mvvm-streamurls-route.png)

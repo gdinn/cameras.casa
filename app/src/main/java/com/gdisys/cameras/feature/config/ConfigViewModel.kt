@@ -166,7 +166,9 @@ class ConfigViewModel @Inject constructor(
         }
       },
       onFailure = { e ->
-        Log.e(DEBUG_TAG, "QR Code scan error", e)
+        // Only the exception type: kotlinx.serialization quotes the offending JSON input in its
+        // messages, and that input is the QR payload with the VPN private key in it.
+        Log.e(DEBUG_TAG, "QR Code scan error: ${e::class.simpleName}")
         _qrCodeError.value = true
         updateUserPreferences(UserPreferences())
         showToast(ConfigToastMessage.QR_CODE_FORMAT_ERROR)

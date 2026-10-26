@@ -43,7 +43,6 @@ class QrCodeAnalyzer(
 
           if (barcode != null && !isScanned) {
             val rawValue = barcode.rawValue!!
-            Log.d("QrCodeAnalyzer", "Scanned content: $rawValue")
             isScanned = true
             onQrCodeScanned(rawValue)
           }
