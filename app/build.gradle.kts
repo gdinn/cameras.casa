@@ -314,15 +314,16 @@ fun unitTestExecutionData(): ConfigurableFileTree =
  * Output: app/build/reports/jacoco/jacocoTestReport/html/index.html
  *
  * The scope is filtered down to the logic this project expects to cover with plain JUnit (the
- * rationale is in docs/architecture.md §9.4). Left out: generated code (R, BuildConfig, Hilt/Dagger,
+ * rationale is in docs/architecture.md §2). Left out: generated code (R, BuildConfig, Hilt/Dagger,
  * KSP factories), and the code the project decided deliberately not to cover with unit tests —
  * Compose UI (screens and composables), bootstrap (MainActivity, CamerasApp, NavigationRoot), the
  * theme, and anything backed by a native/hardware stack with no JVM shadow (native WebRTC,
  * GoBackend/WireGuard, AndroidKeyStore, Android Service).
  *
- * Compose UI is excluded **by decision**, not because it is covered elsewhere: the Compose UI Test
- * dependencies are wired, but `src/androidTest/` holds no test of its own yet. Saying it is "tested
- * via Compose UI Test" would be a claim this repository does not back up.
+ * Compose UI is excluded **by decision**. `src/androidTest/` does cover ConfigScreen,
+ * StreamURLsScreen and EmptyStreamsScreen with Compose UI tests (docs/architecture.md §10), but
+ * those run on a device and feed nothing into this report: it measures unit tests only, and the
+ * other screens and composables have no test at all.
  *
  * The patterns above are plain strings with no link to the code, so JacocoExclusionsTest resolves
  * each one against the compiled classes and fails the build when one stops matching.

@@ -742,7 +742,7 @@ Declared in `gradle/libs.versions.toml` and consumed via the version catalog.
 | `org.jetbrains.kotlinx:kotlinx-coroutines-test` | 1.9.0 | `MainDispatcherRule`, virtual time |
 | `com.squareup.okhttp3:mockwebserver` | 4.12.0 | `WhepRemoteDataSourceImplTest` |
 | `com.lemonappdev:konsist` | 0.17.3 | `LayerDependencyTest` |
-| `androidx.compose.ui:ui-test-junit4`, `androidx.test.ext:junit`, `espresso-core` | — | Wired for instrumented tests |
+| `androidx.compose.ui:ui-test-junit4`, `androidx.test.ext:junit`, `espresso-core` | — | Instrumented screen tests (§10) |
 
 ### 8.3 Non-Gradle external asset
 
@@ -758,7 +758,7 @@ values.
 
 Everything a strict Clean Architecture + MVVM reading of this tree used to flag has been closed,
 except the two entries below. Both are recorded on purpose: the first is a deliberate exception you
-should not "fix", the second is a real gap that is simply not closed yet.
+should not "fix", the second is a real gap that is only partly closed.
 
 ### 9.1 `core/webrtc` contracts sit at the package root — deliberate
 
@@ -773,14 +773,18 @@ actually protects that boundary is the separate `feature → .data.` rule — th
 depends on the contracts and never on `core/webrtc/data`. This is written on `domainFiles()` in
 `LayerDependencyTest` as well, which is where someone extending the rules will be looking.
 
-### 9.2 Instrumented tests are still the generated stub — open
+### 9.2 Instrumented tests cover the screens, not the flows — open
 
-`src/androidTest/` holds only the generated `ExampleInstrumentedTest`. The Compose UI Test
-dependencies are wired but unused. That no longer contradicts anything — the JaCoCo KDoc says
-Compose UI is excluded *by decision* rather than claiming it is covered elsewhere — but the
-highest-value tests to add, if someone picks this up, are `ConfigScreen` (the four
-`ConfigButtonState` renderings and the navigation gate), `StreamURLsScreen` (add/remove/reset and
-the per-section dirty flags) and `EmptyStreamsScreen`.
+`ConfigScreen`, `StreamURLsScreen` and `EmptyStreamsScreen` now have Compose UI tests
+([§10](#10-testing-and-quality-gates)). They render each screen alone, with a hand-written state, so
+they prove what a screen shows and which callback it fires, and nothing past that. Still uncovered
+on a device:
+
+- `HomeScreen` and the video grid, which need `EglBase` and WebRTC.
+- Flows through the real `MainActivity`: navigation, ViewModels, use cases and the encrypted
+  DataStore together, with Hilt test doubles replacing only what leaves the process (WireGuard
+  tunnel, WHEP/WebRTC, permissions, the QR scanner).
+- The system dialogs (VPN consent, camera permission), which only UI Automator can drive.
 
 The gap that used to sit next to this one — release builds not being minified — is closed:
 `isMinifyEnabled = true` and `proguard-rules.pro` carries the keep rules, described in
@@ -825,6 +829,66 @@ Useful commands:
 
 Note that `LayerDependencyTest` and `StreamHostTest` are ordinary unit tests, so a layering
 violation or a host/XML mismatch fails `testDebugUnitTest` like any other regression.
+
+**Instrumented screen tests.** 30 Compose UI tests under `app/src/androidTest/`, with packages
+mirroring `main`:
+
+| Test | Covers |
+|---|---|
+| `ConfigScreenTest` (10) | Each step's state as `stateDescription`, the callback each step and the Home button fire, the Home button label ("Navigate to" vs. "Back to") |
+| `StreamURLsScreenTest` (18) | Loading, empty list, row order and removal, the add form, the four confirmation dialogs, the grid fields per orientation, when "Save grid" is enabled |
+| `EmptyStreamsScreenTest` (2) | The message and the "Reconfigure" shortcut |
+
+They test screens in isolation: `createComposeRule` renders a `*Screen` with a hand-written
+`uiState` inside `setThemedContent` (`testing/ComposeTestSupport.kt`), and the test asserts what it
+shows and which callback each interaction fires. No Hilt, navigation or fakes, so the default
+`AndroidJUnitRunner` is enough. Conventions:
+
+- Nodes are found by test tag. The tags are `const val`s in one object per feature, in `main` next
+  to the components (`ConfigTestTags`, `StreamURLsTestTags`, `HomeTestTags`). Their names match the
+  `**/*Test*.*` coverage filter, so they stay out of JaCoCo.
+- State is read from semantics, not from icons or colors: `ConfigButton` exposes its
+  `ConfigButtonState` as `stateDescription`, which is also what TalkBack announces.
+- Text is asserted only when the test is about the text, and always resolved with
+  `string(R.string.x)`, never written as a literal (see the locale run below).
+- Test names are camelCase (`homeButtonRequestsNavigation`). Backtick names with spaces, as in the
+  unit tests, cannot be compiled into the test APK while `minSdk` is below 30.
+
+These tests are not in JaCoCo, which measures unit tests only, and no CI job runs them yet
+(§10.1). They need a running emulator or a device:
+
+```bash
+./gradlew :app:connectedDebugAndroidTest       # the whole instrumented suite
+./gradlew :app:connectedDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=com.gdisys.cameras.feature.config.components.ConfigScreenTest
+# report → app/build/reports/androidTests/connected/debug/index.html
+```
+
+The suite was validated on an AVD `Pixel_8a` running API 37 with the AOSP image
+`system-images;android-37.0;default;arm64-v8a` (4 GB RAM). Three things matter on that setup:
+`platform-tools` 37 or newer (an older `adb` leaves the API 37 emulator `offline`), a cold boot
+(`emulator -avd Pixel_8a -no-snapshot-load`, since restoring the snapshot had the same effect), and
+animations turned off, which keeps dialogs and ripples from making tests flaky:
+
+```bash
+for k in window_animation_scale transition_animation_scale animator_duration_scale; do
+  adb shell settings put global $k 0
+done
+```
+
+**Run it in both languages.** The screens are translated (`values-en`, `values-pt-rBR`) and the
+tests resolve strings in the device locale, so the suite must pass in both. A test that passes only
+in English has hardcoded a text somewhere. Changing the emulator locale from the shell needs
+`adb root`, which is why the image is the AOSP `default` one: it is a `userdebug` build, while the
+Play Store images are `user` builds and refuse root. The framework restart takes about 15 s:
+
+```bash
+adb root
+adb shell "setprop persist.sys.locale pt-BR; stop; start"
+adb shell 'while [ "$(getprop sys.boot_completed)" != "1" ]; do sleep 2; done'
+./gradlew :app:connectedDebugAndroidTest
+adb shell "setprop persist.sys.locale en-US; stop; start"   # back to the default
+```
 
 ### 10.1 Continuous integration
 
@@ -939,8 +1003,8 @@ id, which is why the tagged build is attached to a Release instead: a stable URL
 tag exists. The mapping file rides along with the APK it belongs to, since a crash report from the
 field cannot be de-obfuscated without the exact file from the build that produced that binary.
 
-Two things neither pipeline does: there is no instrumented-test job, because `src/androidTest/`
-still holds only the generated stub (§9.2), and there is no separate lint job, because
+Two things neither pipeline does: there is no instrumented-test job yet, so the screen tests
+(§10) only run on a local emulator, and there is no separate lint job, because
 `assembleRelease` already runs `lintVitalRelease`. Adding either one is a matter of adding a job,
 not of reworking a workflow.
 

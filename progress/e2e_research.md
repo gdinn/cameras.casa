@@ -201,6 +201,9 @@ tocando). É o único que pega erros do R8 em runtime.
 
 ### 6.1 Nível A: telas isoladas (comece aqui)
 
+> **Feito**, conforme o plano `e2e_level_a_plan.md`: `ConfigScreenTest`, `StreamURLsScreenTest` e
+> `EmptyStreamsScreenTest`, 30 testes, documentados no `docs/architecture.md` §10.
+
 ```kotlin
 class ConfigScreenTest {
   @get:Rule val composeRule = createComposeRule()

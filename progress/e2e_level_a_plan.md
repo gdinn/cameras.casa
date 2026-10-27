@@ -363,6 +363,12 @@ adb shell "setprop persist.sys.locale en-US; stop; start"   # volta ao padrão
 | `app/build.gradle.kts` (KDoc do `jacocoTestReport`) | Hoje diz que `src/androidTest/` "holds no test of its own yet". Passa a dizer que as telas têm testes instrumentados, mas fora do JaCoCo, que mede só unit tests |
 | `e2e_research.md` | Marcar o §6.1 como feito, apontando para este plano |
 
+**Feito.** O `architecture.md` ganhou a nota "Instrumented screen tests" no §10 (testes, convenções,
+como rodar e a execução em pt-BR), o §9.2 passou a listar o que falta (Home, fluxos com Hilt,
+diálogos do sistema), e o §8.2 e o §10.1 deixaram de falar em stub. O §5.2 já explicava o `enabled`
+só visual do `ConfigButton`. O KDoc do `jacocoTestReport` foi ajustado e também perdeu uma
+referência ao §9.4, que não existe mais (o motivo das exclusões está no §2).
+
 ---
 
 ## 7. Commits sugeridos (na `feat/e2e_tests`)
@@ -387,7 +393,7 @@ O `e2e_research.md`, que está staged, pode entrar junto do commit 5 ou antes, n
 - [x] Rodar a suíte 3x seguidas sem falha intermitente.
 - [x] Previews inalterados.
 - [x] TalkBack anuncia o estado de cada passo do Config (verificação manual rápida).
-- [ ] Documentação do §6 atualizada.
+- [x] Documentação do §6 atualizada.
 
 ## 9. Riscos
 
