@@ -16,6 +16,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -49,6 +50,7 @@ fun LazyListScope.gridPreferencesSection(
 
   item {
     GridOrientationBlock(
+      orientation = StreamOrientation.PORTRAIT,
       title = stringResource(R.string.stream_urls_screen_grid_portrait),
       gridInput = uiState.portraitGridInput,
       onColumnsChanged = { onColumnsChanged(StreamOrientation.PORTRAIT, it) },
@@ -59,6 +61,7 @@ fun LazyListScope.gridPreferencesSection(
 
   item {
     GridOrientationBlock(
+      orientation = StreamOrientation.LANDSCAPE,
       title = stringResource(R.string.stream_urls_screen_grid_landscape),
       gridInput = uiState.landscapeGridInput,
       onColumnsChanged = { onColumnsChanged(StreamOrientation.LANDSCAPE, it) },
@@ -73,6 +76,7 @@ fun LazyListScope.gridPreferencesSection(
       horizontalArrangement = Arrangement.End
     ) {
       Button(
+        modifier = Modifier.testTag(StreamURLsTestTags.SAVE_GRID_BUTTON),
         onClick = onSaveGridRequested,
         enabled = uiState.isSaveGridButtonEnabled
       ) {
@@ -85,6 +89,7 @@ fun LazyListScope.gridPreferencesSection(
 @Composable
 private fun GridOrientationBlock(
   modifier: Modifier = Modifier,
+  orientation: StreamOrientation,
   title: String,
   gridInput: GridInput,
   onColumnsChanged: (String) -> Unit,
@@ -103,7 +108,9 @@ private fun GridOrientationBlock(
         verticalAlignment = Alignment.CenterVertically
       ) {
         OutlinedTextField(
-          modifier = Modifier.weight(1f),
+          modifier = Modifier
+            .weight(1f)
+            .testTag(StreamURLsTestTags.gridColumnsInput(orientation)),
           value = gridInput.columns,
           onValueChange = onColumnsChanged,
           singleLine = true,
@@ -112,7 +119,9 @@ private fun GridOrientationBlock(
         )
 
         OutlinedTextField(
-          modifier = Modifier.weight(1f),
+          modifier = Modifier
+            .weight(1f)
+            .testTag(StreamURLsTestTags.gridRowsInput(orientation)),
           value = gridInput.rows,
           onValueChange = onRowsChanged,
           // In dynamic mode the row count is ignored: the field is disabled rather than cleared,
@@ -126,6 +135,7 @@ private fun GridOrientationBlock(
 
       Row(verticalAlignment = Alignment.CenterVertically) {
         Checkbox(
+          modifier = Modifier.testTag(StreamURLsTestTags.gridDynamicRowsCheckbox(orientation)),
           checked = gridInput.dynamicRows,
           onCheckedChange = onDynamicRowsChanged
         )
@@ -142,6 +152,7 @@ private fun GridOrientationBlock(
 @Composable
 fun GridOrientationBlockPreview() {
   GridOrientationBlock(
+    orientation = StreamOrientation.PORTRAIT,
     title = "Portrait",
     gridInput = GridInput(columns = "1", rows = "1", dynamicRows = true),
     onColumnsChanged = {},
@@ -154,6 +165,7 @@ fun GridOrientationBlockPreview() {
 @Composable
 fun GridOrientationBlockFixedRowsPreview() {
   GridOrientationBlock(
+    orientation = StreamOrientation.LANDSCAPE,
     title = "Landscape",
     gridInput = GridInput(columns = "2", rows = "2", dynamicRows = false),
     onColumnsChanged = {},

@@ -25,6 +25,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
@@ -65,7 +66,10 @@ fun StreamURLsScreen(
       TopAppBar(
         title = { Text(stringResource(R.string.stream_urls_screen_title)) },
         navigationIcon = {
-          IconButton(onClick = onBack) {
+          IconButton(
+            modifier = Modifier.testTag(StreamURLsTestTags.BACK_BUTTON),
+            onClick = onBack
+          ) {
             Icon(
               imageVector = Icons.AutoMirrored.Filled.ArrowBack,
               contentDescription = stringResource(R.string.stream_urls_screen_navigate_back)
@@ -86,7 +90,8 @@ fun StreamURLsScreen(
       modifier = Modifier
         .fillMaxSize()
         .padding(innerPadding)
-        .padding(horizontal = 12.dp),
+        .padding(horizontal = 12.dp)
+        .testTag(StreamURLsTestTags.LIST),
       verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
       item {
@@ -152,6 +157,7 @@ private fun LazyListScope.streamUrlsSection(
         fontWeight = FontWeight.Bold
       )
       IconButton(
+        modifier = Modifier.testTag(StreamURLsTestTags.ADD_URL_BUTTON),
         onClick = onShowAddUrlForm,
         enabled = uiState.isAddUrlButtonEnabled
       ) {
@@ -166,6 +172,7 @@ private fun LazyListScope.streamUrlsSection(
   if (uiState.streamUrls.isEmpty()) {
     item {
       Text(
+        modifier = Modifier.testTag(StreamURLsTestTags.NO_URLS_MESSAGE),
         text = stringResource(R.string.stream_urls_screen_no_urls),
         style = MaterialTheme.typography.bodyMedium
       )
@@ -174,6 +181,7 @@ private fun LazyListScope.streamUrlsSection(
 
   items(uiState.streamUrls, key = { it }) { url ->
     StreamUrlRow(
+      modifier = Modifier.testTag(StreamURLsTestTags.urlRow(url)),
       url = url,
       onRemove = { onRemoveUrl(url) }
     )
@@ -198,10 +206,16 @@ private fun LazyListScope.streamUrlsSection(
       horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
       verticalAlignment = Alignment.CenterVertically
     ) {
-      OutlinedButton(onClick = onLoadDefaultsRequested) {
+      OutlinedButton(
+        modifier = Modifier.testTag(StreamURLsTestTags.LOAD_DEFAULTS_BUTTON),
+        onClick = onLoadDefaultsRequested
+      ) {
         Text(stringResource(R.string.stream_urls_screen_load_defaults))
       }
-      Button(onClick = onSaveUrlsRequested) {
+      Button(
+        modifier = Modifier.testTag(StreamURLsTestTags.SAVE_URLS_BUTTON),
+        onClick = onSaveUrlsRequested
+      ) {
         Text(stringResource(R.string.stream_urls_screen_save_urls))
       }
     }
@@ -267,12 +281,18 @@ private fun ConfirmationDialog(
     title = { Text(title) },
     text = { Text(message) },
     confirmButton = {
-      TextButton(onClick = onConfirm) {
+      TextButton(
+        modifier = Modifier.testTag(StreamURLsTestTags.DIALOG_CONFIRM_BUTTON),
+        onClick = onConfirm
+      ) {
         Text(confirmLabel)
       }
     },
     dismissButton = {
-      TextButton(onClick = onDismiss) {
+      TextButton(
+        modifier = Modifier.testTag(StreamURLsTestTags.DIALOG_DISMISS_BUTTON),
+        onClick = onDismiss
+      ) {
         Text(stringResource(R.string.stream_urls_dialog_dismiss))
       }
     }

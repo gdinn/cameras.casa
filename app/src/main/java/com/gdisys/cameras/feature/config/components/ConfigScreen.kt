@@ -22,6 +22,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -54,7 +55,7 @@ fun ConfigScreen(
         verticalArrangement = Arrangement.spacedBy(8.dp),
       ) {
         ConfigButton(
-          modifier = Modifier,
+          modifier = Modifier.testTag(ConfigTestTags.CAMERA_PERMISSION_STEP),
           imageVector = Icons.Filled.CameraAlt,
           title = stringResource(R.string.config_screen_camera_permission_title),
           subTitle = stringResource(R.string.config_screen_camera_permission_subtitle),
@@ -63,7 +64,7 @@ fun ConfigScreen(
         )
 
         ConfigButton(
-          modifier = Modifier,
+          modifier = Modifier.testTag(ConfigTestTags.QR_CODE_STEP),
           imageVector = Icons.Filled.QrCode,
           title = stringResource(R.string.config_screen_load_configuration_title),
           subTitle = stringResource(R.string.config_screen_load_configuration_subtitle),
@@ -73,7 +74,7 @@ fun ConfigScreen(
         )
 
         ConfigButton(
-          modifier = Modifier,
+          modifier = Modifier.testTag(ConfigTestTags.VPN_PERMISSION_STEP),
           imageVector = Icons.Filled.Key,
           title = stringResource(R.string.config_screen_vpn_permission_title),
           subTitle = stringResource(R.string.config_screen_vpn_permission_subtitle),
@@ -82,7 +83,7 @@ fun ConfigScreen(
         )
 
         ConfigButton(
-          modifier = Modifier,
+          modifier = Modifier.testTag(ConfigTestTags.STREAM_URLS_STEP),
           imageVector = Icons.Filled.LiveTv,
           title = stringResource(R.string.config_screen_stream_urls_title),
           subTitle = stringResource(R.string.config_screen_stream_urls_subtitle),
@@ -92,9 +93,9 @@ fun ConfigScreen(
       }
 
       Button(
-        modifier = Modifier.padding(
-          0.dp,0.dp, 0.dp,30.dp
-        ),
+        modifier = Modifier
+          .padding(0.dp, 0.dp, 0.dp, 30.dp)
+          .testTag(ConfigTestTags.NAVIGATE_TO_HOME_BUTTON),
         colors = ButtonDefaults.buttonColors().copy(
           contentColor = MaterialTheme.colorScheme.onPrimary,
           containerColor = MaterialTheme.colorScheme.primary
