@@ -148,11 +148,11 @@ object HomeTestTags {
 
 1. Aplicar o `modifier` recebido na `Row` externa e deixar o círculo de status com `Modifier`
    próprio (achado #1).
-2. Expor o estado como `stateDescription`, com `semantics(mergeDescendants = true)`, para que o
-   nó tagueado seja a linha clicável e carregue título, subtítulo e estado:
+2. Expor o estado como `stateDescription` na linha clicável, para que o nó tagueado carregue
+   título, subtítulo e estado:
 
    ```kotlin
-   val stateDescription = stringResource(uiState.stateDescriptionRes)
+   val stateDescription = stringResource(uiState.stateDescriptionRes())
    Row(
      modifier = modifier
        .alpha(if (enabled) 1f else 0.5f)
@@ -160,6 +160,10 @@ object HomeTestTags {
        .semantics { this.stateDescription = stateDescription }
        // ...
    ```
+
+   Não é preciso `semantics(mergeDescendants = true)`: o `clickable` já mescla os filhos. Confirmado
+   no `Pixel_8a`: o nó de cada `*_STEP` é clicável, mescla os descendentes, traz título e subtítulo
+   como texto e o `stateDescription` do estado (`Loading`, `Pending`, `Done`, `Error`).
 
 3. Novas strings em `values`, `values-en` e `values-pt-rBR`:
    `config_step_state_loading`, `config_step_state_ready`, `config_step_state_done`,
@@ -194,6 +198,11 @@ Adicionar `modifier: Modifier = Modifier`, aplicado à `Column`. Os chamadores a
 
 `./gradlew :app:testDebugUnitTest` (Konsist + `JacocoExclusionsTest` continuam verdes) e
 `./gradlew :app:assembleDebug`. Conferir os `@Preview` no Android Studio: nada muda visualmente.
+
+**Feito.** Todas as mudanças desta seção estão nos commits `931e7c7`, `9bfaff8`, `3d24c39`,
+`f4c4349` e `f4a8761`. Os unit tests e o `assembleDebug` passaram depois de cada etapa, os previews
+foram conferidos no Android Studio sem mudança visual, e o TalkBack anuncia o estado de cada passo
+do Config.
 
 ---
 
@@ -353,8 +362,8 @@ O `e2e_research.md`, que está staged, pode entrar junto do commit 5 ou antes, n
 - [ ] `./gradlew :app:jacocoTestCoverageVerification` continua verde (nenhum arquivo novo entra
       no escopo medido).
 - [ ] Rodar a suíte 3x seguidas sem falha intermitente.
-- [ ] Previews inalterados.
-- [ ] TalkBack anuncia o estado de cada passo do Config (verificação manual rápida).
+- [x] Previews inalterados.
+- [x] TalkBack anuncia o estado de cada passo do Config (verificação manual rápida).
 - [ ] Documentação do §6 atualizada.
 
 ## 9. Riscos
