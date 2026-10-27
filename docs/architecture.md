@@ -330,6 +330,11 @@ Points of interest:
   hands it to `onQrCodeScanned`, then clears it through `onQrCodeResultConsumed`.
 - `refreshCameraPermissionState()` runs on `ON_RESUME` because the user can grant camera access
   from system settings while the screen is backgrounded.
+- **A "disabled" step is still clickable.** `ConfigButton`'s `enabled` only dims the step (the QR
+  step, while `isQrCodeButtonEnabled` is false). The click still reaches the ViewModel, which owns
+  the rule and answers with a toast saying what is missing — `onShowScanner()` shows
+  `CAMERA_PERMISSION_REQUIRED_FOR_QR_CODE` instead of opening the scanner. For the same reason the
+  step is not marked disabled in semantics.
 
 ### 5.3 `feature/qrcode` — QR code scanner
 

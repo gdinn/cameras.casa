@@ -35,6 +35,15 @@ import com.gdisys.cameras.R
 import com.gdisys.cameras.core.components.LoadingScreen
 import com.gdisys.cameras.feature.config.ConfigButtonState
 
+/**
+ * One step of the configuration checklist.
+ *
+ * @param enabled visual only: a disabled step is dimmed but still clickable, and [onClicked] still
+ *   fires. That is deliberate — the ViewModel owns the rule and answers the click with a toast
+ *   explaining what is missing (e.g. `CAMERA_PERMISSION_REQUIRED_FOR_QR_CODE` for the QR step),
+ *   which a step that silently ignored taps could not do. For the same reason the node is not
+ *   marked disabled in semantics.
+ */
 @Composable
 fun ConfigButton(
   modifier: Modifier = Modifier,
