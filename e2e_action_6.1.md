@@ -305,6 +305,29 @@ Os testes 12 a 15 começam com
   (ex.: o botão de remover dentro de uma linha clicável, se for o caso).
 - Sem `Thread.sleep`. O Compose Test sincroniza com a recomposição, e estes testes não têm I/O.
 
+### 4.6 Resultado
+
+**Feito.** 30 testes novos (10 + 18 + 2), mais o `ExampleInstrumentedTest`: 31 verdes no `Pixel_8a`,
+3 execuções seguidas em `en-US` e 1 em `pt-BR`. `jacocoTestCoverageVerification` continua verde.
+
+Desvios do plano:
+
+- **Os testes 7 e 12 do §4.3 viraram dois cada** (`portFieldReportsTypedText` /
+  `streamNameFieldReportsTypedText` e `gridColumnsFieldReportsOrientation` /
+  `gridRowsFieldReportsOrientation`). O `uiState` do teste é fixo, então quando o foco passa para o
+  segundo campo, o primeiro volta ao valor do estado e emite mais um `onValueChange` (ex.: `port:`).
+  Com o ViewModel isso não acontece, porque o estado acompanha o que foi digitado. Afirmar esse
+  evento extra prenderia o teste a um detalhe interno do Compose, por isso cada teste mexe num campo só.
+- Os testes 12 e 15 usam `performTextReplacement`, e não `performTextInput`: os campos já têm valor,
+  e o lugar onde a inserção cai depende do cursor.
+- Os testes da seção de grid rolam até o **próprio nó** que vão usar (helper `onListItem`), e não
+  sempre até o `SAVE_GRID_BUTTON`. Assim o teste não depende de os campos acima do botão continuarem
+  compostos depois da rolagem.
+- Os testes 10 e 15 passam por vários estados num único `setContent`, com um `mutableStateOf`
+  (o `createComposeRule` só aceita um `setContent` por teste).
+- O teste 4 do §4.2 também chama `assertIsEnabled()` no passo do QR, para documentar que a semântica
+  não o marca como desabilitado (achado #3).
+
 ---
 
 ## 5. Comandos
@@ -358,10 +381,10 @@ O `e2e_research.md`, que está staged, pode entrar junto do commit 5 ou antes, n
 
 ## 8. Critérios de pronto
 
-- [ ] `./gradlew :app:connectedDebugAndroidTest` verde no emulador, em `en` e em `pt-BR`.
-- [ ] `./gradlew :app:jacocoTestCoverageVerification` continua verde (nenhum arquivo novo entra
+- [x] `./gradlew :app:connectedDebugAndroidTest` verde no emulador, em `en` e em `pt-BR`.
+- [x] `./gradlew :app:jacocoTestCoverageVerification` continua verde (nenhum arquivo novo entra
       no escopo medido).
-- [ ] Rodar a suíte 3x seguidas sem falha intermitente.
+- [x] Rodar a suíte 3x seguidas sem falha intermitente.
 - [x] Previews inalterados.
 - [x] TalkBack anuncia o estado de cada passo do Config (verificação manual rápida).
 - [ ] Documentação do §6 atualizada.
