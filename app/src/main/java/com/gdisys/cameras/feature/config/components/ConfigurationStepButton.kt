@@ -41,7 +41,7 @@ fun ConfigButton(
   onClicked: () -> Unit
 ) {
   Row(
-    modifier = Modifier
+    modifier = modifier
         .alpha(if (enabled) 1f else 0.5f)
         .clickable(
             onClick = onClicked
@@ -71,7 +71,7 @@ fun ConfigButton(
       )
     }
     Row(
-      modifier = modifier
+      modifier = Modifier
           .size(30.dp)
           .clip(RoundedCornerShape(30.dp, 30.dp, 30.dp, 30.dp))
           .background(MaterialTheme.colorScheme.onPrimary),
