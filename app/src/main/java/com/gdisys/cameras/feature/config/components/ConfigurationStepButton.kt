@@ -1,5 +1,6 @@
 package com.gdisys.cameras.feature.config.components
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -24,9 +25,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.gdisys.cameras.R
 import com.gdisys.cameras.core.components.LoadingScreen
 import com.gdisys.cameras.feature.config.ConfigButtonState
 
@@ -40,12 +45,16 @@ fun ConfigButton(
   enabled: Boolean = true,
   onClicked: () -> Unit
 ) {
+  // The state icons below carry no content description, so this is the only place the step's
+  // state reaches accessibility services — and the instrumented tests, which read it from here.
+  val stateDescription = stringResource(uiState.stateDescriptionRes())
   Row(
     modifier = modifier
         .alpha(if (enabled) 1f else 0.5f)
         .clickable(
             onClick = onClicked
         )
+        .semantics { this.stateDescription = stateDescription }
         .clip(RoundedCornerShape(20.dp, 20.dp, 20.dp, 20.dp))
         .background(MaterialTheme.colorScheme.primary)
         .padding(12.dp),
@@ -105,6 +114,18 @@ fun ConfigButton(
       }
     }
   }
+}
+
+/**
+ * Spoken label for each state. It lives here rather than in `ConfigUiState` because it is
+ * presentation: the UI state stays free of resource ids.
+ */
+@StringRes
+private fun ConfigButtonState.stateDescriptionRes(): Int = when (this) {
+  ConfigButtonState.Loading -> R.string.config_step_state_loading
+  ConfigButtonState.Ready -> R.string.config_step_state_ready
+  ConfigButtonState.Done -> R.string.config_step_state_done
+  ConfigButtonState.Error -> R.string.config_step_state_error
 }
 
 @Preview

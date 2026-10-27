@@ -25,6 +25,11 @@
     <string name="config_screen_stream_urls_subtitle">Configure from which URLs the video will be streamed</string>
     <string name="config_screen_navigate_to_home">Navigate to Home</string>
     <string name="config_screen_back_to_home">Back to Home</string>
+    <!-- Spoken state of each configuration step (accessibility stateDescription) -->
+    <string name="config_step_state_loading">Loading</string>
+    <string name="config_step_state_ready">Pending</string>
+    <string name="config_step_state_done">Done</string>
+    <string name="config_step_state_error">Error</string>
     <string name="qr_code_format_error">Invalid QR Code</string>
     <string name="qr_code_invalid_data_error">Invalid Data</string>
     <string name="home_screen_drag_handle">Drag to reorder</string>
