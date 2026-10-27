@@ -80,7 +80,10 @@ fun StreamURLsScreen(
     }
   ) { innerPadding ->
     if (uiState.isLoading) {
-      LoadingScreen(stringResource(R.string.stream_urls_screen_loading))
+      LoadingScreen(
+        textLabel = stringResource(R.string.stream_urls_screen_loading),
+        modifier = Modifier.testTag(StreamURLsTestTags.LOADING)
+      )
       return@Scaffold
     }
 
