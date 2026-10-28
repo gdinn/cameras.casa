@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.gdisys.cameras.core.components.ToastDisplayer
+import com.gdisys.cameras.feature.qrcode.components.LocalQrCodeScanner
 import com.gdisys.cameras.feature.qrcode.components.QrCodeScreen
 
 @Composable
@@ -40,6 +41,7 @@ fun QrCodeRoute(
   ToastDisplayer(toastUiEvent = viewModel.uiEvent)
 
   QrCodeScreen(
+    scanner = LocalQrCodeScanner.current,
     onQrCodeScanned = viewModel::onQrCodeScanned,
     onCameraInitError = viewModel::onCameraInitError
   )
