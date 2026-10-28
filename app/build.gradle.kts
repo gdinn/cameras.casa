@@ -91,7 +91,13 @@ android {
     versionCode = taggedVersionName?.let(::versionCodeOf) ?: developmentVersionCode
     versionName = taggedVersionName ?: developmentVersionName
 
-    testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    // Every instrumented test runs inside HiltTestApplication (see HiltTestRunner), so flow tests
+    // can swap bindings with @TestInstallIn. Tests that are not @HiltAndroidTest are unaffected.
+    testInstrumentationRunner = "com.gdisys.cameras.HiltTestRunner"
+    // With the orchestrator below, each test runs in a fresh process with the app's data wiped
+    // first: stored credentials and URLs, and the runtime permissions the level B plan resets
+    // between tests (the camera permission in particular).
+    testInstrumentationRunnerArguments["clearPackageData"] = "true"
     vectorDrawables {
       useSupportLibrary = true
     }
@@ -171,6 +177,13 @@ android {
     unitTests {
       isReturnDefaultValues = true
     }
+    execution = "ANDROIDX_TEST_ORCHESTRATOR"
+    animationsDisabled = true
+  }
+  sourceSets {
+    // The fictional QR fixtures are the single source of truth: instrumented tests read the .json
+    // files from the test APK's assets instead of keeping a copy.
+    getByName("androidTest").assets.srcDir("$rootDir/qr-code-gen/examples")
   }
   packaging {
     resources {
@@ -200,6 +213,12 @@ dependencies {
   androidTestImplementation(libs.androidx.espresso.core)
   androidTestImplementation(platform(libs.androidx.compose.bom))
   androidTestImplementation(libs.androidx.ui.test.junit4)
+  androidTestImplementation(libs.androidx.test.runner)
+  androidTestImplementation(libs.androidx.espresso.intents)
+  androidTestImplementation(libs.hilt.android.testing)
+  kspAndroidTest(libs.hilt.compiler)
+  androidTestUtil(libs.androidx.test.orchestrator)
+  androidTestUtil(libs.androidx.test.services)
   debugImplementation(libs.androidx.ui.tooling)
   debugImplementation(libs.androidx.ui.test.manifest)
 

@@ -4,50 +4,58 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
-import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.gdisys.cameras.app.navigation.NavigationRoute
 import com.gdisys.cameras.testing.HiltTestActivity
-import org.junit.After
+import dagger.hilt.android.testing.HiltAndroidRule
+import dagger.hilt.android.testing.HiltAndroidTest
+import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
-import org.junit.runner.RunWith
 import org.webrtc.EglBase
+import javax.inject.Inject
 
 /**
  * Smoke test for the shared composition root: the real navigation graph, Hilt ViewModels and
  * storage, rendered in [HiltTestActivity] with a [NavHostController] the test owns.
+ *
+ * No binding is replaced yet, so this runs on the production graph. It stays deterministic because
+ * the orchestrator wipes the app's data before each test: there are never stored credentials, so
+ * startup always lands on Config and the real VPN is never brought up.
  */
-@RunWith(AndroidJUnit4::class)
+@HiltAndroidTest
 class CamerasAppContentTest {
 
-  @get:Rule
+  @get:Rule(order = 0)
+  val hiltRule = HiltAndroidRule(this)
+
+  @get:Rule(order = 1)
   val composeRule = createAndroidComposeRule<HiltTestActivity>()
 
-  // Created here rather than injected: this suite still runs on the plain AndroidJUnitRunner, so
-  // there is no HiltAndroidRule to inject the app's singleton.
-  private val eglBase = EglBase.create()
+  @Inject
+  lateinit var eglBase: EglBase
 
-  @After
-  fun releaseEglBase() {
-    eglBase.release()
+  @Before
+  fun injectDependencies() {
+    hiltRule.inject()
   }
 
   @Test
-  fun startupLeavesLoadingThroughTheTestOwnedNavController() {
+  fun firstRunLandsOnConfigOverLoading() {
     lateinit var navController: NavHostController
     composeRule.setContent {
       navController = rememberNavController()
       CamerasAppContent(eglBase = eglBase, navController = navController)
     }
 
-    // Where startup lands depends on the credentials already stored on the device, which this
-    // suite does not reset yet: Config without them, Home with them.
     composeRule.waitUntil(timeoutMillis = 5_000) {
       composeRule.runOnUiThread {
-        val destination = navController.currentDestination
-        destination?.hasRoute<NavigationRoute.Config>() == true ||
-          destination?.hasRoute<NavigationRoute.Home>() == true
+        navController.currentDestination?.hasRoute<NavigationRoute.Config>() == true
       }
+    }
+    // Loading stays below Config: InitRoute navigates without popping itself.
+    composeRule.runOnUiThread {
+      assertTrue(navController.previousBackStackEntry?.destination?.hasRoute<NavigationRoute.Loading>() == true)
     }
   }
 }
