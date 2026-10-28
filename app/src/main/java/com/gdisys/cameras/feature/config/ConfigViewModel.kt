@@ -1,18 +1,20 @@
 package com.gdisys.cameras.feature.config
 
+import android.content.Intent
 import android.util.Log
 import androidx.lifecycle.viewModelScope
 import com.gdisys.cameras.core.DEBUG_TAG
 import com.gdisys.cameras.core.ToastEventViewModel
+import com.gdisys.cameras.core.permission.domain.VpnConsent
 import com.gdisys.cameras.core.permission.domain.usecase.HasCameraPermissionUseCase
 import com.gdisys.cameras.core.permission.domain.usecase.HasVpnPermissionUseCase
+import com.gdisys.cameras.core.permission.domain.usecase.RequestVpnPermissionUseCase
 import com.gdisys.cameras.core.storage.domain.VpnCredentialsStatus
 import com.gdisys.cameras.core.storage.domain.model.UserPreferences
 import com.gdisys.cameras.core.storage.domain.usecase.GetStreamPreferencesUseCase
 import com.gdisys.cameras.core.storage.domain.usecase.GetVpnConfigStatusUseCase
 import com.gdisys.cameras.core.storage.domain.usecase.ParseUserPreferencesFromQrCodeUseCase
 import com.gdisys.cameras.core.storage.domain.usecase.SaveUserPreferencesUseCase
-import com.gdisys.cameras.core.vpn.domain.usecase.RequestVpnPermissionUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -30,12 +32,12 @@ import javax.inject.Inject
 const val QR_CODE_RESULT_KEY = "qr_code_raw_json"
 
 /**
- * Payload-free on purpose: the consent `Intent` is a platform object, and routes — not ViewModels —
- * own platform round-trips. The ViewModel decides *whether* consent is needed; `ConfigRoute` builds
- * the `Intent` and launches it.
+ * Carries the consent `Intent` from `VpnPermissionRepository`, the single source of the VPN consent.
+ * The ViewModel only passes it along; `ConfigRoute` launches it. The route never calls
+ * `VpnService.prepare` itself, so a fake repository controls the whole round-trip in tests.
  */
 sealed interface VpnPermissionUiEvent {
-  data object RequestPermission : VpnPermissionUiEvent
+  data class RequestPermission(val intent: Intent) : VpnPermissionUiEvent
 }
 
 @HiltViewModel
@@ -225,16 +227,13 @@ class ConfigViewModel @Inject constructor(
   }
 
   fun acceptVpnPermission() {
-    // `RequestVpnPermissionUseCase` returns the consent Intent, or null when consent was already
-    // given. Only that distinction matters here; the Intent itself is discarded and rebuilt by the
-    // route, which is the layer allowed to touch platform types.
-    val needsConsent = requestVpnPermissionUseCase() != null
-    if (needsConsent) {
-      viewModelScope.launch {
-        _vpnPermissionUiEvent.send(VpnPermissionUiEvent.RequestPermission)
+    // The consent Intent travels in the event, so the route launches exactly what the repository
+    // returned instead of asking the platform a second time.
+    when (val consent = requestVpnPermissionUseCase()) {
+      VpnConsent.Granted -> showToast(ConfigToastMessage.PERMISSION_ALREADY_GRANTED)
+      is VpnConsent.Required -> viewModelScope.launch {
+        _vpnPermissionUiEvent.send(VpnPermissionUiEvent.RequestPermission(consent.intent))
       }
-    } else {
-      showToast(ConfigToastMessage.PERMISSION_ALREADY_GRANTED)
     }
   }
 }
