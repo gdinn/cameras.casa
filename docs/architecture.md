@@ -496,6 +496,20 @@ key does not invalidate the other:
 | User preferences | `user-preferences` | `UserPreferences` (VPN credentials) | `gdi-sys-storage` |
 | Stream preferences | `stream-preferences` | `StreamPreferences` (URLs, orders, grids) | `gdi-sys-stream-preferences` |
 
+The file names and aliases are released values, kept as constants next to each `by dataStore`
+delegate (`DataStore.kt`, `StreamPreferencesDataStore.kt`). `PreferencesSerializersTest` pins them,
+because renaming one orphans every installed user's settings.
+
+**Test seam.** The delegates are one per process, with a fixed file, so tests cannot reset them.
+What they are built from is exposed instead: `userPreferencesSerializer(crypto)` and
+`streamPreferencesSerializer(crypto)` (`PreferencesSerializers.kt`, `internal`). A test builds a
+store with `DataStoreFactory.create(serializer = userPreferencesSerializer(KeystoreCryptoEngine(alias)),
+produceFile = { file })`, on a file and alias of its own, with the production encoding and the real
+Keystore (`IsolatedPreferencesStoreTest`). The factories are in their own file on purpose: touching
+a delegate's file class initializes the delegate and its `KeystoreCryptoEngine`, which fails on the
+JVM. `StorageModule` already provides both stores through Hilt, so a test module can swap them once
+the instrumented suite runs on a Hilt test runner.
+
 **Encryption.** `KeystoreCryptoEngine` (`Crypto.kt`) does AES/CBC/PKCS7 with a randomized IV
 prepended to the ciphertext, keyed from `AndroidKeyStore`.
 `EncryptedPreferencesSerializer` wraps it: `JSON → encrypt → Base64` on write, the reverse on read.
@@ -770,6 +784,10 @@ Declared in `gradle/libs.versions.toml` and consumed via the version catalog.
 | `com.squareup.okhttp3:mockwebserver` | 4.12.0 | `WhepRemoteDataSourceImplTest` |
 | `com.lemonappdev:konsist` | 0.17.3 | `LayerDependencyTest` |
 | `androidx.compose.ui:ui-test-junit4`, `androidx.test.ext:junit`, `espresso-core` | — | Instrumented screen tests (§10) |
+| `androidx.test:runner` | 1.7.0 | Base of `HiltTestRunner` |
+| `com.google.dagger:hilt-android-testing` (+ `kspAndroidTest` Hilt compiler) | 2.59.2 | `HiltTestApplication`, `@HiltAndroidTest`, `@TestInstallIn` |
+| `androidx.test.espresso:espresso-intents` | 3.7.0 | Stubbing the VPN consent `Intent` in flow tests |
+| `androidx.test:orchestrator`, `androidx.test.services:test-services` (`androidTestUtil`) | 1.6.1, 1.6.0 | One process per test, with `clearPackageData` |
 
 ### 8.3 Non-Gradle external asset
 
@@ -858,8 +876,8 @@ Useful commands:
 Note that `LayerDependencyTest` and `StreamHostTest` are ordinary unit tests, so a layering
 violation or a host/XML mismatch fails `testDebugUnitTest` like any other regression.
 
-**Instrumented screen tests.** 34 Compose UI tests under `app/src/androidTest/`, with packages
-mirroring `main`:
+**Instrumented screen tests.** 35 tests under `app/src/androidTest/` (34 Compose UI tests and one
+storage test), with packages mirroring `main`:
 
 | Test | Covers |
 |---|---|
@@ -867,13 +885,31 @@ mirroring `main`:
 | `StreamURLsScreenTest` (18) | Loading, empty list, row order and removal, the add form, the four confirmation dialogs, the grid fields per orientation, when "Save grid" is enabled |
 | `EmptyStreamsScreenTest` (2) | The message and the "Reconfigure" shortcut |
 | `ToastDisplayerTest` (1) | Toast events reach the `ToastPresenter` provided through `LocalToastPresenter`, in order |
-| `CamerasAppContentTest` (1) | Smoke test of the composition root in `HiltTestActivity`: startup leaves `Loading` for `Config` or `Home` through a test-owned `NavController` |
+| `CamerasAppContentTest` (1) | Smoke test of the composition root in `HiltTestActivity` (`@HiltAndroidTest`, production graph, injected `EglBase`): first run lands on `Config` over `Loading`, read through a test-owned `NavController` |
+| `IsolatedPreferencesStoreTest` (1) | A store built from `userPreferencesSerializer` on its own file and Keystore alias starts empty, encrypts and leaves the production file untouched |
 | `QrCodeRouteTest` (2) | With a `FakeQrCodeScanner`, a scanned payload reaches `onCodeScanned`; a camera error toasts and navigates back |
 
-They test screens in isolation: `createComposeRule` renders a `*Screen` with a hand-written
+Most of them test screens in isolation: `createComposeRule` renders a `*Screen` with a hand-written
 `uiState` inside `setThemedContent` (`testing/ComposeTestSupport.kt`), and the test asserts what it
-shows and which callback each interaction fires. No Hilt, navigation or fakes, so the default
-`AndroidJUnitRunner` is enough. Conventions:
+shows and which callback each interaction fires, with no Hilt, navigation or fakes.
+
+**How the suite runs.** Three settings in `app/build.gradle.kts` apply to every instrumented test:
+
+- **`HiltTestRunner`** (`androidTest/.../HiltTestRunner.kt`) starts the app as `HiltTestApplication`.
+  A test that is not `@HiltAndroidTest` and only uses the `ComponentActivity` of `ui-test-manifest`
+  does not notice. A test that opens an `@AndroidEntryPoint` activity (`HiltTestActivity`) must be
+  `@HiltAndroidTest`, with `HiltAndroidRule` as rule `order = 0` and `hiltRule.inject()` in `@Before`.
+  Without it, Hilt fails because the test component was never created.
+- **The orchestrator with `clearPackageData`** runs each test in a new process and runs `pm clear`
+  on the app first. Every test therefore starts with empty DataStores and the camera permission
+  revoked. `pm clear` does **not** reset app ops: `ACTIVATE_VPN` keeps whatever it was set to
+  (checked on the `Pixel_8a`). The cost is time: the suite went from 49 s to 128 s for the same 36
+  tests.
+- **`animationsDisabled = true`** turns animations off for the instrumentation.
+- The QR fixtures in `qr-code-gen/examples/` are assets of the test APK, read through
+  `InstrumentationRegistry.getInstrumentation().context.assets`.
+
+Conventions:
 
 - Nodes are found by test tag. The tags are `const val`s in one object per feature, in `main` next
   to the components (`ConfigTestTags`, `StreamURLsTestTags`, `HomeTestTags`). Their names match the

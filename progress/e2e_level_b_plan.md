@@ -107,6 +107,24 @@ class HiltTestRunner : AndroidJUnitRunner() {
 **Verificação desta etapa:** a suíte do nível A continua verde com o runner e o Orchestrator novos
 (achado #15). Anotar o tempo antes e depois: com o Orchestrator, cada teste roda num processo novo.
 
+**Resultado do §3.1 — feito como no código acima.**
+
+- Versões: `runner` 1.7.0, `orchestrator` 1.6.1 e `test-services` 1.6.0, que entrou como
+  `androidTestUtil`. O AGP 9.1 aceitou `kspAndroidTest` e `assets.srcDir` sem aviso de deprecação.
+- Achado #15 confirmado: os 36 testes continuam verdes. O tempo foi de **49 s para 128 s** (task do
+  Gradle, com instalação), ou de 42 s para 66 s somando os tempos dos testes.
+- **Desvio:** o `CamerasAppContentTest` precisou virar `@HiltAndroidTest`. Na `HiltTestApplication`,
+  uma activity `@AndroidEntryPoint` só funciona com o `HiltAndroidRule`. Com isso, o `EglBase` passa
+  a ser injetado e o teste fica determinístico: afirma o Config com o `Loading` embaixo, e não mais
+  "Config ou Home". O risco de subir a VPN real num dispositivo configurado deixou de existir.
+- **Achado #5 confirmado em parte, no `Pixel_8a`:** o `pm clear` (o que o `clearPackageData` roda)
+  revoga a permissão de câmera, mas **não** zera o app op `ACTIVATE_VPN`. Isso confirma o
+  `setVpnConsent` em todo `@Before`, se o `appops` ainda for usado. Com o
+  `FakeVpnPermissionRepository` (achado #4, revisto), o app op deixa de importar.
+- Fora do escopo: o `lintDebug` acusou um erro novo, `ViewModelConstructorInComposable` no
+  `QrCodeRouteTest` (do 1b do `e2e_testability.md`, não do §3.1). Corrigido, criando o ViewModel
+  fora da composição. Voltaram a ser só os 3 erros antigos.
+
 ### 3.2 Raiz de composição compartilhada (`MainActivity.kt`)
 
 ```kotlin
@@ -392,7 +410,7 @@ Rodar também em pt-BR uma vez, como no nível A (§5 do `e2e_level_a_plan.md`).
 | O `clearPackageData` não zerar a permissão de câmera ou os app ops | `setVpnConsent` em todo `@Before`. Se a câmera não for zerada, os testes que precisam dela "não concedida" passam a usar o `appops set ... CAMERA ignore`, ou ficam no nível C |
 | Espresso-Intents não interceptar o `Intent` do `VpnService.prepare` | Plano B: extrair a criação do `Intent` para trás de uma interface (§4.2 do relatório) e stubar um `Intent` de teste |
 | `HiltTestActivity` divergir do `MainActivity` (tema, `configChanges`, edge-to-edge) | Comentário nos dois manifests; o smoke #0 roda no `MainActivity` real |
-| Orchestrator deixar a suíte lenta demais | Medir no §3.1. Se incomodar, o `StorageModule` de teste com arquivo temporário (§6.3 do relatório) e Orchestrator sem `clearPackageData` |
+| Orchestrator deixar a suíte lenta demais | Medir no §3.1. Se incomodar, o `StorageModule` de teste com arquivo temporário (§6.3 do relatório) e Orchestrator sem `clearPackageData`. **A costura já existe** (item 4 do `e2e_testability.md`): `userPreferencesSerializer(crypto)` / `streamPreferencesSerializer(crypto)` com `DataStoreFactory.create` |
 | Gesto de arraste (#12) e overscroll (#11) instáveis | Movimentos em passos pequenos, com `advanceEventTime`; rodar 3x antes de aceitar. Se seguir instável, `@FlakyTest` documentado e fora da execução padrão |
 | Corrida com `Dispatchers.Default` / `IO` | `waitUntil` com timeout em toda asserção depois de ação assíncrona (achado #10) |
 | `EglBase` / `SurfaceViewRenderer` falhar na imagem ATD do futuro CI | Hoje só o AVD local. Diferença entre as imagens é achado para o plano de CI |

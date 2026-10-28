@@ -192,6 +192,10 @@ Desvio: entrou um smoke, o `CamerasAppContentTest`. Ele monta a raiz na `HiltTes
 o `EglBase` é criado no teste e o grafo é o real. Por isso o teste aceita tanto o Config quanto a
 Home: depende das credenciais que já estão no dispositivo, até o `clearPackageData` entrar.
 
+**Atualização:** com o §3.1 feito, o teste virou `@HiltAndroidTest`. Agora o `EglBase` é injetado, e
+o `clearPackageData` garante o Config. A asserção passou a ser exata: Config com o `Loading`
+embaixo.
+
 ## 4. Estado global persistente sem costura
 
 Os DataStores são delegates `by dataStore(...)`, um por processo, com nome de arquivo fixo e chave
@@ -199,6 +203,37 @@ no AndroidKeyStore. Não dá para isolar o estado de cada teste por injeção. H
 
 - recomeçar o processo (Orchestrator com `clearPackageData`), que é mais lento;
 - expor o serializer e o alias para um `StorageModule` de teste.
+
+Correção da análise: o `StorageModule` já fornece os dois `DataStore` pelo Hilt, então a injeção
+existe. O que faltava era como construí-los. O serializer, o arquivo e o alias estavam escondidos
+nos delegates.
+
+**Resultado — feito pelo segundo caminho** (escolha do usuário). Mudanças:
+
+- O `userPreferencesSerializer(crypto)` e o `streamPreferencesSerializer(crypto)` ficam em
+  `core/storage/data/PreferencesSerializers.kt`, como `internal`. Os nomes de arquivo e os aliases
+  viraram constantes ao lado de cada delegate.
+- Desvio do preview: as factories recebem um `CryptoEngine` e não o alias. O `KeystoreCryptoEngine`
+  abre o AndroidKeyStore no construtor, então receber o engine deixa o teste escolher entre o
+  Keystore real com outro alias e um engine falso no JVM.
+- Segundo desvio: as factories não ficam no mesmo arquivo dos delegates. Chamar qualquer função do
+  `DataStoreKt` inicializa o delegate e o seu `KeystoreCryptoEngine`, e no JVM isso falha com
+  `ExceptionInInitializerError`. Descobri isso quando o primeiro teste unitário falhou.
+
+Testes:
+- `PreferencesSerializersTest` (unitário, 3 testes) fixa os nomes e aliases já publicados e faz a
+  ida e volta de cada serializer com um engine reversível.
+- `IsolatedPreferencesStoreTest` (instrumentado) cria um store pela costura, com arquivo e alias
+  próprios e o Keystore real. Prova que ele começa vazio, que criptografa (o texto puro não aparece
+  no arquivo) e que o arquivo de produção não muda. Ao final, apaga o arquivo e a chave.
+
+Verificação: 292 unitários e o `jacocoTestCoverageVerification` passam, e os 36 instrumentados
+passam no emulador.
+
+O que falta: o `StorageModule` de teste com `@TestInstallIn`, que precisa do runner Hilt (§3.1 do
+`e2e_level_b_plan.md`). Com ele, cada teste ganha um `SingletonComponent` novo e, portanto, um
+store novo. Sem o Orchestrator, as permissões e os app ops continuam sem reset, e o plano do nível B
+conta com isso para a câmera (achado #5).
 
 ## 5. Efeitos ligados ao ciclo de vida
 
