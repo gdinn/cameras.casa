@@ -46,8 +46,10 @@ class QrCodeRouteTest {
     assertEquals(emptyList<String>(), scannedValues.toList())
   }
 
-  // The ViewModel injects nothing, so it is built by hand instead of through Hilt.
+  // The ViewModel injects nothing, so it is built by hand instead of through Hilt. It is built
+  // outside the composition, which would otherwise create a new one on every recomposition.
   private fun setQrCodeRoute(scanner: QrCodeScanner) {
+    val viewModel = QrCodeViewModel()
     composeRule.setThemedContent {
       CompositionLocalProvider(
         LocalQrCodeScanner provides scanner,
@@ -56,7 +58,7 @@ class QrCodeRouteTest {
         QrCodeRoute(
           onCodeScanned = { scannedValues += it },
           onNavigateBack = { navigateBackCount.incrementAndGet() },
-          viewModel = QrCodeViewModel()
+          viewModel = viewModel
         )
       }
     }
