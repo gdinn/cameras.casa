@@ -507,8 +507,10 @@ store with `DataStoreFactory.create(serializer = userPreferencesSerializer(Keyst
 produceFile = { file })`, on a file and alias of its own, with the production encoding and the real
 Keystore (`IsolatedPreferencesStoreTest`). The factories are in their own file on purpose: touching
 a delegate's file class initializes the delegate and its `KeystoreCryptoEngine`, which fails on the
-JVM. `StorageModule` already provides both stores through Hilt, so a test module can swap them once
-the instrumented suite runs on a Hilt test runner.
+JVM. In instrumented tests, `TestStorageModule` (`androidTest/.../testing/`) replaces `StorageModule`
+with `@TestInstallIn`, building both stores this way on files under the cache directory and on
+`test-` aliases. Hilt creates a new `SingletonComponent` per test, so every `@HiltAndroidTest`
+starts with new, empty stores (`TestStorageModuleTest`).
 
 **Encryption.** `KeystoreCryptoEngine` (`Crypto.kt`) does AES/CBC/PKCS7 with a randomized IV
 prepended to the ciphertext, keyed from `AndroidKeyStore`.
@@ -876,8 +878,8 @@ Useful commands:
 Note that `LayerDependencyTest` and `StreamHostTest` are ordinary unit tests, so a layering
 violation or a host/XML mismatch fails `testDebugUnitTest` like any other regression.
 
-**Instrumented screen tests.** 35 tests under `app/src/androidTest/` (34 Compose UI tests and one
-storage test), with packages mirroring `main`:
+**Instrumented screen tests.** 36 tests under `app/src/androidTest/` (34 Compose UI tests and two
+storage tests), with packages mirroring `main`:
 
 | Test | Covers |
 |---|---|
@@ -885,7 +887,8 @@ storage test), with packages mirroring `main`:
 | `StreamURLsScreenTest` (18) | Loading, empty list, row order and removal, the add form, the four confirmation dialogs, the grid fields per orientation, when "Save grid" is enabled |
 | `EmptyStreamsScreenTest` (2) | The message and the "Reconfigure" shortcut |
 | `ToastDisplayerTest` (1) | Toast events reach the `ToastPresenter` provided through `LocalToastPresenter`, in order |
-| `CamerasAppContentTest` (1) | Smoke test of the composition root in `HiltTestActivity` (`@HiltAndroidTest`, production graph, injected `EglBase`): first run lands on `Config` over `Loading`, read through a test-owned `NavController` |
+| `CamerasAppContentTest` (1) | Smoke test of the composition root in `HiltTestActivity` (`@HiltAndroidTest`, production graph except storage, injected `EglBase`): first run lands on `Config` over `Loading`, read through a test-owned `NavController` |
+| `TestStorageModuleTest` (1) | In a `@HiltAndroidTest`, the production repositories start empty and write to the `TestStorageModule` files, never to the production ones |
 | `IsolatedPreferencesStoreTest` (1) | A store built from `userPreferencesSerializer` on its own file and Keystore alias starts empty, encrypts and leaves the production file untouched |
 | `QrCodeRouteTest` (2) | With a `FakeQrCodeScanner`, a scanned payload reaches `onCodeScanned`; a camera error toasts and navigates back |
 
@@ -906,6 +909,9 @@ shows and which callback each interaction fires, with no Hilt, navigation or fak
   (checked on the `Pixel_8a`). The cost is time: the suite went from 49 s to 128 s for the same 36
   tests.
 - **`animationsDisabled = true`** turns animations off for the instrumentation.
+- **`TestStorageModule`** replaces `StorageModule` in every `@HiltAndroidTest`, so storage is isolated
+  per test by Hilt even without the orchestrator. Tests that need to look at the files inject
+  `TestStoreFiles`.
 - The QR fixtures in `qr-code-gen/examples/` are assets of the test APK, read through
   `InstrumentationRegistry.getInstrumentation().context.assets`.
 

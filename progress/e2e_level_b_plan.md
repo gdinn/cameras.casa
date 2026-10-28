@@ -248,6 +248,11 @@ Os testes do nível A continuam onde estão.
 Ficam **reais**: permissões (achados #4 e #5), storage (Orchestrator com `clearPackageData`, §6.3
 do relatório), `WhepClientModule`, `WhepNetworkModule` e `WhepRtcModule` (achado #8).
 
+> **Revisto (item 4 do `e2e_testability.md`):** o storage continua real (DataStore criptografado,
+> Keystore), mas isolado pelo `TestStorageModule`, que já existe em `androidTest/testing/`. Ele dá a
+> cada teste arquivos novos, e o `Seed` grava por eles normalmente. O Orchestrator continua no plano
+> por causa das permissões.
+
 > O `VpnModule` registra dois bindings, então o `TestVpnModule` fornece os dois.
 
 **`FlowTest`** (classe base abstrata):

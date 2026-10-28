@@ -16,12 +16,12 @@ import org.webrtc.EglBase
 import javax.inject.Inject
 
 /**
- * Smoke test for the shared composition root: the real navigation graph, Hilt ViewModels and
- * storage, rendered in [HiltTestActivity] with a [NavHostController] the test owns.
+ * Smoke test for the shared composition root: the real navigation graph and Hilt ViewModels,
+ * rendered in [HiltTestActivity] with a [NavHostController] the test owns.
  *
- * No binding is replaced yet, so this runs on the production graph. It stays deterministic because
- * the orchestrator wipes the app's data before each test: there are never stored credentials, so
- * startup always lands on Config and the real VPN is never brought up.
+ * Only storage is replaced, by `TestStorageModule`, which gives each test new, empty stores. So
+ * there are never stored credentials: startup always lands on Config and the real VPN, still the
+ * production binding, is never brought up.
  */
 @HiltAndroidTest
 class CamerasAppContentTest {

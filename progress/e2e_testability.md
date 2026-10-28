@@ -235,6 +235,25 @@ O que falta: o `StorageModule` de teste com `@TestInstallIn`, que precisa do run
 store novo. Sem o Orchestrator, as permissões e os app ops continuam sem reset, e o plano do nível B
 conta com isso para a câmera (achado #5).
 
+**Atualização — o que faltava está feito.** Com o §3.1 pronto:
+
+- O `TestStorageModule` (`androidTest/testing/`) substitui o `StorageModule` em todo
+  `@HiltAndroidTest`. Ele cria os dois stores pelas factories, em arquivos sob
+  `cacheDir/test-stores/<uuid>/`, com aliases `test-` separados dos de produção.
+- O alias é fixo e só o arquivo muda a cada teste. Assim não se cria uma chave nova no Keystore por
+  teste, e o isolamento vem do arquivo.
+- Um `TestStoreFiles` injetável expõe os arquivos do teste atual.
+- O `TestStorageModuleTest` prova que os repositórios de produção começam vazios, gravam nos
+  arquivos do teste e nunca criam os de produção.
+- O `CamerasAppContentTest` passou a usar os stores de teste, sem mudar o código, e teve o KDoc
+  ajustado.
+
+Verificação: 292 unitários passam, e os 37 instrumentados passam no emulador (141 s).
+
+Agora são duas camadas: o Hilt isola o storage por teste, e o Orchestrator continua resetando a
+permissão de câmera (achado #5). O app op da VPN não é resetado por nenhuma das duas (§3.1 do
+plano).
+
 ## 5. Efeitos ligados ao ciclo de vida
 
 - A Home conecta a VPN no `ON_RESUME` e desconecta no `ON_PAUSE` do `NavBackStackEntry`. Navegar
