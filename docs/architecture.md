@@ -269,7 +269,9 @@ All five routes follow the same contract, which makes them easy to read once you
 - Toasts are centralized: every ViewModel extends `ToastEventViewModel` (`core/ToastEventViewModel.kt`),
   which owns a `Channel<ToastUiEvent>`; every route renders `ToastDisplayer(viewModel.uiEvent)`.
   Message catalogues are per-feature enums implementing `ToastMessage` (`@StringRes`), e.g.
-  `HomeToastMessage`, `ConfigToastMessage`.
+  `HomeToastMessage`, `ConfigToastMessage`. `ToastDisplayer` hands each message to the
+  `ToastPresenter` in `LocalToastPresenter`. Its default, `null`, means the platform `Toast`.
+  Instrumented tests provide a recording presenter, because Compose Test cannot see the toast window.
 
 ---
 
@@ -321,10 +323,12 @@ Points of interest:
 - **Platform round-trips are events, not state.** VPN consent and the camera permission request are
   emitted as `Channel` events and launched by the reusable
   `LaunchActivityResultOnEvent` composable (`core/components/ActivityResultEventEffect.kt`).
-  `VpnPermissionUiEvent.RequestPermission` is deliberately payload-free: the ViewModel decides
-  *whether* consent is needed (`RequestVpnPermissionUseCase() != null`) and `ConfigRoute` builds the
-  `Intent` with `VpnService.prepare(context)`. No `android.content.Intent` crosses the ViewModel
-  boundary, and a `null` from `prepare` simply launches nothing.
+  The VPN consent has a single source, `VpnPermissionRepository.getVpnConsent()`, which returns
+  `VpnConsent.Granted` or `VpnConsent.Required(intent)`. Both the step's initial state
+  (`HasVpnPermissionUseCase`) and the click (`RequestVpnPermissionUseCase`) read it, so a test fake
+  cannot put them out of step. On `Required`, the ViewModel sends
+  `VpnPermissionUiEvent.RequestPermission(intent)` and `ConfigRoute` launches that `Intent` as is.
+  The route never calls `VpnService.prepare`.
 - **QR result arrives via navigation, not a shared ViewModel.** `QrCodeRoute` writes the raw JSON
   into `previousBackStackEntry.savedStateHandle[QR_CODE_RESULT_KEY]`; `ConfigRoute` observes it,
   hands it to `onQrCodeScanned`, then clears it through `onQrCodeResultConsumed`.
@@ -347,8 +351,15 @@ payload it reads.
 |---|---|
 | View | `QrCodeRoute.kt`, `components/QrCodeScreen.kt` |
 | ViewModel | `QrCodeViewModel.kt` |
+| Scanner | `components/QrCodeScanner.kt` (contract + `LocalQrCodeScanner`), `components/CameraXQrCodeScanner.kt` |
 | Analyzer | `components/QrCodeAnalyzer.kt` (`ImageAnalysis.Analyzer`) |
 | Messages | `QrCodeToastMessage` |
+
+**The camera is a swappable `QrCodeScanner`.** `CameraXQrCodeScanner` holds the CameraX preview
+and the analyzer. `QrCodeRoute` reads it from `LocalQrCodeScanner`, whose default is
+`CameraXQrCodeScanner`, and passes it to `QrCodeScreen` as a parameter, the same split as
+`LocalEglBase` (§6.3). Instrumented tests provide a fake that reports a payload or a camera error,
+so the scan path runs through the real route and ViewModel without a camera.
 
 The analyzer sits under `components/`, not under a `data/` sub-package: it is an
 `ImageAnalysis.Analyzer` handed straight to CameraX by the screen, so it is a platform/UI concern
@@ -516,11 +527,11 @@ transform underneath is what makes a partial write possible when one is needed.
 
 | Piece | Responsibility |
 |---|---|
-| `VpnRepository` / `VpnRepositoryImpl` | Wraps `GoBackend`; exposes `StateFlow<VpnTunnelState>`; provides the consent `Intent` via `VpnService.prepare()` |
+| `VpnRepository` / `VpnRepositoryImpl` | Wraps `GoBackend`; exposes `StateFlow<VpnTunnelState>`. The consent `Intent` belongs to `core/permission` (§6.4) |
 | `VpnLifecycleController` / `Impl` | Starts and stops `VpnLifecycleService` |
 | `VpnLifecycleService` | `START_STICKY` service whose only job is to drop the tunnel on `onTaskRemoved` / `onDestroy` |
 | `VpnConfig` | Domain model, plus `isValid()` |
-| Use cases (4) | `ConnectVpnUseCase`, `DisconnectVpnUseCase`, `ObserveVpnStateUseCase`, `RequestVpnPermissionUseCase` |
+| Use cases (3) | `ConnectVpnUseCase`, `DisconnectVpnUseCase`, `ObserveVpnStateUseCase` |
 
 `VpnConfig.toWireGuardConfig()` is a **free function extracted deliberately** from
 `VpnRepositoryImpl.connect()` so the `VpnConfig → com.wireguard.config.Config` mapping can be
@@ -561,9 +572,15 @@ graph depend on the video stack it only routes to. The local stops at the route 
 ### 6.4 `core/permission`
 
 Thin repositories over two platform calls — `ContextCompat.checkSelfPermission(CAMERA)` and
-`VpnService.prepare(context) == null` — behind `CameraPermissionRepository` /
-`VpnPermissionRepository` and two use cases. The value is testability: `ConfigViewModel` can be
-unit-tested without a `Context`.
+`VpnService.prepare(context)` — behind `CameraPermissionRepository` / `VpnPermissionRepository` and
+three use cases (`HasCameraPermissionUseCase`, `HasVpnPermissionUseCase`,
+`RequestVpnPermissionUseCase`). The value is testability: `ConfigViewModel` can be unit-tested
+without a `Context`.
+
+`VpnPermissionRepository.getVpnConsent()` is the only place in the app that calls
+`VpnService.prepare`. It maps the result to `VpnConsent`: `null` becomes `Granted`, an `Intent`
+becomes `Required(intent)`. Both VPN use cases derive from it, so the "is it granted?" question and
+the "which dialog to open?" question can never disagree, in production or under a fake.
 
 ### 6.5 `core/network`
 
@@ -581,8 +598,9 @@ device into a build failure.
 - `ToastEventViewModel` — abstract base owning the toast `Channel`; every ViewModel extends it.
 - `ToastMessage` — `@StringRes` interface implemented by per-feature enums.
 - `Constants.kt` — `DEBUG_TAG`.
-- `core/components/` — exactly three genuinely shared widgets: `ToastDisplayer`, `LoadingScreen` and
-  `LaunchActivityResultOnEvent`. Anything that is a screen of its own belongs in `feature/`.
+- `core/components/` — exactly three genuinely shared widgets: `ToastDisplayer` (with its
+  `ToastPresenter` seam, `LocalToastPresenter`), `LoadingScreen` and `LaunchActivityResultOnEvent`.
+  Anything that is a screen of its own belongs in `feature/`.
 
 ### 6.7 `ui/theme`
 
@@ -666,7 +684,7 @@ swapping WHEP for RTSP/HLS a change that stops at that boundary.
 | **WireGuard peer** (home gateway) | WireGuard over UDP/IPv6, endpoint from `pEndpoint` | `VpnRepositoryImpl` (`GoBackend`) |
 | **QR-code provisioning payload** | JSON blob scanned from screen/paper, carrying `[Interface]`/`[Peer]` fields | `ParseUserPreferencesFromQrCodeUseCase` |
 | **Android Keystore** | Hardware-backed key storage | `KeystoreCryptoEngine` |
-| **Device camera** | CameraX + ML Kit (on-device, no network) | `QrCodeScreen`, `QrCodeAnalyzer` |
+| **Device camera** | CameraX + ML Kit (on-device, no network) | `CameraXQrCodeScanner`, `QrCodeAnalyzer` |
 
 **Network reachability is tightly constrained.** All stream traffic is cleartext HTTP to a
 ULA IPv6 literal, reachable only through the tunnel. `network_security_config.xml` whitelists *the*
@@ -830,7 +848,7 @@ Useful commands:
 Note that `LayerDependencyTest` and `StreamHostTest` are ordinary unit tests, so a layering
 violation or a host/XML mismatch fails `testDebugUnitTest` like any other regression.
 
-**Instrumented screen tests.** 30 Compose UI tests under `app/src/androidTest/`, with packages
+**Instrumented screen tests.** 33 Compose UI tests under `app/src/androidTest/`, with packages
 mirroring `main`:
 
 | Test | Covers |
@@ -838,6 +856,8 @@ mirroring `main`:
 | `ConfigScreenTest` (10) | Each step's state as `stateDescription`, the callback each step and the Home button fire, the Home button label ("Navigate to" vs. "Back to") |
 | `StreamURLsScreenTest` (18) | Loading, empty list, row order and removal, the add form, the four confirmation dialogs, the grid fields per orientation, when "Save grid" is enabled |
 | `EmptyStreamsScreenTest` (2) | The message and the "Reconfigure" shortcut |
+| `ToastDisplayerTest` (1) | Toast events reach the `ToastPresenter` provided through `LocalToastPresenter`, in order |
+| `QrCodeRouteTest` (2) | With a `FakeQrCodeScanner`, a scanned payload reaches `onCodeScanned`; a camera error toasts and navigates back |
 
 They test screens in isolation: `createComposeRule` renders a `*Screen` with a hand-written
 `uiState` inside `setThemedContent` (`testing/ComposeTestSupport.kt`), and the test asserts what it
@@ -849,6 +869,11 @@ shows and which callback each interaction fires. No Hilt, navigation or fakes, s
   `**/*Test*.*` coverage filter, so they stay out of JaCoCo.
 - State is read from semantics, not from icons or colors: `ConfigButton` exposes its
   `ConfigButtonState` as `stateDescription`, which is also what TalkBack announces.
+- The camera is replaced by `FakeQrCodeScanner` (`testing/FakeQrCodeScanner.kt`), provided through
+  `LocalQrCodeScanner`.
+- Toasts are asserted by `@StringRes` id: wrap the content in
+  `CompositionLocalProvider(LocalToastPresenter provides RecordingToastPresenter())`
+  (`testing/RecordingToastPresenter.kt`) and wait for the id in `shown`.
 - Text is asserted only when the test is about the text, and always resolved with
   `string(R.string.x)`, never written as a literal (see the locale run below).
 - Test names are camelCase (`homeButtonRequestsNavigation`). Backtick names with spaces, as in the

@@ -22,6 +22,138 @@ não alcança:
 - **`ToastDisplayer`** chama `Toast.makeText`. O toast é uma janela do sistema que o Compose Test
   não enxerga, então a mensagem não pode ser verificada, só o efeito.
 
+### Propostas
+
+O Hilt não injeta em composables. Para a UI, a costura é um `CompositionLocal` cujo padrão é a
+implementação de produção. O `MainActivity` não muda, e não entra módulo Hilt nem `@TestInstallIn`.
+
+#### 1a. Consentimento de VPN: uma fonte só, e o evento carrega o `Intent` (resolve também o item 2)
+
+Hoje as três leituras do item 2 chamam `VpnService.prepare` por caminhos diferentes. A proposta
+junta as duas perguntas ("já tem consentimento?" e "qual diálogo abrir?") num único valor de
+domínio, com um único dono, o `VpnPermissionRepository`. O `VpnRepository` fica só com o túnel.
+
+```kotlin
+// core/permission/domain
+sealed interface VpnConsent {
+  data object Granted : VpnConsent
+  data class Required(val intent: Intent) : VpnConsent
+}
+
+interface VpnPermissionRepository {
+  fun getVpnConsent(): VpnConsent
+}
+
+// core/permission/data
+override fun getVpnConsent(): VpnConsent =
+  VpnService.prepare(context)?.let(VpnConsent::Required) ?: VpnConsent.Granted
+```
+
+- O `HasVpnPermissionUseCase` passa a ser `getVpnConsent() is Granted`. O
+  `RequestVpnPermissionUseCase` sai de `core/vpn` para `core/permission` e devolve o `VpnConsent`.
+  O `VpnRepository.getVpnPermissionIntent()` é removido.
+- O `ConfigViewModel.acceptVpnPermission()` faz um `when`: `Granted` mostra o toast de "já
+  concedida", e `Required` envia `VpnPermissionUiEvent.RequestPermission(intent)`. O route só
+  lança esse `Intent` e não importa mais o `VpnService`.
+- No teste, um único fake não consegue gerar um estado incoerente:
+
+  ```kotlin
+  class FakeVpnPermissionRepository : VpnPermissionRepository {
+    @Volatile var granted = false
+    override fun getVpnConsent() =
+      if (granted) VpnConsent.Granted else VpnConsent.Required(Intent(FAKE_VPN_CONSENT_ACTION))
+  }
+  ```
+
+  O Espresso-Intents responde à `FAKE_VPN_CONSENT_ACTION` com `RESULT_OK` ou `RESULT_CANCELED`.
+  Assim o nível B testa o aceite e a recusa sem diálogo do sistema e sem `appops`.
+- Por que um tipo selado e não `Intent?`: o `null` com o significado de "já concedido" é o
+  contrato do `prepare` e hoje só aparece em comentários. O `VpnConsent` deixa isso explícito e
+  obriga o `when` a tratar os dois casos.
+- Custo: um `Intent` (um `Parcelable`, sem `Context`) passa pelo ViewModel. O domínio de
+  `permission` passa a importar `android.content.Intent`, como o de `vpn` já fazia. O
+  `LayerDependencyTest` só proíbe `androidx.compose` no domínio.
+- Extra fora do escopo: o consentimento pode ser revogado fora do app, quando o usuário o concede a
+  outro app de VPN. Com a fonte única, um `refreshVpnPermissionState()` no `ON_RESUME`, igual ao da
+  câmera, resolveria. Muda comportamento, então fica separado.
+
+#### 1b. Câmera do QR: `QrCodeScanner` por `CompositionLocal`
+
+```kotlin
+interface QrCodeScanner {
+  @Composable
+  fun Preview(modifier: Modifier, onQrCodeScanned: (String) -> Unit, onCameraInitError: (Throwable) -> Unit)
+}
+
+object CameraXQrCodeScanner : QrCodeScanner { /* o QrCodeCameraPreview atual */ }
+
+val LocalQrCodeScanner = staticCompositionLocalOf<QrCodeScanner> { CameraXQrCodeScanner }
+```
+
+- O `QrCodeScreen` chama `LocalQrCodeScanner.current.Preview(...)`. O teste fornece um
+  `FakeQrCodeScanner(rawJson)` que emite o JSON num `LaunchedEffect` ou por um botão de teste.
+- O QR percorre o caminho real: `QrCodeRoute` → `QrCodeViewModel` → `savedStateHandle` →
+  `ConfigRoute`. O teste não precisa mais gravar no `savedStateHandle` por fora, o que alivia parte
+  do item 3.
+
+#### 1c. Toast: `ToastPresenter` por `CompositionLocal`
+
+```kotlin
+fun interface ToastPresenter { fun show(@StringRes resId: Int) }
+
+val LocalToastPresenter = staticCompositionLocalOf<ToastPresenter?> { null }
+```
+
+- `null` significa o `Toast` da plataforma. O teste fornece um `RecordingToastPresenter` e verifica
+  o `resId` (`waitUntil { R.string.x in presenter.shown }`), o que também tira a dependência do
+  idioma (item 9).
+- Resolve a maior parte do item 7 sem mudar a UX. As cinco telas que usam o `ToastDisplayer` não
+  mudam.
+- Alternativa descartada: trocar o toast por `Snackbar`. O Compose Test enxerga, mas muda a UX sem
+  necessidade.
+
+#### Ordem
+
+1c (o menor, usado em todas as telas), depois 1a com o item 2 (o único que toca um ViewModel),
+depois 1b (o maior, move o `QrCodeCameraPreview` para um objeto).
+
+#### Resultado
+
+- **1c — feito.** O `ToastPresenter` e o `LocalToastPresenter` ficam em
+  `core/components/ToastDisplayer.kt`. O `RecordingToastPresenter` fica em `androidTest/testing/`, e
+  o `ToastDisplayerTest` prova que os eventos chegam ao presenter fornecido, na ordem. Sem desvio do
+  plano. A única diferença é que o `LaunchedEffect` agora também usa o presenter como chave.
+- **1a + item 2 — feito.** Como proposto:
+  - `VpnConsent` em `core/permission/domain`;
+  - `VpnPermissionRepository.getVpnConsent()` como o único `VpnService.prepare` do app;
+  - o `RequestVpnPermissionUseCase` (e o seu teste) movido para `core/permission`;
+  - o `getVpnPermissionIntent()` removido do `VpnRepository`;
+  - o `Intent` no evento, e o route sem `VpnService` nem `LocalContext`.
+
+  Os 289 testes unitários passam e os instrumentados compilam. Não rodei os instrumentados de novo,
+  porque nenhum deles passa pelo `ConfigRoute` ou pelo `ConfigViewModel`. O `lintDebug` acusa 3 erros
+  que já existiam antes da mudança: `RestrictedApi` no `NavigationRoot` e dois
+  `FlowOperatorInvokedInComposition` no `ConfigRoute`, nos `filterIsInstance`/`map` dos eventos. O
+  `FakeVpnPermissionRepository` ainda não existe e entra com o nível B.
+- **1b — feito.** Mudanças:
+  - o contrato `QrCodeScanner` e o `LocalQrCodeScanner` ficam em
+    `feature/qrcode/components/QrCodeScanner.kt`;
+  - o antigo `QrCodeCameraPreview` virou o `CameraXQrCodeScanner`, com o código sem mudança.
+
+  Desvio da proposta: quem lê o local é o `QrCodeRoute`, que passa o scanner ao `QrCodeScreen` como
+  parâmetro. É a mesma divisão do `LocalEglBase`: o route lê o ambiente, e a tela fica pura.
+
+  O `FakeQrCodeScanner` (`androidTest/testing/`) emite o payload ou um erro ao ser composto. O
+  `QrCodeRouteTest` (2 testes) usa o route e o `QrCodeViewModel` reais, e cobre:
+  - a leitura chegando ao `onCodeScanned`;
+  - o erro de câmera gerando o toast `CAMERA_INIT_ERROR` (verificado pelo `RecordingToastPresenter`
+    do 1c) e voltando de tela.
+
+  Resultado: 289 unitários e 34 instrumentados passando no emulador.
+
+  Não testei a câmera real à mão depois da mudança. Ainda falta o caminho até o `ConfigRoute` pelo
+  `savedStateHandle`, que depende do item 3 (`CamerasAppContent`).
+
 ## 2. Mesma informação lida em vários lugares
 
 O consentimento de VPN é lido em três pontos:
@@ -32,6 +164,9 @@ O consentimento de VPN é lido em três pontos:
 
 Fakes independentes geram combinações impossíveis em produção. Por isso o plano do nível B usa as
 permissões reais e controla o estado do sistema.
+
+**Resolvido junto com o 1a:** as três leituras viraram uma só, o
+`VpnPermissionRepository.getVpnConsent()`.
 
 ## 3. Composition root fechado no `MainActivity`
 
@@ -97,9 +232,9 @@ hospedado e precisa do build minificado num dispositivo físico.
 Os itens 1 a 3 são os que mais pesam, porque são dívidas de projeto e não limitações da plataforma.
 As correções são pequenas:
 
-- o route pedir o `Intent` a uma interface;
-- um `QrCodeSource` injetável;
-- um `ToastPresenter`;
+- o consentimento de VPN com uma fonte só, e o `Intent` no evento do ViewModel (1a + item 2, feito);
+- um `QrCodeScanner` trocável por `CompositionLocal` (1b, feito);
+- um `ToastPresenter` trocável por `CompositionLocal` (1c, feito);
 - a raiz de composição separada da activity.
 
 O resto (lifecycle, threads, nativo, VPN real) é inerente ao que o app faz e se resolve com a
