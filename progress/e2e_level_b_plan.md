@@ -144,6 +144,17 @@ Precisa estar no manifest do **app** (não no do APK de teste), como a `Componen
 
 O nome casa com `**/*Test*.*`, então fica fora do JaCoCo. Só existe no build debug.
 
+**Resultado dos §3.2 e §3.3 — feito**, antes do §3.1 e fora da ordem dos commits do §7 (item 3 do
+`e2e_testability.md`). Sem desvio no código de produção.
+
+Além do plano:
+- entrou o `CamerasAppContentTest`, um smoke na `HiltTestActivity` que ainda usa o
+  `AndroidJUnitRunner`, com o `EglBase` criado no teste;
+- há um comentário no manifest principal apontando para o de debug.
+
+Verificação do §3.5 cumprida: unitários, `assembleDebug`, `assembleRelease` sem a activity no
+manifest, e o app à mão abrindo no Config.
+
 ### 3.4 Tags da Home (`HomeTestTags`)
 
 ```kotlin

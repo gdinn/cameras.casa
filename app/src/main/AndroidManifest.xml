@@ -35,6 +35,8 @@
             android:stopWithTask="false"
             android:exported="false" />
 
+        <!-- HiltTestActivity (debug manifest) copies this theme and configChanges: keep them in
+             step. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"

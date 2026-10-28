@@ -174,6 +174,24 @@ O `NavController` é criado dentro do `setContent` e não fica acessível. O tes
 o QR no `savedStateHandle` nem ler a pilha. Por isso o plano do nível B extrai o `CamerasAppContent`
 e cria a `HiltTestActivity`.
 
+**Resultado — feito**, como nos §3.2 e §3.3 do `e2e_level_b_plan.md`:
+
+- o `CamerasAppContent(eglBase, navController)` está em `MainActivity.kt`, que só o chama com
+  `rememberNavController()`;
+- a `HiltTestActivity` está no source set `debug`, com o mesmo tema e `configChanges` do
+  `MainActivity`, e há um comentário nos dois manifests pedindo que andem juntos.
+
+Verificação:
+- 289 testes unitários passam;
+- 35 testes instrumentados passam no emulador;
+- o `assembleRelease` passa, e a activity não está no manifest de release;
+- o `MainActivity` real abre no Config sem mudança visível.
+
+Desvio: entrou um smoke, o `CamerasAppContentTest`. Ele monta a raiz na `HiltTestActivity` com um
+`NavController` do teste e espera sair do `Loading`. Como ainda não há o runner Hilt (§3.1 do plano),
+o `EglBase` é criado no teste e o grafo é o real. Por isso o teste aceita tanto o Config quanto a
+Home: depende das credenciais que já estão no dispositivo, até o `clearPackageData` entrar.
+
 ## 4. Estado global persistente sem costura
 
 Os DataStores são delegates `by dataStore(...)`, um por processo, com nome de arquivo fixo e chave
@@ -235,7 +253,7 @@ As correções são pequenas:
 - o consentimento de VPN com uma fonte só, e o `Intent` no evento do ViewModel (1a + item 2, feito);
 - um `QrCodeScanner` trocável por `CompositionLocal` (1b, feito);
 - um `ToastPresenter` trocável por `CompositionLocal` (1c, feito);
-- a raiz de composição separada da activity.
+- a raiz de composição separada da activity (item 3, feito).
 
 O resto (lifecycle, threads, nativo, VPN real) é inerente ao que o app faz e se resolve com a
 estratégia de teste, não com refatoração.

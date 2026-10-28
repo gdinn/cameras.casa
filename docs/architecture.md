@@ -242,6 +242,15 @@ inside a `sealed interface`. `NavigationRoot.kt` maps each to a route composable
 inter-screen wiring, including passing the QR-code result back through
 `previousBackStackEntry.savedStateHandle`.
 
+**Composition root.** `CamerasAppContent(eglBase, navController)`, in `MainActivity.kt`, is the
+whole tree: `CamerasTheme`, `LocalEglBase` and `NavigationRoot`. `MainActivity` only injects
+`EglBase`, calls `enableEdgeToEdge()` and sets `CamerasAppContent` with `rememberNavController()`.
+The split exists for the instrumented tests: they set the same composable on `HiltTestActivity` with
+a `NavHostController` they own, so they can read the back stack and write the QR result to the
+`savedStateHandle`. `HiltTestActivity` lives in the `debug` source set
+(`app/src/debug/java/.../testing/`, declared in `app/src/debug/AndroidManifest.xml`), so it is not
+in release builds. Its theme and `configChanges` must match `MainActivity`'s; both manifests say so.
+
 | Destination | Route composable | File | ViewModel |
 |---|---|---|---|
 | `Loading` (start) | `InitRoute` | `feature/init/InitRoute.kt` | `InitViewModel` |
@@ -563,8 +572,8 @@ for every screen opened after the first was destroyed. `WhepClientImpl` is likew
 `WhepRemoteDataSource` and the `PeerConnectionFactory` / `EglBase` are singletons.
 
 **`EglBase` reaches the UI as a `CompositionLocal`, not as a parameter.** `MainActivity` injects the
-singleton and provides `LocalEglBase` (`core/webrtc/EglBaseCompositionLocal.kt`) around the whole
-composition; `HomeRoute` reads it and passes it to `HomeScreen` explicitly. Threading it down as a
+singleton, and `CamerasAppContent` provides it as `LocalEglBase` (`core/webrtc/EglBaseCompositionLocal.kt`)
+around the whole composition; `HomeRoute` reads it and passes it to `HomeScreen` explicitly. Threading it down as a
 parameter instead would put a WebRTC SDK type in `NavigationRoot`'s signature, making the navigation
 graph depend on the video stack it only routes to. The local stops at the route on purpose —
 `HomeScreen` keeps an explicit `eglBase` parameter so it stays pure and previewable.
@@ -799,9 +808,10 @@ they prove what a screen shows and which callback it fires, and nothing past tha
 on a device:
 
 - `HomeScreen` and the video grid, which need `EglBase` and WebRTC.
-- Flows through the real `MainActivity`: navigation, ViewModels, use cases and the encrypted
-  DataStore together, with Hilt test doubles replacing only what leaves the process (WireGuard
-  tunnel, WHEP/WebRTC, permissions, the QR scanner).
+- Flows through the real composition root (`CamerasAppContent`, already rendered once by
+  `CamerasAppContentTest`): navigation, ViewModels, use cases and the encrypted DataStore together,
+  with Hilt test doubles replacing only what leaves the process (WireGuard tunnel, WHEP/WebRTC,
+  permissions, the QR scanner).
 - The system dialogs (VPN consent, camera permission), which only UI Automator can drive.
 
 The gap that used to sit next to this one — release builds not being minified — is closed:
@@ -848,7 +858,7 @@ Useful commands:
 Note that `LayerDependencyTest` and `StreamHostTest` are ordinary unit tests, so a layering
 violation or a host/XML mismatch fails `testDebugUnitTest` like any other regression.
 
-**Instrumented screen tests.** 33 Compose UI tests under `app/src/androidTest/`, with packages
+**Instrumented screen tests.** 34 Compose UI tests under `app/src/androidTest/`, with packages
 mirroring `main`:
 
 | Test | Covers |
@@ -857,6 +867,7 @@ mirroring `main`:
 | `StreamURLsScreenTest` (18) | Loading, empty list, row order and removal, the add form, the four confirmation dialogs, the grid fields per orientation, when "Save grid" is enabled |
 | `EmptyStreamsScreenTest` (2) | The message and the "Reconfigure" shortcut |
 | `ToastDisplayerTest` (1) | Toast events reach the `ToastPresenter` provided through `LocalToastPresenter`, in order |
+| `CamerasAppContentTest` (1) | Smoke test of the composition root in `HiltTestActivity`: startup leaves `Loading` for `Config` or `Home` through a test-owned `NavController` |
 | `QrCodeRouteTest` (2) | With a `FakeQrCodeScanner`, a scanned payload reaches `onCodeScanned`; a camera error toasts and navigates back |
 
 They test screens in isolation: `createComposeRule` renders a `*Screen` with a hand-written
