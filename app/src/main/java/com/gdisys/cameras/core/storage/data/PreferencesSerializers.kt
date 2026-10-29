@@ -2,6 +2,8 @@ package com.gdisys.cameras.core.storage.data
 
 import com.gdisys.cameras.core.storage.domain.model.StreamPreferences
 import com.gdisys.cameras.core.storage.domain.model.UserPreferences
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 
 /*
  * The serializers behind `userPreferencesDataStore` and `streamPreferencesDataStore`, exposed so
@@ -11,16 +13,26 @@ import com.gdisys.cameras.core.storage.domain.model.UserPreferences
  *
  * They live apart from the `by dataStore` delegates on purpose: touching a delegate's file class
  * initializes it, and with it a `KeystoreCryptoEngine`, which does not exist on the JVM.
+ *
+ * The `by dataStore` delegates take the default `ioDispatcher`; tests pass their own.
  */
 
-internal fun userPreferencesSerializer(crypto: CryptoEngine) = EncryptedPreferencesSerializer(
+internal fun userPreferencesSerializer(
+  crypto: CryptoEngine,
+  ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+) = EncryptedPreferencesSerializer(
   serializer = UserPreferences.serializer(),
   defaultValue = UserPreferences(),
-  crypto = crypto
+  crypto = crypto,
+  ioDispatcher = ioDispatcher
 )
 
-internal fun streamPreferencesSerializer(crypto: CryptoEngine) = EncryptedPreferencesSerializer(
+internal fun streamPreferencesSerializer(
+  crypto: CryptoEngine,
+  ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+) = EncryptedPreferencesSerializer(
   serializer = StreamPreferences.serializer(),
   defaultValue = StreamPreferences(),
-  crypto = crypto
+  crypto = crypto,
+  ioDispatcher = ioDispatcher
 )

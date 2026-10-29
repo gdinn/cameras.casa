@@ -3,6 +3,7 @@ package com.gdisys.cameras.core.vpn.data
 import android.content.Context
 import android.util.Log
 import com.gdisys.cameras.core.DEBUG_TAG
+import com.gdisys.cameras.core.coroutines.IoDispatcher
 import com.gdisys.cameras.core.vpn.domain.model.VpnConfig
 import com.gdisys.cameras.core.vpn.domain.VpnRepository
 import com.gdisys.cameras.core.vpn.domain.VpnTunnelState
@@ -13,7 +14,7 @@ import com.wireguard.config.Config
 import com.wireguard.config.Interface
 import com.wireguard.config.Peer
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -68,7 +69,8 @@ fun VpnConfig.toWireGuardConfig(): Config {
 
 @Singleton
 class VpnRepositoryImpl @Inject constructor(
-  @ApplicationContext private val context: Context
+  @ApplicationContext private val context: Context,
+  @IoDispatcher private val ioDispatcher: CoroutineDispatcher
 ) : VpnRepository {
 
   // Keeping a single Backend instance for the app's lifetime is strongly recommended.
@@ -91,7 +93,7 @@ class VpnRepositoryImpl @Inject constructor(
    */
   override suspend fun connect(
     config: VpnConfig
-  ) = withContext<Unit>(Dispatchers.IO) {
+  ) = withContext<Unit>(ioDispatcher) {
     _vpnState.value = VpnTunnelState.CONNECTING
     backend.setState(tunnel, Tunnel.State.UP, config.toWireGuardConfig())
   }
@@ -99,7 +101,7 @@ class VpnRepositoryImpl @Inject constructor(
   /**
    * Drops the current tunnel connection.
    */
-  override suspend fun disconnect() = withContext<Unit>(Dispatchers.IO) {
+  override suspend fun disconnect() = withContext<Unit>(ioDispatcher) {
     backend.setState(tunnel, Tunnel.State.DOWN, null)
   }
 

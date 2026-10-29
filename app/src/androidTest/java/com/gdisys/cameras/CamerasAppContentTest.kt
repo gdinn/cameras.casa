@@ -19,8 +19,8 @@ import javax.inject.Inject
  * Smoke test for the shared composition root: the real navigation graph and Hilt ViewModels,
  * rendered in [HiltTestActivity] with a [NavHostController] the test owns.
  *
- * Only storage and the VPN are replaced, by `TestStorageModule` and `TestVpnModule`. Each test gets
- * new, empty stores, so there are never stored credentials and startup always lands on Config.
+ * Only storage, the VPN and the dispatchers are replaced, by `TestStorageModule`, `TestVpnModule`
+ * and `TestDispatchersModule`. Each test gets new, empty stores, so there are never stored credentials and startup always lands on Config.
  */
 @HiltAndroidTest
 class CamerasAppContentTest {
@@ -47,13 +47,11 @@ class CamerasAppContentTest {
       CamerasAppContent(eglBase = eglBase, navController = navController)
     }
 
-    composeRule.waitUntil(timeoutMillis = 5_000) {
-      composeRule.runOnUiThread {
-        navController.currentDestination?.hasRoute<NavigationRoute.Config>() == true
-      }
-    }
-    // Loading stays below Config: InitRoute navigates without popping itself.
-    composeRule.runOnUiThread {
+    // No waitUntil: the stores read on the idling IO dispatcher (TestDispatchersModule), so idle
+    // means the credentials were read and the navigation happened.
+    composeRule.runOnIdle {
+      assertTrue(navController.currentDestination?.hasRoute<NavigationRoute.Config>() == true)
+      // Loading stays below Config: InitRoute navigates without popping itself.
       assertTrue(navController.previousBackStackEntry?.destination?.hasRoute<NavigationRoute.Loading>() == true)
     }
   }

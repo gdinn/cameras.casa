@@ -187,7 +187,7 @@ top-level package groups live under `com.gdisys.cameras`:
 |---|---|
 | `app/*` | Composition root and navigation: `MainActivity`, `CamerasApp`, `app.navigation` |
 | `feature/*` | One package per screen. Route + ViewModel + UiState + `components/` + optional `logic/` |
-| `core/*` | Everything shared: `storage`, `vpn`, `webrtc`, `permission`, `network`, `components`, plus the presentation base classes at the package root |
+| `core/*` | Everything shared: `storage`, `vpn`, `webrtc`, `permission`, `network`, `coroutines`, `components`, plus the presentation base classes at the package root |
 | `ui/*` | `ui.theme` only — `CamerasTheme`, color and typography |
 
 ### 3.1 The layering rule
@@ -632,7 +632,24 @@ Because `network_security_config.xml` cannot reference a Kotlin constant, `Strea
 the XML and asserts the two stay in sync — turning what would be a runtime cleartext failure on
 device into a build failure.
 
-### 6.6 `core` (root) and `core/components`
+### 6.6 `core/coroutines` — injected dispatchers
+
+`IoDispatcher` and `DefaultDispatcher` are Hilt qualifiers for the `CoroutineDispatcher`s the app
+uses off the main thread, and `DispatchersModule` binds them to `Dispatchers.IO` and
+`Dispatchers.Default`. Nothing in `main` names those two directly. The VPN use cases,
+`VpnRepositoryImpl`, `VpnLifecycleService` and `WhepRemoteDataSourceImpl` inject them. The storage
+serializers take an `ioDispatcher` parameter instead, defaulting to `Dispatchers.IO`, because the
+production stores are `by dataStore` delegates built outside Hilt.
+
+The qualifiers sit at the package root, without `domain`/`data`, because the use cases in `domain`
+import them. `Dispatchers.Main` stays hardcoded: the instrumented tests already sync with the main
+looper, and the unit tests replace it with `MainDispatcherRule`. `WhepConnectionManager` runs on
+`Main.immediate` and hands the slow part to `WhepRemoteDataSource`.
+
+The seam exists for the tests. Unit tests pass a `TestDispatcher`, and instrumented tests swap in
+dispatchers that the Compose test rule waits for (§10).
+
+### 6.7 `core` (root) and `core/components`
 
 - `ToastEventViewModel` — abstract base owning the toast `Channel`; every ViewModel extends it.
 - `ToastMessage` — `@StringRes` interface implemented by per-feature enums.
@@ -641,7 +658,7 @@ device into a build failure.
   `ToastPresenter` seam, `LocalToastPresenter`), `LoadingScreen` and `LaunchActivityResultOnEvent`.
   Anything that is a screen of its own belongs in `feature/`.
 
-### 6.7 `ui/theme`
+### 6.8 `ui/theme`
 
 `CamerasTheme` with Material 3 dynamic color on API 31+. Light and dark themes are both supported:
 `darkTheme` defaults to `isSystemInDarkTheme()`, so the app follows the system setting. The window
@@ -893,8 +910,8 @@ Useful commands:
 Note that `LayerDependencyTest` and `StreamHostTest` are ordinary unit tests, so a layering
 violation or a host/XML mismatch fails `testDebugUnitTest` like any other regression.
 
-**Instrumented screen tests.** 38 tests under `app/src/androidTest/` (34 Compose UI tests, two
-storage tests, one service test and the default example), with packages mirroring `main`:
+**Instrumented screen tests.** 40 tests under `app/src/androidTest/` (35 Compose UI tests, two
+storage tests, one service test, one dispatcher test and the default example), with packages mirroring `main`:
 
 | Test | Covers |
 |---|---|
@@ -902,10 +919,11 @@ storage tests, one service test and the default example), with packages mirrorin
 | `StreamURLsScreenTest` (18) | Loading, empty list, row order and removal, the add form, the four confirmation dialogs, the grid fields per orientation, when "Save grid" is enabled |
 | `EmptyStreamsScreenTest` (2) | The message and the "Reconfigure" shortcut |
 | `ToastDisplayerTest` (1) | Toast events reach the `ToastPresenter` provided through `LocalToastPresenter`, in order |
-| `CamerasAppContentTest` (1) | Smoke test of the composition root in `HiltTestActivity` (`@HiltAndroidTest`, production graph except storage and the VPN, injected `EglBase`): first run lands on `Config` over `Loading`, read through a test-owned `NavController` |
+| `CamerasAppContentTest` (1) | Smoke test of the composition root in `HiltTestActivity` (`@HiltAndroidTest`, production graph except storage, the VPN and the dispatchers, injected `EglBase`): first run lands on `Config` over `Loading`, read through a test-owned `NavController` in `runOnIdle`, with no `waitUntil` |
 | `TestStorageModuleTest` (1) | In a `@HiltAndroidTest`, the production repositories start empty and write to the `TestStorageModule` files, never to the production ones |
 | `IsolatedPreferencesStoreTest` (1) | A store built from `userPreferencesSerializer` on its own file and Keystore alias starts empty, encrypts and leaves the production file untouched |
 | `VpnLifecycleServiceTest` (1) | The real `VpnLifecycleService`, injected by Hilt over `FakeVpnRepository`: stopping it drops the tunnel. `onTaskRemoved` has no test API and stays a manual check |
+| `IdlingDispatcherTest` (2) | `IdlingDispatcher` is busy while its work runs and reports the transition to idle; the Compose test rule waits for main → `TestDispatchers.default` → `TestDispatchers.io` → main with no `waitUntil` |
 | `QrCodeRouteTest` (2) | With a `FakeQrCodeScanner`, a scanned payload reaches `onCodeScanned`; a camera error toasts and navigates back |
 
 Most of them test screens in isolation: `createComposeRule` renders a `*Screen` with a hand-written
@@ -928,6 +946,16 @@ shows and which callback each interaction fires, with no Hilt, navigation or fak
 - **`TestStorageModule`** replaces `StorageModule` in every `@HiltAndroidTest`, so storage is isolated
   per test by Hilt even without the orchestrator. Tests that need to look at the files inject
   `TestStoreFiles`.
+- **`TestDispatchersModule`** replaces `DispatchersModule` in every `@HiltAndroidTest` with the
+  `TestDispatchers` (`testing/IdlingDispatcher.kt`). Each one wraps the real dispatcher and is an
+  Espresso `IdlingResource`, busy while any block it dispatched is queued or running.
+  `HiltTestRunner.onStart` registers both with the `IdlingRegistry`, once per process. The Compose
+  test rule syncs through Espresso, so `waitForIdle`, `runOnIdle` and every assertion wait for the
+  VPN use cases and the DataStore reads and writes (`TestStorageModule` runs the stores and their
+  serializers on the injected IO dispatcher) as they wait for the main thread. They count
+  dispatched blocks, not coroutines. Work that suspends outside them is not waited for: a `delay`,
+  a native WebRTC callback, or a dispatcher the test did not wrap (the `IsolatedPreferencesStoreTest`
+  store, for example). Those cases still need `waitUntil`.
 - **`TestVpnModule`** replaces `VpnModule` in every `@HiltAndroidTest` with `FakeVpnRepository` and
   `FakeVpnLifecycleController` (`testing/FakeVpnRepository.kt`), so no test brings up WireGuard.
   Both are `@Singleton`: tests inject the fakes directly to drive the tunnel state and read the

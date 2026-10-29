@@ -3,6 +3,7 @@ package com.gdisys.cameras.testing
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.core.DataStoreFactory
+import com.gdisys.cameras.core.coroutines.IoDispatcher
 import com.gdisys.cameras.core.storage.data.KeystoreCryptoEngine
 import com.gdisys.cameras.core.storage.data.streamPreferencesSerializer
 import com.gdisys.cameras.core.storage.data.userPreferencesSerializer
@@ -16,6 +17,9 @@ import dagger.Provides
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import dagger.hilt.testing.TestInstallIn
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
 import java.io.File
 import java.util.UUID
 import javax.inject.Singleton
@@ -33,6 +37,9 @@ class TestStoreFiles(val userPreferences: File, val streamPreferences: File)
  * Hilt creates a new `SingletonComponent` for each test, so every test gets new files and starts
  * empty, whatever ran before it. The orchestrator's `clearPackageData` wipes the cache directory
  * between tests too, so the files do not pile up.
+ *
+ * The stores and their serializers run on the injected IO dispatcher, which in tests is the idling
+ * one from `TestDispatchersModule`, so the Compose test rule waits for reads and writes.
  */
 @Module
 @TestInstallIn(components = [SingletonComponent::class], replaces = [StorageModule::class])
@@ -51,18 +58,32 @@ object TestStorageModule {
   @Provides
   @Singleton
   @UserPreferencesStore
-  fun provideUserPreferencesStore(files: TestStoreFiles): DataStore<UserPreferences> =
+  fun provideUserPreferencesStore(
+    files: TestStoreFiles,
+    @IoDispatcher ioDispatcher: CoroutineDispatcher
+  ): DataStore<UserPreferences> =
     DataStoreFactory.create(
-      serializer = userPreferencesSerializer(KeystoreCryptoEngine(TEST_USER_PREFERENCES_KEY_ALIAS)),
+      serializer = userPreferencesSerializer(
+        KeystoreCryptoEngine(TEST_USER_PREFERENCES_KEY_ALIAS),
+        ioDispatcher
+      ),
+      scope = CoroutineScope(ioDispatcher + SupervisorJob()),
       produceFile = { files.userPreferences }
     )
 
   @Provides
   @Singleton
   @StreamPreferencesStore
-  fun provideStreamPreferencesStore(files: TestStoreFiles): DataStore<StreamPreferences> =
+  fun provideStreamPreferencesStore(
+    files: TestStoreFiles,
+    @IoDispatcher ioDispatcher: CoroutineDispatcher
+  ): DataStore<StreamPreferences> =
     DataStoreFactory.create(
-      serializer = streamPreferencesSerializer(KeystoreCryptoEngine(TEST_STREAM_PREFERENCES_KEY_ALIAS)),
+      serializer = streamPreferencesSerializer(
+        KeystoreCryptoEngine(TEST_STREAM_PREFERENCES_KEY_ALIAS),
+        ioDispatcher
+      ),
+      scope = CoroutineScope(ioDispatcher + SupervisorJob()),
       produceFile = { files.streamPreferences }
     )
 }

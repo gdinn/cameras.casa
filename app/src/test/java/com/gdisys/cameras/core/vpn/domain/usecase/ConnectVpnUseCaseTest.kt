@@ -8,9 +8,13 @@ import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import kotlin.coroutines.ContinuationInterceptor
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertSame
 import org.junit.Before
 import org.junit.Test
 
@@ -18,6 +22,7 @@ class ConnectVpnUseCaseTest {
 
   private val vpnRepository = mockk<VpnRepository>()
   private val vpnLifecycleController = mockk<VpnLifecycleController>()
+  private val testDispatcher = StandardTestDispatcher()
   private lateinit var useCase: ConnectVpnUseCase
 
   private val validConfig = VpnConfig(
@@ -34,11 +39,11 @@ class ConnectVpnUseCaseTest {
 
   @Before
   fun setUp() {
-    useCase = ConnectVpnUseCase(vpnRepository, vpnLifecycleController)
+    useCase = ConnectVpnUseCase(vpnRepository, vpnLifecycleController, testDispatcher)
   }
 
   @Test
-  fun `returns failure when config is null`() = runTest {
+  fun `returns failure when config is null`() = runTest(testDispatcher) {
     val result = useCase(null)
 
     assertTrue(result.isFailure)
@@ -46,7 +51,7 @@ class ConnectVpnUseCaseTest {
   }
 
   @Test
-  fun `returns failure when config is invalid`() = runTest {
+  fun `returns failure when config is invalid`() = runTest(testDispatcher) {
     val result = useCase(validConfig.copy(privateKey = ""))
 
     assertTrue(result.isFailure)
@@ -54,7 +59,7 @@ class ConnectVpnUseCaseTest {
   }
 
   @Test
-  fun `connects and starts the lifecycle controller when config is valid`() = runTest {
+  fun `connects and starts the lifecycle controller when config is valid`() = runTest(testDispatcher) {
     coEvery { vpnRepository.connect(validConfig) } returns Unit
     every { vpnLifecycleController.start() } returns Unit
 
@@ -66,7 +71,7 @@ class ConnectVpnUseCaseTest {
   }
 
   @Test
-  fun `returns failure when the repository throws`() = runTest {
+  fun `returns failure when the repository throws`() = runTest(testDispatcher) {
     val exception = RuntimeException("boom")
     coEvery { vpnRepository.connect(validConfig) } throws exception
 
@@ -74,5 +79,19 @@ class ConnectVpnUseCaseTest {
 
     assertTrue(result.isFailure)
     assertEquals(exception, result.exceptionOrNull())
+  }
+
+  @Test
+  fun `connects on the injected dispatcher`() = runTest {
+    val injectedDispatcher = StandardTestDispatcher(testScheduler)
+    var connectDispatcher: ContinuationInterceptor? = null
+    coEvery { vpnRepository.connect(validConfig) } coAnswers {
+      connectDispatcher = currentCoroutineContext()[ContinuationInterceptor]
+    }
+    every { vpnLifecycleController.start() } returns Unit
+
+    ConnectVpnUseCase(vpnRepository, vpnLifecycleController, injectedDispatcher)(validConfig)
+
+    assertSame(injectedDispatcher, connectDispatcher)
   }
 }

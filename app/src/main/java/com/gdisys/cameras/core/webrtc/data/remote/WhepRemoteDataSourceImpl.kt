@@ -1,6 +1,7 @@
 package com.gdisys.cameras.core.webrtc.data.remote
 
-import kotlinx.coroutines.Dispatchers
+import com.gdisys.cameras.core.coroutines.IoDispatcher
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
 import java.net.URL
@@ -13,10 +14,12 @@ interface WhepRemoteDataSource {
   suspend fun postOffer(streamUrl: String, offerSdp: String): String
 }
 
-class WhepRemoteDataSourceImpl @Inject constructor() : WhepRemoteDataSource {
+class WhepRemoteDataSourceImpl @Inject constructor(
+  @IoDispatcher private val ioDispatcher: CoroutineDispatcher
+) : WhepRemoteDataSource {
 
   override suspend fun postOffer(streamUrl: String, offerSdp: String): String =
-    withContext(Dispatchers.IO) {
+    withContext(ioDispatcher) {
       val connection = URL("$streamUrl/whep").openConnection() as HttpURLConnection
       try {
         connection.requestMethod = "POST"

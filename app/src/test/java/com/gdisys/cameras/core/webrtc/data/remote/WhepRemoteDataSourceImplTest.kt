@@ -1,5 +1,6 @@
 package com.gdisys.cameras.core.webrtc.data.remote
 
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.runTest
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -12,7 +13,7 @@ import org.junit.Test
 class WhepRemoteDataSourceImplTest {
 
   private val server = MockWebServer()
-  private val dataSource = WhepRemoteDataSourceImpl()
+  private val dataSource = WhepRemoteDataSourceImpl(Dispatchers.IO)
 
   @Before
   fun setUp() {

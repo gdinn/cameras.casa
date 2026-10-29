@@ -366,6 +366,53 @@ disconnect pode chegar depois do connect, e a Home fica sem túnel.
 disso, então os testes precisam de `waitUntil` e de contadores atômicos nos fakes. Não há
 `IdlingResource` nem dispatcher injetável.
 
+### Proposta
+
+Injetar os dispatchers e, no teste instrumentado, trocá-los por dispatchers que o Espresso enxerga.
+O Compose Test sincroniza pelo Espresso, então passa a esperar esse trabalho como espera a main
+thread.
+
+- `core/coroutines`: os qualifiers `@IoDispatcher` e `@DefaultDispatcher`, e o `DispatchersModule`
+  com `Dispatchers.IO`/`Default`. Ficam na raiz do pacote porque os use cases do `domain` os
+  importam.
+- Quem injeta: `ConnectVpnUseCase`, `DisconnectVpnUseCase`, `VpnRepositoryImpl`,
+  `VpnLifecycleService` e `WhepRemoteDataSourceImpl`. Os serializers do storage recebem um
+  parâmetro `ioDispatcher` com padrão `Dispatchers.IO`, porque os stores de produção são delegates
+  `by dataStore`, fora do Hilt.
+- O `Dispatchers.Main` fica fixo. A main thread já é sincronizada, e nos unitários o
+  `MainDispatcherRule` a troca.
+- No teste: o `IdlingDispatcher` embrulha o dispatcher real e é um `IdlingResource`, ocupado
+  enquanto houver bloco na fila ou rodando. O `TestDispatchersModule` (`@TestInstallIn`) entrega os
+  dois `TestDispatchers`, e o `HiltTestRunner` os registra no `IdlingRegistry` uma vez por processo.
+  O `TestStorageModule` passa o IO injetado ao `scope` do DataStore e ao serializer.
+- Limite: o `IdlingDispatcher` conta blocos, não corrotinas. O que suspende fora dele (um `delay`,
+  um callback nativo do WebRTC, um dispatcher não embrulhado) não é esperado e continua precisando
+  de `waitUntil`. A troca de um dispatcher contado para outro, ou para a main, não abre brecha,
+  porque o próximo bloco entra na fila antes do atual terminar.
+
+### Resultado
+
+- **Feito**, como proposto. Os unitários de `Connect/DisconnectVpnUseCase` recebem um
+  `StandardTestDispatcher` e ganharam um teste cada, que prova que o repositório roda no dispatcher
+  injetado. O `WhepRemoteDataSourceImplTest` passa `Dispatchers.IO`, porque faz rede de verdade no
+  `MockWebServer`.
+- `IdlingDispatcherTest` (instrumentado, 2 testes):
+  - o dispatcher fica ocupado enquanto o bloco roda e avisa a volta ao idle;
+  - um `LaunchedEffect` vai da main ao `default`, ao `io` e volta, e o `onNodeWithText("done")`
+    passa sem `waitUntil`.
+- O `CamerasAppContentTest` trocou o `waitUntil` por `runOnIdle`: a leitura das credenciais roda no
+  IO contado, então idle já significa que o app navegou para o Config.
+- Os `waitUntil` que sobraram (`QrCodeRouteTest`, `ToastDisplayerTest`) não dependem desses
+  dispatchers e ficaram como estavam.
+- Verificação (rodada pelo usuário, porque o sandbox desta sessão bloqueia o socket local do Gradle
+  e do `adb`):
+  - os testes unitários e o `jacocoTestCoverageVerification` passam;
+  - os 40 instrumentados passam no `Pixel_8a` (157 s), inclusive o `CamerasAppContentTest` sem
+    `waitUntil`.
+- Os qualifiers nos parâmetros de construtor geram o warning do KT-73255 (alvo padrão da
+  anotação), igual ao `@ApplicationContext` e ao `@UserPreferencesStore` que já existiam. Ficaram
+  assim por consistência.
+
 ## 7. Feedback só por toast, sem estado observável
 
 Vários resultados aparecem só como toast: QR lido com sucesso, consentimento aceito, falha de
@@ -409,4 +456,5 @@ As correções são pequenas:
 O resto (lifecycle, threads, nativo, VPN real) é inerente ao que o app faz e se resolve com a
 estratégia de teste, não com refatoração. O lifecycle (item 5) não mudou de comportamento, mas
 ficou garantido e testável: o gate decide uma vez, a Home serializa o túnel, e o service delega a
-uma `VpnTeardown` testável no JVM.
+uma `VpnTeardown` testável no JVM. As threads (item 6) ganharam dispatchers injetáveis, e nos
+testes instrumentados o Compose Test espera o trabalho fora da main thread sem `waitUntil`.
