@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
@@ -55,6 +56,7 @@ fun BoxScope.DraggableReconfigureButton(
   ExtendedFloatingActionButton(
     onClick = onClick,
     modifier = Modifier
+      .testTag(HomeTestTags.RECONFIGURE_BUTTON)
       .align(Alignment.BottomEnd)
       .padding(currentMargin)
       .offset { IntOffset(offset.x.roundToInt(), offset.y.roundToInt()) }

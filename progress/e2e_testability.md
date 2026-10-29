@@ -538,6 +538,63 @@ Até o nível A não havia nenhum `testTag`, e a Home ainda não tem. O estado d
 cor (hoje é `stateDescription`). Os textos mudam entre `en` e `pt-BR`, então procurar por texto
 amarra o teste ao idioma.
 
+### O que já estava resolvido
+
+- Todo teste resolve texto com `string(R.string.x)`, e os toasts são verificados pelo `resId` (1c).
+  O único literal é o `"done"` do `IdlingDispatcherTest`, que é conteúdo do próprio teste.
+- A Config expõe o estado dos passos como `stateDescription` (nível A).
+- A Home ganhou tags por URL e um estado de reprodução semântico (itens 7 e 8).
+
+### Proposta
+
+1. Completar as tags da Home do §3.4 do `e2e_level_b_plan.md`: `LOADING`, `STREAM_GRID`,
+   `FOCUSED_STREAM`, `RECONFIGURE_BUTTON`, `OVERSCROLL_RECONFIGURE_BUTTON` e os botões de página.
+2. Rodar os testes de tela em outro idioma sem `adb root`. Hoje a rodada em pt-BR exige a imagem
+   AOSP `userdebug` e reinicia o framework, e não roda num aparelho físico. A proposta é um
+   argumento de instrumentação `testLocale`, que o `setThemedContent` e o `string()` aplicam. O
+   `setThemedContent` sobrescreve o `LocalContext` com um contexto localizado (no Compose 1.10, o
+   `LocalResources` deriva dele). Um `ContextWrapper` mantém a activity na cadeia.
+   - Efeito colateral em produção: o `rememberSystemBarsController` passa a ler o `LocalActivity`
+     em vez de converter o `LocalContext` em `Activity`, igual ao `HomeRoute` e ao `ConfigRoute`.
+   - Limite: só alcança o que é composto pelo `setThemedContent` (ou pelo helper novo). Os testes
+     com activity Hilt não mostram texto hoje.
+
+### Resultado
+
+- **1 — feito.** As 7 tags entraram no `HomeTestTags` e nos componentes:
+  - `LOADING` no `HomeRoute`;
+  - `STREAM_GRID` nos dois grids;
+  - `FOCUSED_STREAM` no `FocusedStreamView`;
+  - `RECONFIGURE_BUTTON` no botão arrastável e `OVERSCROLL_RECONFIGURE_BUTTON` no do overscroll;
+  - `PREVIOUS_PAGE_BUTTON`/`NEXT_PAGE_BUTTON` no `PagerControls`.
+- **2 — feito.** O `testLocale` e o `InTestLocale` ficam em `testing/ComposeTestSupport.kt`. O
+  `TestLocaleTest` confere que a tela e o `string()` concordam e seguem o argumento. O
+  `rememberSystemBarsController` agora lê o `LocalActivity`.
+- `HomeScreenTest` (agora 10):
+  - o overscroll procura o botão e o grid pela tag, e não mais pelo texto;
+  - 3 testes novos: o "Reconfigurar" sempre visível no grid fixo, os botões de página e o foco
+    substituindo o grid.
+- **Bug encontrado pela rodada em pt-BR.** No emulador, o `pageButtonsMoveBetweenPages` passou em
+  inglês e falhou em pt-BR: o clique em "próxima página" não trocava a página.
+  - Medidas, em pixels: a seta ia de x 687 a 792 e de y 2159 a 2264; o "Reconfigurar" flutuante ia de
+    x 722 a 1038 e de y 2085 a 2232.
+  - O centro da seta caía dentro do botão, porque "Reconfigurar" e "Página 1 de 2" são mais largos em
+    português. Em inglês o centro escapava por pouco.
+  - Correção: o `PagedStreamGrid` ganhou um slot `overlay`, desenhado sobre as páginas e acima dos
+    controles de página, fora do container do arraste. O `FixedStreamGrid` passa o
+    `DraggableReconfigureButton` por ele.
+  - Teste novo: o `reconfigureNeverCoversThePageButtons` exige que o botão não se sobreponha às
+    setas.
+- Verificação (rodada pelo usuário, no emulador `Pixel_8a`):
+  - antes da correção: em inglês, unitários, cobertura e os 55 instrumentados passaram; em pt-BR, 54
+    passaram e o teste de paginação falhou;
+  - depois da correção: os 56 instrumentados passam em inglês e em pt-BR (`testLocale=pt-BR`), cerca
+    de 3,5 min cada. Antes disso, os unitários e a cobertura passaram.
+  - Rodar as duas suítes ao mesmo tempo no mesmo emulador quebra as duas, porque a segunda reinstala
+    os APKs no meio da primeira. Elas devem rodar uma de cada vez.
+- Ainda não foi conferido à mão no app real: o "Reconfigurar" acima das setas no modo fixo com mais
+  de uma página.
+
 ## 10. O que depende do mundo real
 
 A VPN de verdade precisa de IPv6, do endpoint de casa, do Pi com vídeo e de um peer exclusivo. O R8

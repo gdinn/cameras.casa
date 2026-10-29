@@ -8,7 +8,6 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -27,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.gdisys.cameras.R
@@ -161,6 +161,7 @@ private fun DynamicStreamGrid(
       onStreamsReordered = onStreamsReordered,
       modifier = Modifier
         .fillMaxSize()
+        .testTag(HomeTestTags.STREAM_GRID)
         .background(MaterialTheme.colorScheme.surfaceVariant)
         .nestedScroll(overscrollReconfigure.nestedScrollConnection)
     ) { url, dragHandleModifier ->
@@ -184,7 +185,10 @@ private fun DynamicStreamGrid(
       enter = fadeIn() + slideInVertically(initialOffsetY = { it }),
       exit = fadeOut() + slideOutVertically(targetOffsetY = { it })
     ) {
-      Button(onClick = onNavigateToConfig) {
+      Button(
+        onClick = onNavigateToConfig,
+        modifier = Modifier.testTag(HomeTestTags.OVERSCROLL_RECONFIGURE_BUTTON)
+      ) {
         Text(text = stringResource(R.string.home_screen_reconfigure))
       }
     }
@@ -193,7 +197,9 @@ private fun DynamicStreamGrid(
 
 /**
  * Fixed mode: no scrolling, paged, with "Reconfigure" floating over the grid — draggable, since
- * without scrolling there is no other way to move it off a stream.
+ * without scrolling there is no other way to move it off a stream. It floats in the pages' area
+ * only, above the page controls: anchored over them, its bottom-end corner covered the "next page"
+ * arrow, which the pt-BR test run caught.
  */
 @Composable
 private fun FixedStreamGrid(
@@ -206,34 +212,32 @@ private fun FixedStreamGrid(
   onNavigateToConfig: () -> Unit,
   playerFor: (String) -> @Composable () -> Unit
 ) {
-  BoxWithConstraints(
+  PagedStreamGrid(
+    streams = streams,
+    grid = grid,
+    orientation = orientation,
+    aspectRatioOf = aspectRatioOf,
+    onStreamsReordered = onStreamsReordered,
     modifier = Modifier
       .fillMaxSize()
       .background(MaterialTheme.colorScheme.surfaceVariant)
-  ) {
-    PagedStreamGrid(
-      streams = streams,
-      grid = grid,
-      orientation = orientation,
-      aspectRatioOf = aspectRatioOf,
-      onStreamsReordered = onStreamsReordered,
-      modifier = Modifier.fillMaxSize()
-    ) { url, dragHandleModifier, cellModifier ->
-      CameraGridItem(
-        url = url,
-        dragHandleModifier = dragHandleModifier,
-        videoContent = playerFor(url),
-        onFocusedStreamChange = onFocusStream,
-        onMoveEarlier = moveAction(streams, url, offset = -1, onStreamsReordered),
-        onMoveLater = moveAction(streams, url, offset = 1, onStreamsReordered),
-        modifier = cellModifier
+      .testTag(HomeTestTags.STREAM_GRID),
+    overlay = {
+      DraggableReconfigureButton(
+        containerWidth = maxWidth,
+        containerHeight = maxHeight,
+        onClick = onNavigateToConfig
       )
     }
-
-    DraggableReconfigureButton(
-      containerWidth = maxWidth,
-      containerHeight = maxHeight,
-      onClick = onNavigateToConfig
+  ) { url, dragHandleModifier, cellModifier ->
+    CameraGridItem(
+      url = url,
+      dragHandleModifier = dragHandleModifier,
+      videoContent = playerFor(url),
+      onFocusedStreamChange = onFocusStream,
+      onMoveEarlier = moveAction(streams, url, offset = -1, onStreamsReordered),
+      onMoveLater = moveAction(streams, url, offset = 1, onStreamsReordered),
+      modifier = cellModifier
     )
   }
 }

@@ -7,7 +7,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
@@ -20,6 +22,7 @@ import com.gdisys.cameras.core.storage.domain.model.StreamOrientation
 import com.gdisys.cameras.core.webrtc.LocalEglBase
 import com.gdisys.cameras.feature.cameras.components.EmptyStreamsScreen
 import com.gdisys.cameras.feature.cameras.components.HomeScreen
+import com.gdisys.cameras.feature.cameras.components.HomeTestTags
 
 @Composable
 fun HomeRoute(
@@ -64,7 +67,10 @@ fun HomeRoute(
 
   val uiState by viewModel.uiState.collectAsStateWithLifecycle()
   when (val state = uiState) {
-    HomeUiState.Loading -> LoadingScreen(stringResource(R.string.home_screen_establishing_secure_connection))
+    HomeUiState.Loading -> LoadingScreen(
+      textLabel = stringResource(R.string.home_screen_establishing_secure_connection),
+      modifier = Modifier.testTag(HomeTestTags.LOADING)
+    )
     HomeUiState.Empty -> EmptyStreamsScreen(onNavigateToConfig = onNavigateToConfig)
     is HomeUiState.Ready -> {
       HomeScreen(

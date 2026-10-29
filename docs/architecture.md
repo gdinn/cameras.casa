@@ -468,7 +468,7 @@ applies it with `ConnectVpnUseCase` / `DisconnectVpnUseCase`:
 | Mode | Condition | Behaviour |
 |---|---|---|
 | Dynamic | `grid.dynamicRows == true` | `ReorderableStreamGrid` in a scrolling `LazyVerticalGrid`; the "Reconfigure" button is revealed by overscrolling past the end (`OverscrollReconfigure.kt`) |
-| Fixed | `grid.dynamicRows == false` | `PagedStreamGrid`: no scroll, `rows × columns` per page in a `HorizontalPager`; the "Reconfigure" button floats and is draggable (`DraggableReconfigureButton.kt`), since without scroll there is no other way to move it off a stream |
+| Fixed | `grid.dynamicRows == false` | `PagedStreamGrid`: no scroll, `rows × columns` per page in a `HorizontalPager`; the "Reconfigure" button floats and is draggable (`DraggableReconfigureButton.kt`), since without scroll there is no other way to move it off a stream. It floats over the pages only, through `PagedStreamGrid`'s `overlay` slot, so it can never cover the page controls |
 
 **Notable UI mechanics:**
 
@@ -934,7 +934,7 @@ Useful commands:
 Note that `LayerDependencyTest` and `StreamHostTest` are ordinary unit tests, so a layering
 violation or a host/XML mismatch fails `testDebugUnitTest` like any other regression.
 
-**Instrumented screen tests.** 51 tests under `app/src/androidTest/` (46 Compose UI tests, two
+**Instrumented screen tests.** 56 tests under `app/src/androidTest/` (51 Compose UI tests, two
 storage tests, one service test, one dispatcher test and the default example), with packages mirroring `main`:
 
 | Test | Covers |
@@ -949,7 +949,8 @@ storage tests, one service test, one dispatcher test and the default example), w
 | `VpnLifecycleServiceTest` (1) | The real `VpnLifecycleService`, injected by Hilt over `FakeVpnRepository`: stopping it drops the tunnel. `onTaskRemoved` has no test API and stays a manual check |
 | `IdlingDispatcherTest` (2) | `IdlingDispatcher` is busy while its work runs and reports the transition to idle; the Compose test rule waits for main → `TestDispatchers.default` → `TestDispatchers.io` → main with no `waitUntil` |
 | `WebRtcVideoPlayerTest` (4) | The real player over a recording `WebRtcConnection`: `CONNECTING` with a spinner before any frame; real I420 frames fed into the sink turn it `PLAYING`; a stream in `LocalFailedStreams` is `FAILED` and shows `StreamErrorOverlay`; "Try again" disconnects and connects the same renderer again |
-| `HomeScreenTest` (7) | The real `HomeScreen` with fake callbacks: the move accessibility actions reorder one place and are absent at the ends; "Reconfigure" is an action in dynamic mode only; one real drag per grid mode reorders on drop; overscrolling the dynamic grid reveals "Reconfigure" |
+| `HomeScreenTest` (11) | The real `HomeScreen` with fake callbacks: the move accessibility actions reorder one place and are absent at the ends; "Reconfigure" is an action in dynamic mode only; one real drag per grid mode reorders on drop; overscrolling the dynamic grid reveals "Reconfigure"; the fixed grid always shows it; the page buttons move between pages; "Reconfigure" never covers the page buttons; a focused stream replaces the grid |
+| `TestLocaleTest` (1) | What `setThemedContent` renders and what `string()` resolves agree, and follow the `testLocale` argument when it is given |
 | `QrCodeRouteTest` (2) | With a `FakeQrCodeScanner`, a scanned payload reaches `onCodeScanned`; a camera error toasts and navigates back |
 
 Most of them test screens in isolation: `createComposeRule` renders a `*Screen` with a hand-written
@@ -994,7 +995,9 @@ Conventions:
 - Nodes are found by test tag. The tags are `const val`s in one object per feature, in `main` next
   to the components (`ConfigTestTags`, `StreamURLsTestTags`, `HomeTestTags`). Their names match the
   `**/*Test*.*` coverage filter, so they stay out of JaCoCo. Per-stream nodes take functions instead
-  (`HomeTestTags.streamCard(url)`, `dragHandle(url)`, `streamPlayer(url)`).
+  (`HomeTestTags.streamCard(url)`, `dragHandle(url)`, `streamPlayer(url)`). `HomeTestTags` covers
+  every node the flows need: loading, grid, focused stream, both "Reconfigure" buttons, the page
+  buttons, and the stream overlays.
 - State is read from semantics, not from icons or colors: `ConfigButton` exposes its
   `ConfigButtonState` as `stateDescription`, which is also what TalkBack announces, and each player
   exposes its `StreamPlaybackState` through `StreamPlaybackStateKey`.
@@ -1005,7 +1008,8 @@ Conventions:
   `CompositionLocalProvider(LocalToastPresenter provides RecordingToastPresenter())`
   (`testing/RecordingToastPresenter.kt`) and wait for the id in `shown`.
 - Text is asserted only when the test is about the text, and always resolved with
-  `string(R.string.x)`, never written as a literal (see the locale run below).
+  `string(R.string.x)`, never written as a literal (see the locale run below). Accessibility
+  action labels are resolved the same way.
 - Test names are camelCase (`homeButtonRequestsNavigation`). Backtick names with spaces, as in the
   unit tests, cannot be compiled into the test APK while `minSdk` is below 30.
 
@@ -1031,11 +1035,29 @@ for k in window_animation_scale transition_animation_scale animator_duration_sca
 done
 ```
 
-**Run it in both languages.** The screens are translated (`values-en`, `values-pt-rBR`) and the
-tests resolve strings in the device locale, so the suite must pass in both. A test that passes only
-in English has hardcoded a text somewhere. Changing the emulator locale from the shell needs
-`adb root`, which is why the image is the AOSP `default` one: it is a `userdebug` build, while the
-Play Store images are `user` builds and refuse root. The framework restart takes about 15 s:
+**Run it in both languages.** The screens are translated (`values-en`, `values-pt-rBR`), so the
+suite must pass in both. A test that passes only in English has hardcoded a text somewhere.
+
+The quick way is the `testLocale` instrumentation argument. It needs no root, so it also works on a
+physical device:
+
+```bash
+./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.testLocale=pt-BR
+```
+
+`setThemedContent` (`testing/ComposeTestSupport.kt`) wraps the content in `InTestLocale`, which
+provides a `LocalContext` whose resources use that locale. In Compose 1.10, `stringResource` reads
+`LocalResources`, which derives from `LocalContext`. The wrapper is a `ContextWrapper` over the
+activity, so code that needs the activity reads `LocalActivity` (as `rememberSystemBarsController`
+does) and keeps working. `string()` resolves in the same locale, and `TestLocaleTest` checks that the
+two agree. The argument reaches only what is composed through `setThemedContent` or `InTestLocale`.
+A test that drives a real activity with text on screen should wrap its content in `InTestLocale`.
+Today none of the `@HiltAndroidTest` tests asserts text.
+
+To run the whole app in another language, change the device locale instead. From the shell that
+needs `adb root`, which is why the emulator image is the AOSP `default` one: it is a `userdebug`
+build, while the Play Store images are `user` builds and refuse root. The framework restart takes
+about 15 s:
 
 ```bash
 adb root

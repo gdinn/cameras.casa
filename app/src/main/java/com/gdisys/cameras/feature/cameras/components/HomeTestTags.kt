@@ -6,6 +6,13 @@ object HomeTestTags {
   const val STREAM_ERROR_OVERLAY = "home_stream_error_overlay"
   const val STREAM_ERROR_RETRY_BUTTON = "home_stream_error_retry_button"
   const val STREAM_CONNECTING_INDICATOR = "home_stream_connecting_indicator"
+  const val LOADING = "home_loading"
+  const val STREAM_GRID = "home_stream_grid"
+  const val FOCUSED_STREAM = "home_focused_stream"
+  const val RECONFIGURE_BUTTON = "home_reconfigure_button"
+  const val OVERSCROLL_RECONFIGURE_BUTTON = "home_overscroll_reconfigure_button"
+  const val PREVIOUS_PAGE_BUTTON = "home_previous_page_button"
+  const val NEXT_PAGE_BUTTON = "home_next_page_button"
 
   /** The grid cell of [url], which carries the reorder accessibility actions. */
   fun streamCard(url: String) = "home_stream_card:$url"

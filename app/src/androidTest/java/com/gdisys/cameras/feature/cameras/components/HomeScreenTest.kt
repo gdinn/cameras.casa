@@ -7,10 +7,9 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
@@ -21,6 +20,7 @@ import com.gdisys.cameras.core.storage.domain.model.StreamOrientation
 import com.gdisys.cameras.testing.setThemedContent
 import com.gdisys.cameras.testing.string
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -125,22 +125,76 @@ class HomeScreenTest {
   @Test
   fun overscrollingTheDynamicGridRevealsReconfigure() {
     setHomeScreen(DYNAMIC_GRID, streams = STREAMS.take(1))
-    val reconfigure = string(R.string.home_screen_reconfigure)
-    composeRule.onNodeWithText(reconfigure).assertDoesNotExist()
+    val reconfigure = composeRule.onNodeWithTag(HomeTestTags.OVERSCROLL_RECONFIGURE_BUTTON)
+    reconfigure.assertDoesNotExist()
 
     repeat(OVERSCROLL_SWIPES) {
-      composeRule.onRoot().performTouchInput { swipeUp(startY = height * 0.9f, endY = height * 0.1f) }
+      composeRule.onNodeWithTag(HomeTestTags.STREAM_GRID).performTouchInput {
+        swipeUp(startY = height * 0.9f, endY = height * 0.1f)
+      }
     }
 
-    composeRule.onNodeWithText(reconfigure).assertIsDisplayed().performClick()
+    reconfigure.assertIsDisplayed().performClick()
     composeRule.runOnIdle { assertEquals(1, navigationsToConfig.get()) }
   }
 
-  private fun setHomeScreen(grid: GridPreferences, streams: List<String> = STREAMS) {
+  @Test
+  fun fixedGridAlwaysShowsReconfigure() {
+    setHomeScreen(FIXED_GRID)
+
+    composeRule.onNodeWithTag(HomeTestTags.RECONFIGURE_BUTTON).assertIsDisplayed().performClick()
+
+    composeRule.runOnIdle { assertEquals(1, navigationsToConfig.get()) }
+  }
+
+  @Test
+  fun pageButtonsMoveBetweenPages() {
+    val fiveStreams = STREAMS + "http://[fd00:20::cafe]:8889/cam_164"
+    setHomeScreen(FIXED_GRID, streams = fiveStreams)
+    composeRule.onNodeWithTag(HomeTestTags.PREVIOUS_PAGE_BUTTON).assertIsNotEnabled()
+    card(fiveStreams.last()).assertDoesNotExist()
+
+    composeRule.onNodeWithTag(HomeTestTags.NEXT_PAGE_BUTTON).performClick()
+
+    card(fiveStreams.last()).assertIsDisplayed()
+    card(fiveStreams.first()).assertDoesNotExist()
+    composeRule.onNodeWithTag(HomeTestTags.NEXT_PAGE_BUTTON).assertIsNotEnabled()
+  }
+
+  /**
+   * Regression: anchored over the page controls, "Reconfigure" covered the "next page" arrow, and in
+   * pt-BR, where both labels are wider, it took the arrow's clicks.
+   */
+  @Test
+  fun reconfigureNeverCoversThePageButtons() {
+    setHomeScreen(FIXED_GRID, streams = STREAMS + "http://[fd00:20::cafe]:8889/cam_164")
+
+    val reconfigure = boundsOf(HomeTestTags.RECONFIGURE_BUTTON)
+    listOf(HomeTestTags.PREVIOUS_PAGE_BUTTON, HomeTestTags.NEXT_PAGE_BUTTON).forEach { tag ->
+      val button = boundsOf(tag)
+      assertFalse("$tag at $button is covered by Reconfigure at $reconfigure", button.overlaps(reconfigure))
+    }
+  }
+
+  @Test
+  fun focusedStreamReplacesTheGrid() {
+    setHomeScreen(FIXED_GRID, focusedStream = STREAMS[2])
+
+    composeRule.onNodeWithTag(HomeTestTags.FOCUSED_STREAM).assertIsDisplayed()
+    composeRule.onNodeWithTag(HomeTestTags.STREAM_GRID).assertDoesNotExist()
+    composeRule.onNodeWithTag(HomeTestTags.streamPlayer(STREAMS[2])).assertIsDisplayed()
+    composeRule.onNodeWithTag(HomeTestTags.streamPlayer(STREAMS[0])).assertDoesNotExist()
+  }
+
+  private fun setHomeScreen(
+    grid: GridPreferences,
+    streams: List<String> = STREAMS,
+    focusedStream: String? = null
+  ) {
     composeRule.setThemedContent {
       HomeScreen(
         streams = streams,
-        focusedStream = null,
+        focusedStream = focusedStream,
         grid = grid,
         orientation = StreamOrientation.PORTRAIT,
         failedStreams = emptySet(),
@@ -156,6 +210,8 @@ class HomeScreenTest {
   }
 
   private fun card(url: String) = composeRule.onNodeWithTag(HomeTestTags.streamCard(url))
+
+  private fun boundsOf(tag: String) = composeRule.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot
 
   private fun centerOf(node: SemanticsNodeInteraction): Offset =
     node.fetchSemanticsNode().boundsInRoot.center
