@@ -72,6 +72,7 @@ fun HomeRoute(
         focusedStream = state.focusedStream,
         grid = state.grid,
         orientation = state.orientation,
+        failedStreams = state.failedStreams,
         eglBase = eglBase,
         onConnectStream = viewModel::connectStream,
         onDisconnectStream = viewModel::disconnectStream,

@@ -436,14 +436,14 @@ configuration.
 
 | Role | Type |
 |---|---|
-| View | `HomeRoute.kt` + 15 files in `components/` |
+| View | `HomeRoute.kt` + 16 files in `components/` |
 | ViewModel | `HomeViewModel.kt` |
-| State | `HomeUiState.kt` — `Loading` \| `Empty` \| `Ready(streams, focusedStream, grid, orientation)` |
+| State | `HomeUiState.kt` — `Loading` \| `Empty` \| `Ready(streams, focusedStream, grid, orientation, failedStreams)` |
 | Logic | `logic/StreamPaging.kt`, `logic/FixedGridLayout.kt` |
 | Model | 6 use cases + `StreamConnectionRepository` |
 
-**State composition.** `HomeUiState` is a single `combine` of four sources — persisted preferences,
-orientation, focused stream, and VPN tunnel state — collected into a `MutableStateFlow`. The
+**State composition.** `HomeUiState` is a single `combine` of five sources — persisted preferences,
+orientation, focused stream, failed streams and VPN tunnel state — collected into a `MutableStateFlow`. The
 precedence matters: an empty URL list yields `Empty` *before* the VPN state is considered, because
 waiting for a tunnel with nothing to connect to would show a permanent spinner.
 
@@ -491,6 +491,14 @@ applies it with `ConnectVpnUseCase` / `DisconnectVpnUseCase`:
 - **Reorder persists on drop, per orientation.** `onStreamsReordered` calls
   `UpdateStreamOrderUseCase(orientation, newOrder)`, which rewrites only the current orientation's
   order.
+- **A failed stream shows on its card.** When `StreamConnectionRepository` reports a connection
+  error, `HomeViewModel` adds the URL to `failedStreams` (and still toasts). `HomeScreen` provides
+  the set as `LocalFailedStreams`, a local rather than a parameter because each player is movable
+  content created once per URL. The player of a failed stream draws `StreamErrorOverlay` over the
+  video: "Camera unavailable" and a "Try again" button. Retrying disconnects and connects the same
+  renderer again, the same path as leaving and coming back. Any new attempt, and any disconnect,
+  clears the failure. Only the negotiation is covered: a stream that drops after connecting reports
+  nothing.
 - **Back press is a two-stage exit.** The first press toasts "press back again"; a second press
   within a 2 s window emits `ExitApp` and the route calls `activity.finish()`.
 - `onCleared()` calls `streamConnectionRepository.closeAll()`.
@@ -718,7 +726,9 @@ toasts and emits `HomeNavigateUiEvent.ToConfig`.
 `RECV_ONLY` video transceiver, creates the offer, sets it locally, waits for ICE gathering to
 complete, and `POST`s the SDP to `{streamUrl}/whep`. The `201` response body is the answer SDP;
 `onAddTrack` then attaches the video track to the sink. The first frame triggers
-`onFrameResolutionChanged`, which feeds `StreamResolutionRegistry` and re-measures the grid.
+`onFrameResolutionChanged`, which feeds `StreamResolutionRegistry` and re-measures the grid. If the
+negotiation fails, the manager closes that client (it was never registered, so nothing else would)
+and reports the error, which turns into the card's error overlay (§5.5).
 
 Note the dependency direction: the ViewModel talks only to `StreamConnectionRepository`, never to
 `WhepConnectionManager` — this is what keeps the Konsist `feature → .data.` rule satisfied and makes
@@ -910,7 +920,7 @@ Useful commands:
 Note that `LayerDependencyTest` and `StreamHostTest` are ordinary unit tests, so a layering
 violation or a host/XML mismatch fails `testDebugUnitTest` like any other regression.
 
-**Instrumented screen tests.** 40 tests under `app/src/androidTest/` (35 Compose UI tests, two
+**Instrumented screen tests.** 43 tests under `app/src/androidTest/` (38 Compose UI tests, two
 storage tests, one service test, one dispatcher test and the default example), with packages mirroring `main`:
 
 | Test | Covers |
@@ -924,6 +934,7 @@ storage tests, one service test, one dispatcher test and the default example), w
 | `IsolatedPreferencesStoreTest` (1) | A store built from `userPreferencesSerializer` on its own file and Keystore alias starts empty, encrypts and leaves the production file untouched |
 | `VpnLifecycleServiceTest` (1) | The real `VpnLifecycleService`, injected by Hilt over `FakeVpnRepository`: stopping it drops the tunnel. `onTaskRemoved` has no test API and stays a manual check |
 | `IdlingDispatcherTest` (2) | `IdlingDispatcher` is busy while its work runs and reports the transition to idle; the Compose test rule waits for main → `TestDispatchers.default` → `TestDispatchers.io` → main with no `waitUntil` |
+| `WebRtcVideoPlayerTest` (3) | The real player over a recording `WebRtcConnection`: no overlay while connected; a stream in `LocalFailedStreams` shows `StreamErrorOverlay`; "Try again" disconnects and connects the same renderer again |
 | `QrCodeRouteTest` (2) | With a `FakeQrCodeScanner`, a scanned payload reaches `onCodeScanned`; a camera error toasts and navigates back |
 
 Most of them test screens in isolation: `createComposeRule` renders a `*Screen` with a hand-written

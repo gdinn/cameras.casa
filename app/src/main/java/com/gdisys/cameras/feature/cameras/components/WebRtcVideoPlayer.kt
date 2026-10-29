@@ -1,6 +1,8 @@
 package com.gdisys.cameras.feature.cameras.components
 
 import android.view.ViewGroup
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
@@ -54,5 +56,18 @@ fun WebRtcVideoPlayer(
     }
   }
 
-  AndroidView(factory = { renderer }, modifier = modifier)
+  Box(modifier = modifier) {
+    AndroidView(factory = { renderer }, modifier = Modifier.fillMaxSize())
+
+    if (streamUrl in LocalFailedStreams.current) {
+      // Same path as leaving and coming back: drop whatever is left of the failed attempt, then
+      // connect the same renderer again.
+      StreamErrorOverlay(
+        onRetry = {
+          connection.disconnect(streamUrl)
+          connection.connect(streamUrl, renderer)
+        }
+      )
+    }
+  }
 }

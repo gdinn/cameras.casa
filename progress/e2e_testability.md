@@ -420,6 +420,42 @@ stream, falha ao salvar e o "aperte back de novo". A falha de stream é o caso m
 nada no `HomeUiState`, então o teste só consegue provar que o app não caiu. Um `ToastPresenter`
 injetável ou um estado de erro no card resolveriam.
 
+### Decisão
+
+O `ToastPresenter` do 1c já deixa o teste ler todos os toasts pelo `resId`. Faltava a falha de
+stream, que não deixava estado nenhum: o card ficava preto. O usuário escolheu um estado de erro no
+card, com um botão "Tentar de novo". A mudança de UX foi aceita, e o toast continua.
+
+### Resultado
+
+- **Feito.** Mudanças:
+  - O `HomeUiState.Ready` ganhou `failedStreams`. O `HomeViewModel` adiciona a URL quando o
+    repositório avisa a falha. Uma nova tentativa ou um disconnect a removem, e só as URLs da lista
+    atual aparecem no estado.
+  - O `HomeScreen` fornece o conjunto como `LocalFailedStreams`. É um local e não um parâmetro
+    porque cada player é movable content criado uma vez por URL, e um valor capturado na criação
+    nunca mudaria.
+  - O `WebRtcVideoPlayer` desenha o `StreamErrorOverlay` por cima do vídeo, com "Câmera
+    indisponível" e "Tentar de novo", no grid e no foco. O retry desconecta e conecta o mesmo
+    renderer de novo, o mesmo caminho de sair e voltar.
+- Desvio (correção encontrada no caminho): o `WhepConnectionManager` não fechava um cliente que
+  falhava ou era cancelado no meio da negociação, porque ele nunca era registrado. Com o retry, cada
+  tentativa vazaria um `PeerConnection`. Agora o cliente é fechado nos dois casos.
+- Limite: só a negociação é coberta. Um stream que cai depois de conectado não avisa nada, nem antes
+  nem agora.
+- Testes:
+  - `HomeViewModelTest`: 4 novos (a falha marca só aquele stream, reconectar limpa, desconectar
+    limpa, um stream removido da lista some do estado).
+  - `WhepConnectionManagerTest`: o teste da falha agora exige o `close`, e o do cancelamento também.
+  - `WebRtcVideoPlayerTest` (instrumentado, 3 testes): o player real sobre uma `WebRtcConnection`
+    que grava as chamadas. Sem overlay quando conectado, overlay quando falhou, e o retry
+    desconecta e reconecta o mesmo renderer.
+- Verificação (rodada pelo usuário): os testes unitários e o `jacocoTestCoverageVerification`
+  passam, e os 43 instrumentados passam no `Pixel_8a`.
+- Teste manual (usuário, app real com a VPN): uma URL com caminho inexistente no MediaMTX mostra o
+  toast e o overlay só naquele card, enquanto as outras câmeras tocam, e o "Tentar de novo" refaz a
+  tentativa. Não foi testado o retry com sucesso (parar e religar o stream no Pi).
+
 ## 8. Componentes nativos e gestos
 
 - O `WebRtcVideoPlayer` cria um `SurfaceViewRenderer` com o `EglBase` real. Funciona no emulador,
@@ -457,4 +493,5 @@ O resto (lifecycle, threads, nativo, VPN real) é inerente ao que o app faz e se
 estratégia de teste, não com refatoração. O lifecycle (item 5) não mudou de comportamento, mas
 ficou garantido e testável: o gate decide uma vez, a Home serializa o túnel, e o service delega a
 uma `VpnTeardown` testável no JVM. As threads (item 6) ganharam dispatchers injetáveis, e nos
-testes instrumentados o Compose Test espera o trabalho fora da main thread sem `waitUntil`.
+testes instrumentados o Compose Test espera o trabalho fora da main thread sem `waitUntil`. A
+falha de stream (item 7) deixou de ser só um toast e virou estado no card, com retry.

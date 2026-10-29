@@ -41,6 +41,7 @@ fun HomeScreen(
   focusedStream: String?,
   grid: GridPreferences,
   orientation: StreamOrientation,
+  failedStreams: Set<String>,
   eglBase: EglBase,
   onConnectStream: (streamUrl: String, videoSink: VideoSink) -> Unit,
   onDisconnectStream: (streamUrl: String) -> Unit,
@@ -84,7 +85,8 @@ fun HomeScreen(
 
   CompositionLocalProvider(
     LocalWebRtcConnection provides webRtcConnection,
-    LocalStreamResolutions provides streamResolutions
+    LocalStreamResolutions provides streamResolutions,
+    LocalFailedStreams provides failedStreams
   ) {
     // The display cutout still pads the content once the bars are hidden, so in focus mode the
     // container itself must be black or that strip shows the theme background.

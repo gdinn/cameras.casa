@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.webrtc.VideoSink
@@ -48,6 +49,9 @@ class HomeViewModel @Inject constructor(
 
   private val _focusedStream = MutableStateFlow<String?>(null)
 
+  /** URLs whose last connection attempt failed. A new attempt, or leaving the screen, clears one. */
+  private val _failedStreams = MutableStateFlow<Set<String>>(emptySet())
+
   /** Fed by the UI, which is the only layer that can see the real device orientation. */
   private val _orientation = MutableStateFlow(StreamOrientation.PORTRAIT)
 
@@ -68,8 +72,9 @@ class HomeViewModel @Inject constructor(
         getStreamPreferencesUseCase(),
         _orientation,
         _focusedStream,
+        _failedStreams,
         observeVpnStateUseCase()
-      ) { preferences, orientation, focusedStream, vpn ->
+      ) { preferences, orientation, focusedStream, failedStreams, vpn ->
         when {
           // With no URLs there is nothing to connect to, and waiting on the VPN would show a
           // spinner that never resolves. This case therefore comes before the tunnel state.
@@ -77,12 +82,16 @@ class HomeViewModel @Inject constructor(
 
           vpn != VpnTunnelState.CONNECTED -> HomeUiState.Loading
 
-          else -> HomeUiState.Ready(
-            streams = preferences.orderFor(orientation),
-            focusedStream = focusedStream,
-            grid = preferences.gridFor(orientation),
-            orientation = orientation
-          )
+          else -> {
+            val streams = preferences.orderFor(orientation)
+            HomeUiState.Ready(
+              streams = streams,
+              focusedStream = focusedStream,
+              grid = preferences.gridFor(orientation),
+              orientation = orientation,
+              failedStreams = failedStreams intersect streams.toSet()
+            )
+          }
         }
       }.collect {
         _uiState.value = it
@@ -108,14 +117,18 @@ class HomeViewModel @Inject constructor(
     }
   }
 
+  /** Also the retry: the card's "Try again" disconnects and calls this again with the same sink. */
   fun connectStream(streamUrl: String, videoSink: VideoSink) {
+    _failedStreams.update { it - streamUrl }
     streamConnectionRepository.connect(streamUrl, videoSink) {
+      _failedStreams.update { it + streamUrl }
       showToast(HomeToastMessage.STREAM_CONNECTION_ERROR)
     }
   }
 
   fun disconnectStream(streamUrl: String) {
     streamConnectionRepository.disconnect(streamUrl)
+    _failedStreams.update { it - streamUrl }
   }
 
   fun focusStream(url: String) {

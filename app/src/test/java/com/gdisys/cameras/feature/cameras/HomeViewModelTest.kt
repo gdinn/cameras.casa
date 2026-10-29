@@ -107,12 +107,14 @@ class HomeViewModelTest {
     streams: List<String> = defaultStreams,
     focusedStream: String? = null,
     grid: GridPreferences = portraitGrid,
-    orientation: StreamOrientation = StreamOrientation.PORTRAIT
+    orientation: StreamOrientation = StreamOrientation.PORTRAIT,
+    failedStreams: Set<String> = emptySet()
   ) = HomeUiState.Ready(
     streams = streams,
     focusedStream = focusedStream,
     grid = grid,
-    orientation = orientation
+    orientation = orientation,
+    failedStreams = failedStreams
   )
 
   @Test
@@ -295,6 +297,73 @@ class HomeViewModelTest {
         ToastUiEvent.Show(HomeToastMessage.STREAM_CONNECTION_ERROR.resId),
         awaitItem()
       )
+    }
+  }
+
+  /** Connects [url] and returns the error callback the repository received. */
+  private fun connectCapturingOnError(url: String): (Throwable) -> Unit {
+    val onErrorSlot = slot<(Throwable) -> Unit>()
+    every { streamConnectionRepository.connect(url, any(), capture(onErrorSlot)) } just Runs
+    viewModel.connectStream(url, mockk())
+    return onErrorSlot.captured
+  }
+
+  @Test
+  fun `a failed stream connection marks only that stream as failed`() = runTest {
+    vpnState.value = VpnTunnelState.CONNECTED
+
+    viewModel.uiState.test {
+      assertEquals(readyState(), awaitItem())
+
+      connectCapturingOnError(defaultStreams[1])(RuntimeException("boom"))
+      assertEquals(readyState(failedStreams = setOf(defaultStreams[1])), awaitItem())
+    }
+  }
+
+  @Test
+  fun `connecting a failed stream again clears the failure`() = runTest {
+    vpnState.value = VpnTunnelState.CONNECTED
+
+    viewModel.uiState.test {
+      awaitItem()
+      connectCapturingOnError(defaultStreams[0])(RuntimeException("boom"))
+      assertEquals(readyState(failedStreams = setOf(defaultStreams[0])), awaitItem())
+
+      viewModel.connectStream(defaultStreams[0], mockk())
+      assertEquals(readyState(), awaitItem())
+    }
+  }
+
+  @Test
+  fun `disconnecting a failed stream clears the failure`() = runTest {
+    vpnState.value = VpnTunnelState.CONNECTED
+
+    viewModel.uiState.test {
+      awaitItem()
+      connectCapturingOnError(defaultStreams[0])(RuntimeException("boom"))
+      awaitItem()
+
+      viewModel.disconnectStream(defaultStreams[0])
+      assertEquals(readyState(), awaitItem())
+    }
+  }
+
+  @Test
+  fun `a failed stream removed from the list is not reported as failed`() = runTest {
+    vpnState.value = VpnTunnelState.CONNECTED
+    val remaining = defaultStreams.drop(1)
+
+    viewModel.uiState.test {
+      awaitItem()
+      connectCapturingOnError(defaultStreams[0])(RuntimeException("boom"))
+      awaitItem()
+
+      streamPreferences.value = streamPreferences.value.copy(
+        streamUrls = remaining,
+        portraitOrder = remaining,
+        landscapeOrder = remaining
+      )
+      assertEquals(readyState(streams = remaining), awaitItem())
     }
   }
 
