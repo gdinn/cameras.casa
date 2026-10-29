@@ -601,6 +601,78 @@ A VPN de verdade precisa de IPv6, do endpoint de casa, do Pi com vídeo e de um 
 só falha em runtime, então o teste mais importante para release (QR → túnel → frame) não roda em CI
 hospedado e precisa do build minificado num dispositivo físico.
 
+### Decisão
+
+Em duas fases. O usuário escolheu só a **fase 1** nesta rodada e já tem um peer WireGuard exclusivo
+para testes.
+
+- **Fase 1:** um smoke com a VPN real sobre o build debug: QR real → túnel → um card `PLAYING`.
+- **Fase 2 (adiada):** o mesmo teste sobre um build type `e2e` derivado do release (R8 ligado,
+  assinado com a chave de debug). Precisa de um `@EntryPoint` só desse build, de keep rules extras e
+  do APK de teste minificado com o mapping do app.
+- Fora do item: os testes de diálogos do sistema com UI Automator (consentimento de VPN e câmera).
+
+### Proposta da fase 1
+
+- **App real.** Com `-PrealEnvironment`, o Gradle troca o runner pelo `AndroidJUnitRunner` puro, que
+  sobe o `CamerasApp` com o grafo de produção, e filtra só a anotação `@RealEnvironment`. Sem a
+  propriedade, o `HiltTestRunner` continua, e o `notAnnotation` exclui o smoke das rodadas
+  herméticas. A escolha precisa ser feita no Gradle: o runner decide o `Application` no
+  `newApplication`, antes de receber os argumentos de instrumentação.
+- **O QR nunca aparece em linha de comando nem em log** (§5.2 do `e2e_research.md`).
+  - Uma task `pushRealQrPayload` faz `adb push` do `CAMERAS_E2E_QR_FILE` para
+    `/data/local/tmp/cameras-e2e-qr.json`.
+  - A `removeRealQrPayload` o apaga no fim, mesmo com falha.
+  - O teste lê o arquivo pelo shell (`UiAutomation.executeShellCommand`), porque o app não lê
+    `/data/local/tmp`, e o apaga também.
+  - Numa falha de parse, o teste reporta só o tipo da exceção: a mensagem do kotlinx.serialization
+    traz um trecho do JSON.
+- **O caminho de produção, sem câmera.** O JSON passa pelo `ParseUserPreferencesFromQrCodeUseCase` e
+  é gravado pelos use cases reais, sobre os mesmos `DataStore` do processo. A URL vem de
+  `CAMERAS_E2E_STREAM_PATH` (ex.: `8889/cam_160`), prefixada com o `STREAM_URL_HOST_PREFIX`. Assim
+  os colchetes do IPv6 não passam pelo shell do `am instrument`.
+- **O teste:**
+  - concede o consentimento de VPN com `appops set <pacote> ACTIVATE_VPN allow`;
+  - abre o `MainActivity` real;
+  - espera ao menos um card `PLAYING` (item 8);
+  - num timeout, diz onde parou: Config (credenciais recusadas), `LOADING` (o túnel não subiu),
+    `FAILED` (o WHEP falhou) ou `CONNECTING` (conectou, mas nenhum frame chegou).
+
+### Resultado da fase 1
+
+- **Feito**, como proposto:
+  - `@RealEnvironment` e `RealEnvironmentSmokeTest` em `androidTest/.../e2e/`, com um README do
+    comando, dos pré-requisitos e de como ler cada falha;
+  - no `app/build.gradle.kts`: o `realEnvironment`, a troca de runner, o `annotation` /
+    `notAnnotation`, o argumento `streamPath`, e as tasks `pushRealQrPayload` /
+    `removeRealQrPayload` em volta do `connectedDebugAndroidTest`;
+  - sem as duas variáveis de ambiente, o `-PrealEnvironment` falha já na configuração, com uma
+    mensagem clara.
+- Pequeno desvio: o teste monta os use cases à mão sobre os mesmos delegates `by dataStore` do
+  processo, em vez de pedi-los ao Hilt. O grafo do `CamerasApp` não inclui `@EntryPoint` definido no
+  `androidTest`, e pôr um no código de produção só para o teste não valia a pena na fase 1.
+- O consentimento de VPN fica concedido para o app debug depois do teste.
+- Uma seção sobre como achar o serial do celular (`adb devices -l`) chegou a entrar no README, a
+  pedido do usuário. Depois o usuário a removeu, e o README só diz que o `ANDROID_SERIAL` é preciso
+  com mais de um aparelho conectado.
+- Verificação (rodada pelo usuário):
+  - a suíte hermética continua com 56 testes, todos passando no emulador `Pixel_8a`, com o smoke
+    excluído;
+  - o smoke rodou no Galaxy SM-S721B com o peer de teste e a câmera `8889/cam_10`, e passou em 4,4 s;
+  - o relatório confirma que ele rodou e não foi pulado (`skipped="0"`);
+  - o QR foi empurrado e apagado pelas tasks.
+- O caminho de falha foi testado com `8889/cam_999`, em duas rodadas:
+  - Na primeira, o teste quebrou logo depois de abrir o `MainActivity` com "No compose hierarchies
+    found". Antes de a activity montar a tela, o Compose Test lança uma exceção em vez de não achar
+    nada.
+    - Correção: o `exists` trata essa exceção como "ainda não", e a espera continua.
+  - Na segunda, o teste esperou 90 s e falhou com a mensagem certa: "the tunnel is up but the WHEP
+    negotiation failed".
+  - Depois da correção, o smoke com `8889/cam_10` passou de novo em 3,9 s, sem ser pulado.
+- Não testado:
+  - a rodada de fora da LAN de casa. Se o celular estava no Wi-Fi de casa, o tráfego não passou
+    pelo pinhole IPv6 do provedor.
+
 ---
 
 ## Conclusão

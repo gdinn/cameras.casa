@@ -141,6 +141,8 @@ The caveat that kept minification off for so long has not gone away: a wrong kee
 rules, to a `@Serializable` model, or to the VPN/WebRTC dependencies has to be smoke-tested on a
 real device — scan the QR code, bring the tunnel up, play a stream. The rule set above was
 validated that way end to end on a physical device: QR scan, tunnel up, streams rendering.
+`RealEnvironmentSmokeTest` automates the QR-to-video path ([§10](#10-testing-and-quality-gates)),
+but only on the debug build so far. A minified build still needs the run by hand.
 `SourceFile` and `LineNumberTable` are kept so release stack traces can be de-obfuscated with
 `app/build/outputs/mapping/release/mapping.txt`.
 
@@ -890,6 +892,9 @@ on a device:
   permissions, the QR scanner).
 - The system dialogs (VPN consent, camera permission), which only UI Automator can drive.
 
+The real world is covered by one smoke, `RealEnvironmentSmokeTest`, run by hand: the real QR, the
+real tunnel and a stream playing on the debug build. Running it on a minified build is still open.
+
 The gap that used to sit next to this one — release builds not being minified — is closed:
 `isMinifyEnabled = true` and `proguard-rules.pro` carries the keep rules, described in
 [§2](#2-stack-and-build-configuration). What remains of it is a process obligation rather than a
@@ -950,6 +955,7 @@ storage tests, one service test, one dispatcher test and the default example), w
 | `IdlingDispatcherTest` (2) | `IdlingDispatcher` is busy while its work runs and reports the transition to idle; the Compose test rule waits for main → `TestDispatchers.default` → `TestDispatchers.io` → main with no `waitUntil` |
 | `WebRtcVideoPlayerTest` (4) | The real player over a recording `WebRtcConnection`: `CONNECTING` with a spinner before any frame; real I420 frames fed into the sink turn it `PLAYING`; a stream in `LocalFailedStreams` is `FAILED` and shows `StreamErrorOverlay`; "Try again" disconnects and connects the same renderer again |
 | `HomeScreenTest` (11) | The real `HomeScreen` with fake callbacks: the move accessibility actions reorder one place and are absent at the ends; "Reconfigure" is an action in dynamic mode only; one real drag per grid mode reorders on drop; overscrolling the dynamic grid reveals "Reconfigure"; the fixed grid always shows it; the page buttons move between pages; "Reconfigure" never covers the page buttons; a focused stream replaces the grid |
+| `RealEnvironmentSmokeTest` (1, manual) | Real QR → real tunnel → a `PLAYING` card, on the production app and a physical phone. Excluded from the 56; run with `-PrealEnvironment` |
 | `TestLocaleTest` (1) | What `setThemedContent` renders and what `string()` resolves agree, and follow the `testLocale` argument when it is given |
 | `QrCodeRouteTest` (2) | With a `FakeQrCodeScanner`, a scanned payload reaches `onCodeScanned`; a camera error toasts and navigates back |
 
@@ -983,6 +989,21 @@ shows and which callback each interaction fires, with no Hilt, navigation or fak
   dispatched blocks, not coroutines. Work that suspends outside them is not waited for: a `delay`,
   a native WebRTC callback, or a dispatcher the test did not wrap (the `IsolatedPreferencesStoreTest`
   store, for example). Those cases still need `waitUntil`.
+- **`@RealEnvironment` is excluded** from every run through the `notAnnotation` runner argument.
+  `RealEnvironmentSmokeTest` (`e2e/`, with its own README) needs the real QR, tunnel and Pi. It
+  runs only by hand with `-PrealEnvironment`, which makes three changes:
+  - it swaps the runner for the plain `AndroidJUnitRunner`, so the test runs on the production
+    `CamerasApp`. The switch lives in Gradle because a runner picks the `Application` before it
+    receives the instrumentation arguments;
+  - it runs only that annotation;
+  - it wires `pushRealQrPayload` / `removeRealQrPayload` around `connectedDebugAndroidTest`. They
+    move the test peer's QR JSON (`CAMERAS_E2E_QR_FILE`) to `/data/local/tmp` and back off the
+    device, so the private key never appears on a command line.
+
+  The test parses that JSON with `ParseUserPreferencesFromQrCodeUseCase` and saves it through the
+  production use cases. It saves the stream from `CAMERAS_E2E_STREAM_PATH`, grants the VPN consent
+  through `appops`, opens `MainActivity` and waits for a `PLAYING` card. On a timeout it names the
+  step that stopped it: Config, the tunnel, WHEP or the first frame.
 - **`TestVpnModule`** replaces `VpnModule` in every `@HiltAndroidTest` with `FakeVpnRepository` and
   `FakeVpnLifecycleController` (`testing/FakeVpnRepository.kt`), so no test brings up WireGuard.
   Both are `@Singleton`: tests inject the fakes directly to drive the tunnel state and read the

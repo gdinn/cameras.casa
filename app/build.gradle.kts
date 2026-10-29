@@ -80,6 +80,31 @@ fun versionCodeOf(versionName: String): Int {
 
 val taggedVersionName = System.getenv("CAMERAS_VERSION_NAME")?.trim()?.takeIf { it.isNotEmpty() }
 
+// The level C smoke (`@RealEnvironment`) needs the real world: the real QR, the tunnel and the Pi.
+// It runs only by hand, on a physical phone; app/src/androidTest/java/com/gdisys/cameras/e2e/README.md
+// has the command. `-PrealEnvironment` swaps the runner for the plain AndroidJUnitRunner, so the
+// smoke runs on the production CamerasApp and its Hilt graph instead of HiltTestApplication and its
+// fakes. The switch has to be made here: a runner picks the Application in `newApplication`, before
+// it receives the instrumentation arguments.
+val realEnvironment = providers.gradleProperty("realEnvironment").isPresent
+val realEnvironmentAnnotation = "com.gdisys.cameras.e2e.RealEnvironment"
+
+// The QR carries the test peer's private key, so it travels as a file pushed to the device, never
+// as an instrumentation argument, which would show up on the Gradle and `am instrument` command
+// lines. RealEnvironmentSmokeTest reads it from this path.
+val realQrDevicePath = "/data/local/tmp/cameras-e2e-qr.json"
+val realQrFile = System.getenv("CAMERAS_E2E_QR_FILE")?.takeIf { it.isNotBlank() }?.let(::file)
+val realStreamPath = System.getenv("CAMERAS_E2E_STREAM_PATH")?.takeIf { it.isNotBlank() }
+
+if (realEnvironment) {
+  if (realQrFile?.isFile != true || realStreamPath == null) {
+    throw GradleException(
+      "-PrealEnvironment needs CAMERAS_E2E_QR_FILE (the test peer's QR JSON) and " +
+        "CAMERAS_E2E_STREAM_PATH (port/path of a camera, e.g. 8889/cam_160)."
+    )
+  }
+}
+
 android {
   namespace = "com.gdisys.cameras"
   compileSdk = 36
@@ -93,7 +118,19 @@ android {
 
     // Every instrumented test runs inside HiltTestApplication (see HiltTestRunner), so flow tests
     // can swap bindings with @TestInstallIn. Tests that are not @HiltAndroidTest are unaffected.
-    testInstrumentationRunner = "com.gdisys.cameras.HiltTestRunner"
+    // The exception is `-PrealEnvironment`, which runs only the smoke, on the production app; every
+    // other run excludes it.
+    if (realEnvironment) {
+      testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+      testInstrumentationRunnerArguments["annotation"] = realEnvironmentAnnotation
+      // Port and path only: the host prefix comes from the app, so the IPv6 brackets never pass
+      // through the shell that runs `am instrument`.
+      testInstrumentationRunnerArguments["streamPath"] = realStreamPath.orEmpty()
+    } else {
+      testInstrumentationRunner = "com.gdisys.cameras.HiltTestRunner"
+      testInstrumentationRunnerArguments["notAnnotation"] = realEnvironmentAnnotation
+    }
+
     // With the orchestrator below, each test runs in a fresh process with the app's data wiped
     // first: stored credentials and URLs, and the runtime permissions the level B plan resets
     // between tests (the camera permission in particular).
@@ -156,7 +193,8 @@ android {
       // This stack fails at *runtime* rather than at build time when a keep rule is wrong, so a
       // green `assembleRelease` is necessary but not sufficient: any change to the keep rules, to
       // a @Serializable model or to the VPN/WebRTC dependencies must be smoke-tested on a real
-      // device — scan the QR code, bring the tunnel up, and play a stream.
+      // device — scan the QR code, bring the tunnel up, and play a stream. RealEnvironmentSmokeTest
+      // automates that path, but on the debug build only, so a minified build still needs it by hand.
       isMinifyEnabled = true
       proguardFiles(
         getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -257,6 +295,27 @@ dependencies {
 // JacocoExclusionsTest reads the `outOfScopeFilter` patterns straight out of this file. Without
 // declaring the build script as an input, editing a pattern leaves the test task UP-TO-DATE, so the
 // guard would not run at exactly the moment it matters.
+// Puts the QR on the device before the smoke and removes it afterwards, even when a test fails.
+// adb follows ANDROID_SERIAL, so with more than one device attached, set it to the phone.
+if (realEnvironment) {
+  val adb = androidComponents.sdkComponents.adb
+  val pushRealQrPayload = tasks.register<Exec>("pushRealQrPayload") {
+    description = "Pushes the test peer's QR JSON for the @RealEnvironment smoke."
+    executable(adb.get().asFile)
+    args("push", requireNotNull(realQrFile).absolutePath, realQrDevicePath)
+  }
+  val removeRealQrPayload = tasks.register<Exec>("removeRealQrPayload") {
+    description = "Deletes the test peer's QR JSON from the device."
+    executable(adb.get().asFile)
+    args("shell", "rm", "-f", realQrDevicePath)
+    isIgnoreExitValue = true
+  }
+  tasks.matching { it.name == "connectedDebugAndroidTest" }.configureEach {
+    dependsOn(pushRealQrPayload)
+    finalizedBy(removeRealQrPayload)
+  }
+}
+
 tasks.withType<Test>().configureEach {
   inputs.file("build.gradle.kts")
     .withPropertyName("buildScript")
