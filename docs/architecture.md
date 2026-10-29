@@ -301,9 +301,11 @@ routes to `Home` or `Config` accordingly.
 | Messages | `InitToastMessage` |
 
 This is the only route with **no inbound UI events** — the screen has no input. The decision runs
-in the ViewModel's `init { }` block, which collects `GetVpnConfigStatusUseCase()`, ignores
-`VpnCredentialsStatus.Loading`, and emits `NavigateUiEvent.ToHome` or (after a toast)
-`NavigateUiEvent.ToConfig`.
+in the ViewModel's `init { }` block, which takes the first `VpnCredentialsStatus.Loaded` from
+`GetVpnConfigStatusUseCase()` and emits `NavigateUiEvent.ToHome` or (after a toast)
+`NavigateUiEvent.ToConfig`. It decides **once**: `Loading` stays in the back stack under `Config`,
+so a continuous collect would keep reacting to the credentials Config saves later, sending events
+nobody collects.
 
 ### 5.2 `feature/config` — configuration checklist
 
@@ -450,6 +452,17 @@ waiting for a tunnel with nothing to connect to would show a permanent spinner.
 `onOrientationChanged()`. The ViewModel then picks the matching order and grid via
 `preferences.orderFor(orientation)` / `gridFor(orientation)`.
 
+**The lifecycle is pushed down as intent.** `HomeRoute` only reports `onResumed()` / `onPaused()`,
+which set a `MutableStateFlow<Boolean?>` meaning "the tunnel should be up". A single collector
+applies it with `ConnectVpnUseCase` / `DisconnectVpnUseCase`:
+
+- calls never overlap, and the last lifecycle state always wins. A quick Home → Config → Home drops
+  the intermediate pause instead of racing a disconnect against the connect;
+- not `collectLatest`, which would cancel a native `setState` halfway. The use case calls run in
+  `NonCancellable`, so an operation that started always finishes;
+- if the ViewModel is cleared with a connect as the last operation (the pause arrived while it ran),
+  the collector's `finally` disconnects. Home is the only owner of the tunnel.
+
 **Two rendering modes**, both in `HomeScreen.kt`:
 
 | Mode | Condition | Behaviour |
@@ -554,7 +567,8 @@ transform underneath is what makes a partial write possible when one is needed.
 |---|---|
 | `VpnRepository` / `VpnRepositoryImpl` | Wraps `GoBackend`; exposes `StateFlow<VpnTunnelState>`. The consent `Intent` belongs to `core/permission` (§6.4) |
 | `VpnLifecycleController` / `Impl` | Starts and stops `VpnLifecycleService` |
-| `VpnLifecycleService` | `START_STICKY` service whose only job is to drop the tunnel on `onTaskRemoved` / `onDestroy` |
+| `VpnLifecycleService` | `START_STICKY` service whose only job is to drop the tunnel on `onTaskRemoved` / `onDestroy`, through `VpnTeardown` |
+| `VpnTeardown` | The service's logic, kept out of it to be JVM-testable: disconnects at most once per service instance (`onTaskRemoved` stops the service, which then reaches `onDestroy`), retries after a failure, and logs instead of throwing, since the service scope has no exception handler |
 | `VpnConfig` | Domain model, plus `isValid()` |
 | Use cases (3) | `ConnectVpnUseCase`, `DisconnectVpnUseCase`, `ObserveVpnStateUseCase` |
 
@@ -675,7 +689,7 @@ A concrete round trip — reordering a camera on Home:
 
 The sequence diagram above covers the full lifecycle in three phases:
 
-**1. Tunnel up.** `ON_RESUME` → `HomeViewModel.connectVpn()` → `GetVpnConfigUseCase` (reads and maps
+**1. Tunnel up.** `ON_RESUME` → `HomeViewModel.onResumed()` → `GetVpnConfigUseCase` (reads and maps
 `UserPreferences` to `VpnConfig` via `toVpnConfigOrNull()`) → `ConnectVpnUseCase` →
 `backend.setState(tunnel, UP, config)` and `VpnLifecycleController.start()`. Tunnel state flows back
 through `ObserveVpnStateUseCase`, and `HomeUiState` stays `Loading` until `CONNECTED`. Any failure
@@ -695,7 +709,8 @@ swapping WHEP for RTSP/HLS a change that stops at that boundary.
 
 **3. Tear down.** Leaving a cell or changing page disposes the player, which disconnects the stream
 *before* releasing the renderer (order matters: the stream must stop writing to the sink first).
-`ON_PAUSE` drops the tunnel and stops the lifecycle service. `onCleared()` calls `closeAll()`.
+`ON_PAUSE` (`onPaused()`) drops the tunnel and stops the lifecycle service, applied after any
+connect still running (§5.5). `onCleared()` calls `closeAll()`.
 
 ---
 
@@ -853,7 +868,7 @@ implementations, pure logic and serialization.
 | ViewModels (all 5) | `HomeViewModelTest`, `ConfigViewModelTest`, `StreamURLsViewModelTest`, `InitViewModelTest`, `QrCodeViewModelTest` |
 | Pure logic | `StreamPagingTest`, `FixedGridLayoutTest`, `GridPreferencesValidationTest`, `StreamUrlValidationTest` |
 | Storage | `EncryptedPreferencesSerializerTest`, `StreamPreferencesSerializationTest`, `DataStoreManagerTest`, repository and all 8 use-case tests |
-| VPN | `VpnRepositoryImplTest`, `VpnConfigTest`, `VpnLifecycleControllerImplTest`, 4 use-case tests |
+| VPN | `VpnRepositoryImplTest`, `VpnConfigTest`, `VpnLifecycleControllerImplTest`, `VpnTeardownTest`, 4 use-case tests |
 | WebRTC | `WhepConnectionManagerTest`, `WhepRemoteDataSourceImplTest` (MockWebServer) |
 | Architecture | `LayerDependencyTest` (Konsist) |
 | Config drift | `StreamHostTest` (Kotlin constant vs. XML), `JacocoExclusionsTest` (coverage patterns vs. compiled classes) |
@@ -878,8 +893,8 @@ Useful commands:
 Note that `LayerDependencyTest` and `StreamHostTest` are ordinary unit tests, so a layering
 violation or a host/XML mismatch fails `testDebugUnitTest` like any other regression.
 
-**Instrumented screen tests.** 36 tests under `app/src/androidTest/` (34 Compose UI tests and two
-storage tests), with packages mirroring `main`:
+**Instrumented screen tests.** 38 tests under `app/src/androidTest/` (34 Compose UI tests, two
+storage tests, one service test and the default example), with packages mirroring `main`:
 
 | Test | Covers |
 |---|---|
@@ -887,9 +902,10 @@ storage tests), with packages mirroring `main`:
 | `StreamURLsScreenTest` (18) | Loading, empty list, row order and removal, the add form, the four confirmation dialogs, the grid fields per orientation, when "Save grid" is enabled |
 | `EmptyStreamsScreenTest` (2) | The message and the "Reconfigure" shortcut |
 | `ToastDisplayerTest` (1) | Toast events reach the `ToastPresenter` provided through `LocalToastPresenter`, in order |
-| `CamerasAppContentTest` (1) | Smoke test of the composition root in `HiltTestActivity` (`@HiltAndroidTest`, production graph except storage, injected `EglBase`): first run lands on `Config` over `Loading`, read through a test-owned `NavController` |
+| `CamerasAppContentTest` (1) | Smoke test of the composition root in `HiltTestActivity` (`@HiltAndroidTest`, production graph except storage and the VPN, injected `EglBase`): first run lands on `Config` over `Loading`, read through a test-owned `NavController` |
 | `TestStorageModuleTest` (1) | In a `@HiltAndroidTest`, the production repositories start empty and write to the `TestStorageModule` files, never to the production ones |
 | `IsolatedPreferencesStoreTest` (1) | A store built from `userPreferencesSerializer` on its own file and Keystore alias starts empty, encrypts and leaves the production file untouched |
+| `VpnLifecycleServiceTest` (1) | The real `VpnLifecycleService`, injected by Hilt over `FakeVpnRepository`: stopping it drops the tunnel. `onTaskRemoved` has no test API and stays a manual check |
 | `QrCodeRouteTest` (2) | With a `FakeQrCodeScanner`, a scanned payload reaches `onCodeScanned`; a camera error toasts and navigates back |
 
 Most of them test screens in isolation: `createComposeRule` renders a `*Screen` with a hand-written
@@ -912,6 +928,10 @@ shows and which callback each interaction fires, with no Hilt, navigation or fak
 - **`TestStorageModule`** replaces `StorageModule` in every `@HiltAndroidTest`, so storage is isolated
   per test by Hilt even without the orchestrator. Tests that need to look at the files inject
   `TestStoreFiles`.
+- **`TestVpnModule`** replaces `VpnModule` in every `@HiltAndroidTest` with `FakeVpnRepository` and
+  `FakeVpnLifecycleController` (`testing/FakeVpnRepository.kt`), so no test brings up WireGuard.
+  Both are `@Singleton`: tests inject the fakes directly to drive the tunnel state and read the
+  atomic call counters.
 - The QR fixtures in `qr-code-gen/examples/` are assets of the test APK, read through
   `InstrumentationRegistry.getInstrumentation().context.assets`.
 

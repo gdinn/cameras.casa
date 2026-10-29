@@ -262,6 +262,103 @@ plano).
   service real, então os fakes o evitam.
 - O `InitViewModel` fica vivo na pilha e continua coletando credenciais depois que a tela saiu.
 
+### Propostas
+
+O comportamento está certo: o túnel só existe com a Home em primeiro plano, e o `Loading` fica na
+pilha. As propostas não mudam o que o usuário vê. Elas tornam o comportamento garantido e
+verificável.
+
+#### 5a. `InitViewModel` decide uma vez
+
+Hoje o `init` faz `collect` contínuo das credenciais. Depois que o Config abre, o `Loading` sai da
+composição, mas o ViewModel fica na pilha. Depois de um QR válido, ele fica preso num
+`send(ToHome)` sem receptor até o `navigateToHome` tirar o `Loading` da pilha.
+
+- Trocar por `first { it is Loaded }`. A navegação é a mesma, e o ViewModel para de observar as
+  credenciais depois da decisão.
+- Teste unitário: o fluxo `Loaded(false)`, `Loaded(true)` gera só `ToConfig`.
+- O `Loading` continua na pilha, então o `CamerasAppContentTest` não muda.
+
+#### 5b. Home: o último estado de ciclo de vida sempre vence
+
+Hoje cada `ON_RESUME`/`ON_PAUSE` dispara um `launch` próprio, e os use cases rodam em
+`Dispatchers.Default`. Nada coordena as chamadas ao `GoBackend`. Num Home → Config → Home rápido, o
+disconnect pode chegar depois do connect, e a Home fica sem túnel.
+
+- A route só informa o estado: `onResumed()` / `onPaused()`.
+- O ViewModel guarda a intenção num `MutableStateFlow`, e um único coletor aplica
+  `connect`/`disconnect` em sequência.
+- O `StateFlow` descarta os estados intermediários e repetidos. As chamadas nunca se sobrepõem, e o
+  estado final é sempre o do ciclo de vida.
+- Sem `collectLatest`, porque ele cancelaria um `setState` nativo no meio. As chamadas aos use
+  cases rodam em `NonCancellable`: uma operação que começou termina, mesmo que o ViewModel seja
+  limpo.
+- Teste unitário: um connect que suspende, e a sequência resume → pause → resume. Nunca há duas
+  chamadas ao mesmo tempo, e a última operação é um connect.
+- Risco a conferir: a Home sai da pilha (saída do app) enquanto um connect está em andamento. O
+  `ON_PAUSE` chega, mas o coletor é cancelado no `onCleared` antes de aplicar o disconnect.
+
+#### 5c. `VpnLifecycleService`: casca fina e lógica testável
+
+- O "derrubar o túnel" vira uma classe pequena e injetável, a `VpnTeardown`. Ela é idempotente:
+  hoje o `onTaskRemoved` e depois o `onDestroy` desconectam duas vezes. Ela também não deixa uma
+  falha do disconnect derrubar o app: hoje a exceção escapa de um `launch` sem handler.
+- O service só a chama.
+- Testes:
+  - a `VpnTeardown` no JVM;
+  - um instrumentado que sobe o service real com um `VpnRepository` falso (`@TestInstallIn`) e
+    prova que parar o service chama o disconnect.
+- O `onTaskRemoved` de verdade (arrastar o app nos recentes) continua só no teste manual.
+
+#### Ordem
+
+5a (o menor), depois 5b, depois 5c (o único que mexe na infraestrutura instrumentada).
+
+#### Resultado
+
+- **5a — feito.** O `init` do `InitViewModel` pega o primeiro `Loaded` e decide.
+  - Desvio: `firstOrNull()` em vez de `first()`. Um fluxo que termina sem `Loaded` lançaria uma
+    exceção no `viewModelScope` e derrubaria o app. Em produção o DataStore nunca termina, mas o
+    teste de `Loading` já existente usa um fluxo finito e pegou isso.
+  - O teste novo (`decides once and ignores later credential changes`) falha no código antigo (chega
+    um `ToHome` a mais) e passa no novo.
+- **5b — feito.** O `HomeRoute` chama `onResumed()`/`onPaused()`, e um coletor único aplica a
+  intenção em `NonCancellable`.
+  - O risco se confirmou. Com a Home pausando durante um connect e o ViewModel limpo em seguida, o
+    disconnect nunca rodava (o teste falhou com `[connect]`). Correção: o `finally` do coletor
+    desconecta quando a última operação foi um connect. A Home é a única dona do túnel.
+  - Desvio: o `ToConfig` de falha é enviado num `launch` à parte. O canal é rendezvous, e o `send`
+    direto prenderia o coletor do túnel até a route coletar o evento.
+  - Desvio: não injetei o dispatcher nos `Connect/DisconnectVpnUseCase`. Os testes do ViewModel
+    usam mocks dos use cases, então não precisaram, e isso fica para o item 6.
+  - Testes: os três de `connectVpn` viraram de `onResumed`, e o de `disconnectVpn` deu lugar a
+    cinco novos:
+    - pause depois de resume;
+    - pause antes de qualquer resume;
+    - pause durante o connect (aplicado depois, concorrência máxima 1);
+    - pause e resume rápidos (só um connect);
+    - ViewModel limpo durante o connect.
+  - Resultado: 297 testes unitários passam.
+- **5c — feito.** A `VpnTeardown` fica em `core/vpn/data`, e o service só a chama.
+  - Desvio: a idempotência marca o sucesso, não a chamada. Depois de uma falha, a próxima chamada
+    tenta de novo (o `onDestroy` depois de um `onTaskRemoved` que falhou), e um `Mutex` impede duas
+    ao mesmo tempo.
+  - O `VpnTeardownTest` (JVM, 3 testes) cobre o disconnect, o segundo `invoke` sem efeito e a falha
+    que não lança e é refeita.
+  - O `FakeVpnRepository`, o `FakeVpnLifecycleController` e o `TestVpnModule` (`@TestInstallIn`
+    no lugar do `VpnModule`) entraram agora, em `androidTest/testing/`, adiantando o nível B.
+    Nenhum `@HiltAndroidTest` sobe mais o WireGuard, e o KDoc do `CamerasAppContentTest` foi
+    ajustado.
+  - O `VpnLifecycleServiceTest` sobe o service real pelo `startService`/`stopService` e espera o
+    `vpnState` do fake chegar a `DISCONNECTED`, sem `sleep`.
+  - Desvio: sem `ServiceTestRule`. O `startService` dela também faz bind e espera a conexão, e o
+    `onBind` do service devolve `null`.
+  - Conferi que o teste falha (timeout) com o `vpnTeardown()` removido do `onDestroy`.
+
+  Verificação: 300 testes unitários e o `jacocoTestCoverageVerification` passam, e os 38
+  instrumentados passam no emulador (163 s). O usuário testou o app real à mão depois das três
+  mudanças, e ele funcionou corretamente.
+
 ## 6. Trabalho fora da main thread que o Compose Test não espera
 
 `ConnectVpnUseCase` e `DisconnectVpnUseCase` rodam em `Dispatchers.Default`, o DataStore grava em
@@ -310,4 +407,6 @@ As correções são pequenas:
 - a raiz de composição separada da activity (item 3, feito).
 
 O resto (lifecycle, threads, nativo, VPN real) é inerente ao que o app faz e se resolve com a
-estratégia de teste, não com refatoração.
+estratégia de teste, não com refatoração. O lifecycle (item 5) não mudou de comportamento, mas
+ficou garantido e testável: o gate decide uma vez, a Home serializa o túnel, e o service delega a
+uma `VpnTeardown` testável no JVM.

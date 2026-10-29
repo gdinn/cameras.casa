@@ -255,6 +255,13 @@ do relatório), `WhepClientModule`, `WhepNetworkModule` e `WhepRtcModule` (achad
 
 > O `VpnModule` registra dois bindings, então o `TestVpnModule` fornece os dois.
 
+> **Revisto (item 5c do `e2e_testability.md`):** o `FakeVpnRepository`, o
+> `FakeVpnLifecycleController` e o `TestVpnModule` já existem, em `androidTest/testing/` (não em
+> `fake/`, seguindo o `TestStorageModule`). Pelo item 5b, a Home aplica o ciclo de vida por um
+> coletor único que descarta estados intermediários. Um pause e um resume que chegam durante um
+> connect não geram disconnect. Os contadores dos cenários #8 e #11 valem para transições que
+> esperam o túnel subir antes da próxima.
+
 **`FlowTest`** (classe base abstrata):
 
 ```kotlin
