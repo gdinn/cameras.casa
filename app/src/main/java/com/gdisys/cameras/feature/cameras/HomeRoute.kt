@@ -44,8 +44,8 @@ fun HomeRoute(
   }
   LaunchedEffect(orientation) { viewModel.onOrientationChanged(orientation) }
 
-  LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.connectVpn() }
-  LifecycleEventEffect(Lifecycle.Event.ON_PAUSE) { viewModel.disconnectVpn() }
+  LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.onResumed() }
+  LifecycleEventEffect(Lifecycle.Event.ON_PAUSE) { viewModel.onPaused() }
 
   BackHandler {
     viewModel.onBackPressed()

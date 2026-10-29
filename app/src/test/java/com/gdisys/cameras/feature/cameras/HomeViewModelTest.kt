@@ -21,11 +21,13 @@ import com.gdisys.cameras.feature.cameras.logic.movedToPage
 import io.mockk.Runs
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.coVerifyOrder
 import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -304,7 +306,7 @@ class HomeViewModelTest {
   }
 
   @Test
-  fun `connectVpn connects successfully without toast or navigation`() = runTest {
+  fun `onResumed connects successfully without toast or navigation`() = runTest {
     coEvery { getVpnConfigUseCase() } returns Result.success(validConfig)
     coEvery { connectVpnUseCase(validConfig) } returns Result.success(Unit)
 
@@ -312,7 +314,7 @@ class HomeViewModelTest {
       val toastTurbine = viewModel.uiEvent.testIn(this)
       val navigateTurbine = viewModel.navigateUiEvent.testIn(this)
 
-      viewModel.connectVpn()
+      viewModel.onResumed()
 
       coVerify(exactly = 1) { connectVpnUseCase(validConfig) }
       toastTurbine.expectNoEvents()
@@ -324,14 +326,14 @@ class HomeViewModelTest {
   }
 
   @Test
-  fun `connectVpn shows a toast and navigates to config when getVpnConfigUseCase fails`() = runTest {
+  fun `onResumed shows a toast and navigates to config when getVpnConfigUseCase fails`() = runTest {
     coEvery { getVpnConfigUseCase() } returns Result.failure(RuntimeException("boom"))
 
     turbineScope {
       val toastTurbine = viewModel.uiEvent.testIn(this)
       val navigateTurbine = viewModel.navigateUiEvent.testIn(this)
 
-      viewModel.connectVpn()
+      viewModel.onResumed()
 
       assertEquals(
         ToastUiEvent.Show(HomeToastMessage.VPN_CONNECTION_ERROR.resId),
@@ -345,7 +347,7 @@ class HomeViewModelTest {
   }
 
   @Test
-  fun `connectVpn shows a toast and navigates to config when connectVpnUseCase fails`() = runTest {
+  fun `onResumed shows a toast and navigates to config when connectVpnUseCase fails`() = runTest {
     coEvery { getVpnConfigUseCase() } returns Result.success(validConfig)
     coEvery { connectVpnUseCase(validConfig) } returns Result.failure(RuntimeException("boom"))
 
@@ -353,7 +355,7 @@ class HomeViewModelTest {
       val toastTurbine = viewModel.uiEvent.testIn(this)
       val navigateTurbine = viewModel.navigateUiEvent.testIn(this)
 
-      viewModel.connectVpn()
+      viewModel.onResumed()
 
       assertEquals(
         ToastUiEvent.Show(HomeToastMessage.VPN_CONNECTION_ERROR.resId),
@@ -367,12 +369,70 @@ class HomeViewModelTest {
   }
 
   @Test
-  fun `disconnectVpn delegates to the use case`() = runTest {
+  fun `onPaused disconnects after the tunnel was brought up`() = runTest {
+    coEvery { getVpnConfigUseCase() } returns Result.success(validConfig)
+    coEvery { connectVpnUseCase(validConfig) } returns Result.success(Unit)
     coEvery { disconnectVpnUseCase() } returns Result.success(Unit)
 
-    viewModel.disconnectVpn()
+    viewModel.onResumed()
+    viewModel.onPaused()
+
+    coVerifyOrder {
+      connectVpnUseCase(validConfig)
+      disconnectVpnUseCase()
+    }
+  }
+
+  @Test
+  fun `a pause before any resume still disconnects`() = runTest {
+    coEvery { disconnectVpnUseCase() } returns Result.success(Unit)
+
+    viewModel.onPaused()
 
     coVerify(exactly = 1) { disconnectVpnUseCase() }
+    coVerify(exactly = 0) { connectVpnUseCase(any()) }
+  }
+
+  @Test
+  fun `a pause during a connect is applied only after the connect returns`() = runTest {
+    val tunnel = RecordingTunnel()
+
+    viewModel.onResumed()
+    viewModel.onPaused()
+    assertEquals(listOf("connect"), tunnel.calls)
+
+    tunnel.finishConnect()
+
+    assertEquals(listOf("connect", "disconnect"), tunnel.calls)
+    assertEquals(1, tunnel.maxInFlight)
+  }
+
+  @Test
+  fun `a quick pause and resume during a connect keeps the tunnel up`() = runTest {
+    val tunnel = RecordingTunnel()
+
+    viewModel.onResumed()
+    viewModel.onPaused()
+    viewModel.onResumed()
+    tunnel.finishConnect()
+
+    // The intermediate pause is dropped: the tunnel is already in the state the lifecycle ended in.
+    assertEquals(listOf("connect"), tunnel.calls)
+  }
+
+  @Test
+  fun `clearing the view model during a connect still drops the tunnel`() = runTest {
+    val tunnel = RecordingTunnel()
+    val viewModelStore = ViewModelStore()
+    viewModelStore.put("home", viewModel)
+
+    // Leaving the app: Home pauses while the tunnel is still coming up, and is then destroyed.
+    viewModel.onResumed()
+    viewModel.onPaused()
+    viewModelStore.clear()
+    tunnel.finishConnect()
+
+    assertEquals(listOf("connect", "disconnect"), tunnel.calls)
   }
 
   @Test
@@ -383,5 +443,42 @@ class HomeViewModelTest {
     viewModelStore.clear()
 
     verify(exactly = 1) { streamConnectionRepository.closeAll() }
+  }
+
+  /**
+   * Stubs the tunnel use cases with a connect that suspends until [finishConnect], recording the
+   * order of the calls and how many were running at the same time.
+   */
+  private inner class RecordingTunnel {
+    val calls = mutableListOf<String>()
+    var maxInFlight = 0
+      private set
+
+    private var inFlight = 0
+    private val connectGate = CompletableDeferred<Unit>()
+
+    init {
+      coEvery { getVpnConfigUseCase() } returns Result.success(validConfig)
+      coEvery { connectVpnUseCase(validConfig) } coAnswers {
+        track("connect") { connectGate.await() }
+        Result.success(Unit)
+      }
+      coEvery { disconnectVpnUseCase() } coAnswers {
+        track("disconnect") {}
+        Result.success(Unit)
+      }
+    }
+
+    fun finishConnect() = connectGate.complete(Unit)
+
+    private suspend fun track(call: String, body: suspend () -> Unit) {
+      calls += call
+      maxInFlight = maxOf(maxInFlight, ++inFlight)
+      try {
+        body()
+      } finally {
+        inFlight--
+      }
+    }
   }
 }
