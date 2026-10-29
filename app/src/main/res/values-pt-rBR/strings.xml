@@ -33,6 +33,8 @@
     <string name="qr_code_format_error">QR Code inválido</string>
     <string name="qr_code_invalid_data_error">Dados inválidos</string>
     <string name="home_screen_drag_handle">Arraste para reordenar</string>
+    <string name="home_screen_move_stream_earlier">Mover para antes</string>
+    <string name="home_screen_move_stream_later">Mover para depois</string>
     <string name="home_screen_no_streams">Você precisa configurar suas Stream URLs primeiro</string>
     <string name="home_screen_establishing_secure_connection">Estabelecendo conexão segura…</string>
     <string name="home_screen_reconfigure">Reconfigurar</string>

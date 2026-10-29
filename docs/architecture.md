@@ -436,7 +436,7 @@ configuration.
 
 | Role | Type |
 |---|---|
-| View | `HomeRoute.kt` + 16 files in `components/` |
+| View | `HomeRoute.kt` + 17 files in `components/` |
 | ViewModel | `HomeViewModel.kt` |
 | State | `HomeUiState.kt` — `Loading` \| `Empty` \| `Ready(streams, focusedStream, grid, orientation, failedStreams)` |
 | Logic | `logic/StreamPaging.kt`, `logic/FixedGridLayout.kt` |
@@ -487,7 +487,21 @@ applies it with `ConnectVpnUseCase` / `DisconnectVpnUseCase`:
   scales all rows uniformly if they overflow — no cropping, no distortion, no scrolling.
 - **Drag state is View state.** `PagedDragState` holds touch coordinates and cell bounds and is
   explicitly documented as *not* belonging in the ViewModel. The pure reordering math it calls
-  (`reorderedTo`, `movedToPage`) lives in `logic/StreamPaging.kt` and is unit-tested.
+  (`reorderedTo`, `movedToPage`) lives in `logic/StreamPaging.kt` and is unit-tested, and so is the
+  class itself (`PagedDragStateTest`): the pointer loop in `PagedStreamGrid` only feeds it.
+- **Reordering has an accessibility path.** Dragging is out of reach for TalkBack, so each
+  `CameraGridItem` carries custom accessibility actions: "Move earlier" / "Move later" (absent at
+  the ends of the list), computed in `HomeScreen` with `reorderedTo` and persisted through the same
+  `onStreamsReordered` as a drop. In dynamic mode the card also offers "Reconfigure", because the
+  overscroll that reveals that button is a drag too. The instrumented tests reorder through these
+  actions, with no coordinates.
+- **Each player exposes its playback state.** `WebRtcVideoPlayer` derives a `StreamPlaybackState`:
+  `FAILED` when the URL is in `LocalFailedStreams`, `PLAYING` once the renderer reports its first
+  frame (`onFirstFrameRendered`, posted to the main thread), `CONNECTING` otherwise. The state is
+  View state, like the resolution, and resets with every new renderer. `CONNECTING` draws a spinner
+  over the card. The state is also published as the `StreamPlaybackStateKey` semantics property, so
+  a test can wait for real video without matching text or pixels. A stream that drops after its
+  first frame stays `PLAYING`, frozen on the last frame.
 - **Reorder persists on drop, per orientation.** `onStreamsReordered` calls
   `UpdateStreamOrderUseCase(orientation, newOrder)`, which rewrites only the current orientation's
   order.
@@ -886,14 +900,14 @@ runtime.
 
 ## 10. Testing and quality gates
 
-**44 test files** under `app/src/test/`, mirroring the production package structure. Coverage is
+**46 test files** under `app/src/test/`, mirroring the production package structure. Coverage is
 concentrated where the project decided it belongs: ViewModels, use cases, repository
 implementations, pure logic and serialization.
 
 | Area | Representative tests |
 |---|---|
 | ViewModels (all 5) | `HomeViewModelTest`, `ConfigViewModelTest`, `StreamURLsViewModelTest`, `InitViewModelTest`, `QrCodeViewModelTest` |
-| Pure logic | `StreamPagingTest`, `FixedGridLayoutTest`, `GridPreferencesValidationTest`, `StreamUrlValidationTest` |
+| Pure logic | `StreamPagingTest`, `PagedDragStateTest`, `FixedGridLayoutTest`, `GridPreferencesValidationTest`, `StreamUrlValidationTest` |
 | Storage | `EncryptedPreferencesSerializerTest`, `StreamPreferencesSerializationTest`, `DataStoreManagerTest`, repository and all 8 use-case tests |
 | VPN | `VpnRepositoryImplTest`, `VpnConfigTest`, `VpnLifecycleControllerImplTest`, `VpnTeardownTest`, 4 use-case tests |
 | WebRTC | `WhepConnectionManagerTest`, `WhepRemoteDataSourceImplTest` (MockWebServer) |
@@ -920,7 +934,7 @@ Useful commands:
 Note that `LayerDependencyTest` and `StreamHostTest` are ordinary unit tests, so a layering
 violation or a host/XML mismatch fails `testDebugUnitTest` like any other regression.
 
-**Instrumented screen tests.** 43 tests under `app/src/androidTest/` (38 Compose UI tests, two
+**Instrumented screen tests.** 51 tests under `app/src/androidTest/` (46 Compose UI tests, two
 storage tests, one service test, one dispatcher test and the default example), with packages mirroring `main`:
 
 | Test | Covers |
@@ -934,7 +948,8 @@ storage tests, one service test, one dispatcher test and the default example), w
 | `IsolatedPreferencesStoreTest` (1) | A store built from `userPreferencesSerializer` on its own file and Keystore alias starts empty, encrypts and leaves the production file untouched |
 | `VpnLifecycleServiceTest` (1) | The real `VpnLifecycleService`, injected by Hilt over `FakeVpnRepository`: stopping it drops the tunnel. `onTaskRemoved` has no test API and stays a manual check |
 | `IdlingDispatcherTest` (2) | `IdlingDispatcher` is busy while its work runs and reports the transition to idle; the Compose test rule waits for main → `TestDispatchers.default` → `TestDispatchers.io` → main with no `waitUntil` |
-| `WebRtcVideoPlayerTest` (3) | The real player over a recording `WebRtcConnection`: no overlay while connected; a stream in `LocalFailedStreams` shows `StreamErrorOverlay`; "Try again" disconnects and connects the same renderer again |
+| `WebRtcVideoPlayerTest` (4) | The real player over a recording `WebRtcConnection`: `CONNECTING` with a spinner before any frame; real I420 frames fed into the sink turn it `PLAYING`; a stream in `LocalFailedStreams` is `FAILED` and shows `StreamErrorOverlay`; "Try again" disconnects and connects the same renderer again |
+| `HomeScreenTest` (7) | The real `HomeScreen` with fake callbacks: the move accessibility actions reorder one place and are absent at the ends; "Reconfigure" is an action in dynamic mode only; one real drag per grid mode reorders on drop; overscrolling the dynamic grid reveals "Reconfigure" |
 | `QrCodeRouteTest` (2) | With a `FakeQrCodeScanner`, a scanned payload reaches `onCodeScanned`; a camera error toasts and navigates back |
 
 Most of them test screens in isolation: `createComposeRule` renders a `*Screen` with a hand-written
@@ -978,9 +993,12 @@ Conventions:
 
 - Nodes are found by test tag. The tags are `const val`s in one object per feature, in `main` next
   to the components (`ConfigTestTags`, `StreamURLsTestTags`, `HomeTestTags`). Their names match the
-  `**/*Test*.*` coverage filter, so they stay out of JaCoCo.
+  `**/*Test*.*` coverage filter, so they stay out of JaCoCo. Per-stream nodes take functions instead
+  (`HomeTestTags.streamCard(url)`, `dragHandle(url)`, `streamPlayer(url)`).
 - State is read from semantics, not from icons or colors: `ConfigButton` exposes its
-  `ConfigButtonState` as `stateDescription`, which is also what TalkBack announces.
+  `ConfigButtonState` as `stateDescription`, which is also what TalkBack announces, and each player
+  exposes its `StreamPlaybackState` through `StreamPlaybackStateKey`.
+- Reordering goes through the accessibility actions; real drags are kept to one per grid mode.
 - The camera is replaced by `FakeQrCodeScanner` (`testing/FakeQrCodeScanner.kt`), provided through
   `LocalQrCodeScanner`.
 - Toasts are asserted by `@StringRes` id: wrap the content in

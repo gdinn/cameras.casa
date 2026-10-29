@@ -98,6 +98,8 @@
 
     <!-- Home Screen -->
     <string name="home_screen_drag_handle">Drag to reorder</string>
+    <string name="home_screen_move_stream_earlier">Move earlier</string>
+    <string name="home_screen_move_stream_later">Move later</string>
     <string name="home_screen_no_streams">You need to configure your Stream URLs first</string>
     <string name="home_screen_establishing_secure_connection">Establishing secure connection…</string>
     <string name="home_screen_reconfigure">Reconfigure</string>

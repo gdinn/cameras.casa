@@ -465,6 +465,73 @@ card, com um botão "Tentar de novo". A mudança de UX foi aceita, e o toast con
   dinâmico usa uma biblioteca. O "Reconfigurar" do modo dinâmico só aparece depois de um overscroll
   de uma tela inteira. São todos testes de gesto, os mais instáveis.
 
+### Propostas
+
+#### 8a. Estado de reprodução por card
+
+- O player registra o primeiro frame (`onFirstFrameRendered`) e expõe o estado **Conectando →
+  Tocando**, ou **Falhou** (vindo do item 7), numa propriedade semântica própria, sem texto e sem
+  idioma. É estado de View, como a resolução, e não vai para o ViewModel.
+- Destrava o nível C: o smoke com a VPN real espera "ao menos um card Tocando".
+- Spinner no card enquanto ele está Conectando (decisão do usuário: sim). Hoje o card fica preto até
+  o primeiro frame.
+
+#### 8b. Gestos: tirar do gesto o que não precisa ser gesto
+
+1. Testes JVM do `PagedDragState`, que guarda toda a lógica do arraste do grid fixo e não tem testes.
+2. Ações de acessibilidade no card: "Mover para antes" / "Mover para depois", e "Reconfigurar" no
+   modo dinâmico. Hoje o TalkBack não reordena e não alcança o "Reconfigurar" do modo dinâmico. As
+   ações chamam o mesmo `onStreamsReordered` e dão aos testes um caminho sem coordenadas (decisão do
+   usuário: sim, por ser importante para os testes).
+3. Poucos testes de gesto reais sobre o `HomeScreen` com callbacks falsos: um arraste no grid fixo,
+   um no dinâmico e o overscroll. Cobrem só a fiação do toque.
+
+Ordem: 1 (sem mudar produção), 8a, 2, 3.
+
+### Resultado
+
+- **8b.1 — feito.** O `PagedDragStateTest` (JVM, 12 testes) cobre:
+  - o hit test da alça;
+  - o início do arraste pelo centro da célula;
+  - a troca de lugar ao passar por cima de outra célula;
+  - as zonas de borda, inclusive antes de o container ser medido;
+  - o avanço de página;
+  - a persistência só no drop, uma vez e só se a ordem mudou;
+  - o storage esperando o fim do arraste;
+  - a célula descartada saindo do hit test.
+- **8a — feito.** O `StreamPlaybackState` (`CONNECTING`/`PLAYING`/`FAILED`) é derivado no
+  `WebRtcVideoPlayer` e publicado pelo `StreamPlaybackStateKey`.
+  - O `onFirstFrameRendered` chega na thread do renderer e é repassado à main thread.
+  - O estado zera a cada renderer novo.
+  - `CONNECTING` desenha um `CircularProgressIndicator` branco no card.
+  - Limites: um stream que conecta mas nunca manda frame fica no spinner. Um que cai depois do
+    primeiro frame continua `PLAYING`, congelado.
+- **8b.2 — feito.** O `CameraGridItem` ganhou as ações "Mover para antes"/"Mover para depois"
+  (ausentes nas pontas da lista) e, só no modo dinâmico, "Reconfigurar". O `HomeScreen` calcula a
+  nova ordem com o `reorderedTo` e persiste pelo mesmo `onStreamsReordered` do drop.
+- **8b.3 — feito.** Os testes de gesto ficam no `HomeScreenTest`, com o `HomeScreen` real e
+  callbacks falsos: um arraste no grid fixo, um no dinâmico e o overscroll que revela o
+  "Reconfigurar".
+- Testes instrumentados novos:
+  - `HomeScreenTest` (7): as ações movem um lugar e somem nas pontas; o "Reconfigurar" como ação só
+    no modo dinâmico; os 3 gestos.
+  - `WebRtcVideoPlayerTest` (agora 4): o spinner em `CONNECTING`, e frames I420 reais injetados no
+    sink levando a `PLAYING`, sem rede. É o mesmo sinal que o nível C vai esperar com a VPN real.
+- Tags por URL no `HomeTestTags`: `streamCard`, `dragHandle` e `streamPlayer`.
+- Ajustes depois da primeira rodada:
+  - O card é clicável e mescla a alça no seu nó, então os arrastes procuram a alça com
+    `useUnmergedTree = true`.
+  - O `JavaI420Buffer` aloca pela biblioteca nativa do WebRTC, que só o
+    `PeerConnectionFactory.initialize` carrega. No app quem faz isso é o provider do Hilt, e o
+    teste agora chama o `initialize` ele mesmo.
+- Verificação (rodada pelo usuário, num Galaxy SM-S721B físico, e não no emulador):
+  - os testes unitários e o `jacocoTestCoverageVerification` passam;
+  - 48 dos 51 instrumentados passaram na primeira rodada, e os 11 do `HomeScreenTest` e do
+    `WebRtcVideoPlayerTest` passaram depois dos ajustes;
+  - a suíte inteira não foi rodada de novo depois dos ajustes, que só mexeram nessas duas classes.
+- Teste manual (usuário, app real): o spinner aparece em cada card até o vídeo começar, e as ações
+  de acessibilidade funcionam no TalkBack. Tudo correto.
+
 ## 9. Semântica e localização
 
 Até o nível A não havia nenhum `testTag`, e a Home ainda não tem. O estado dos passos era só ícone e
@@ -494,4 +561,6 @@ estratégia de teste, não com refatoração. O lifecycle (item 5) não mudou de
 ficou garantido e testável: o gate decide uma vez, a Home serializa o túnel, e o service delega a
 uma `VpnTeardown` testável no JVM. As threads (item 6) ganharam dispatchers injetáveis, e nos
 testes instrumentados o Compose Test espera o trabalho fora da main thread sem `waitUntil`. A
-falha de stream (item 7) deixou de ser só um toast e virou estado no card, com retry.
+falha de stream (item 7) deixou de ser só um toast e virou estado no card, com retry. O vídeo (item
+8) ganhou um estado de reprodução semântico, e os gestos foram reduzidos a três testes, com a lógica
+no JVM e a reordenação por ações de acessibilidade.

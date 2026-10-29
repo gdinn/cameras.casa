@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import com.gdisys.cameras.R
 import com.gdisys.cameras.core.storage.domain.model.GridPreferences
 import com.gdisys.cameras.core.storage.domain.model.StreamOrientation
+import com.gdisys.cameras.feature.cameras.logic.reorderedTo
 import org.webrtc.EglBase
 import org.webrtc.VideoSink
 
@@ -168,7 +169,10 @@ private fun DynamicStreamGrid(
         dragHandleModifier = dragHandleModifier,
         videoContent = playerFor(url),
         onFocusedStreamChange = onFocusStream,
-        aspectRatio = aspectRatioOf(url)
+        onMoveEarlier = moveAction(streams, url, offset = -1, onStreamsReordered),
+        onMoveLater = moveAction(streams, url, offset = 1, onStreamsReordered),
+        aspectRatio = aspectRatioOf(url),
+        onReconfigure = onNavigateToConfig
       )
     }
 
@@ -220,6 +224,8 @@ private fun FixedStreamGrid(
         dragHandleModifier = dragHandleModifier,
         videoContent = playerFor(url),
         onFocusedStreamChange = onFocusStream,
+        onMoveEarlier = moveAction(streams, url, offset = -1, onStreamsReordered),
+        onMoveLater = moveAction(streams, url, offset = 1, onStreamsReordered),
         modifier = cellModifier
       )
     }
@@ -230,4 +236,20 @@ private fun FixedStreamGrid(
       onClick = onNavigateToConfig
     )
   }
+}
+
+/**
+ * The accessibility alternative to dragging: moves [url] [offset] places in [streams] and persists
+ * it through the same [onStreamsReordered] as a drop. `null` when that would leave the list.
+ */
+private fun moveAction(
+  streams: List<String>,
+  url: String,
+  offset: Int,
+  onStreamsReordered: (List<String>) -> Unit
+): (() -> Unit)? {
+  val index = streams.indexOf(url)
+  val target = index + offset
+  if (index < 0 || target !in streams.indices) return null
+  return { onStreamsReordered(reorderedTo(streams, url, target)) }
 }
