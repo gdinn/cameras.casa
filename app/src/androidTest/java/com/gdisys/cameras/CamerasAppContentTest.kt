@@ -19,9 +19,8 @@ import javax.inject.Inject
  * Smoke test for the shared composition root: the real navigation graph and Hilt ViewModels,
  * rendered in [HiltTestActivity] with a [NavHostController] the test owns.
  *
- * Only storage is replaced, by `TestStorageModule`, which gives each test new, empty stores. So
- * there are never stored credentials: startup always lands on Config and the real VPN, still the
- * production binding, is never brought up.
+ * Only storage and the VPN are replaced, by `TestStorageModule` and `TestVpnModule`. Each test gets
+ * new, empty stores, so there are never stored credentials and startup always lands on Config.
  */
 @HiltAndroidTest
 class CamerasAppContentTest {
