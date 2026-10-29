@@ -67,4 +67,31 @@ class InitViewModelTest {
       navigateTurbine.cancelAndIgnoreRemainingEvents()
     }
   }
+
+  @Test
+  fun `decides once and ignores later credential changes`() = runTest {
+    // Config saving a valid QR later must not reach the gate, which stays in the back stack.
+    every { getVpnConfigStatusUseCase() } returns flowOf(
+      VpnCredentialsStatus.Loading,
+      VpnCredentialsStatus.Loaded(hasValidCredentials = false),
+      VpnCredentialsStatus.Loaded(hasValidCredentials = true)
+    )
+    val viewModel = InitViewModel(getVpnConfigStatusUseCase)
+
+    turbineScope {
+      val toastTurbine = viewModel.uiEvent.testIn(this)
+      val navigateTurbine = viewModel.navigateUiEvent.testIn(this)
+
+      assertEquals(NavigateUiEvent.ToConfig, navigateTurbine.awaitItem())
+      navigateTurbine.expectNoEvents()
+      assertEquals(
+        ToastUiEvent.Show(InitToastMessage.CREDENTIALS_NOT_FOUND.resId),
+        toastTurbine.awaitItem()
+      )
+      toastTurbine.expectNoEvents()
+
+      toastTurbine.cancelAndIgnoreRemainingEvents()
+      navigateTurbine.cancelAndIgnoreRemainingEvents()
+    }
+  }
 }
