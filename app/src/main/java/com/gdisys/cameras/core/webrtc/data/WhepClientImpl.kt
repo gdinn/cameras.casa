@@ -60,8 +60,13 @@ class WhepClientImpl @Inject constructor(
   }
 
   override fun close() {
-    peerConnection?.close()
+    // dispose() closes the connection and also frees the native objects behind it: transceivers,
+    // receivers, tracks and the sink attached to the video track. close() alone only stops the
+    // media, so every connection used to leave that native memory behind. The field is cleared
+    // first because a PeerConnection cannot be disposed twice: a second close() is a no-op.
+    val pc = peerConnection ?: return
     peerConnection = null
+    pc.dispose()
   }
 
   private class TrackObserver(

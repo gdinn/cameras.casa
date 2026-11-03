@@ -15,7 +15,8 @@ interface WhepClient {
   suspend fun connect(streamUrl: String, videoSink: VideoSink)
 
   /**
-   * Closes the current connection.
+   * Closes the current connection and releases its native resources. Calling it again, or before
+   * [connect], does nothing.
    */
   fun close()
 }

@@ -625,6 +625,14 @@ for every screen opened after the first was destroyed. `WhepClientImpl` is likew
 `ViewModelComponent`-bound because it holds a mutable `peerConnection`. Only the stateless
 `WhepRemoteDataSource` and the `PeerConnectionFactory` / `EglBase` are singletons.
 
+**Every `PeerConnection` is disposed, not just closed, on every exit path.** `WhepClientImpl.close()`
+calls `PeerConnection.dispose()`, which closes the connection and also frees the native transceivers,
+receivers, tracks and the sink attached to the video track. `PeerConnection.close()` alone keeps all of
+that alive. The field is cleared before disposing, so a second `close()` does nothing: disposing twice
+is not allowed. `WhepConnectionManager` calls `close()` on a registered client in `disconnect` /
+`closeAll`, and on an unregistered client, one that failed or was cancelled while negotiating, in
+the `connect` coroutine itself.
+
 **`EglBase` reaches the UI as a `CompositionLocal`, not as a parameter.** `MainActivity` injects the
 singleton, and `CamerasAppContent` provides it as `LocalEglBase` (`core/webrtc/EglBaseCompositionLocal.kt`)
 around the whole composition; `HomeRoute` reads it and passes it to `HomeScreen` explicitly. Threading it down as a
