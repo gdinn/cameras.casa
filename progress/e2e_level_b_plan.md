@@ -284,6 +284,27 @@ seguindo os do item 5c.
 - Suíte: **63 testes verdes** no `Pixel_8a` (56 + 3 do `FakeVpnPermissionRepositoryTest` + 4 do
   `FakeStreamConnectionsTest`), em 4 min 14 s com a compilação.
 
+**Resultado da `FlowTest` e dos helpers — feito.** Suíte com **68 testes verdes** no `Pixel_8a`
+(4 min 34 s com a compilação). O Hilt injeta os campos herdados da base, e credenciais com streams
+semeados abrem direto na Home, com a pilha `[Home]`.
+
+- `FlowTest` como no esboço acima, mais o `IntentsRule` (`order = 1`), para o
+  `stubConsentDialog`. O `launchApp()` envolve o conteúdo no `InTestLocale`, para o `string()`
+  bater com a tela. Subclasses levam o `@HiltAndroidTest`, e a base não leva.
+- **Desvios:**
+  - O `injectQr` e o `backStackRoutes()` ficam na `FlowTest`, não no `ConfigRobot`.
+    O `backStackRoutes()` devolve objetos `NavigationRoute`, e não strings.
+  - Leitores `storedUserPreferences()` e `storedStreamPreferences()` para as asserções do que foi
+    persistido.
+  - O `DeviceState` ficou só com o `grantCameraPermission()`, porque o consentimento de VPN é do
+    fake. A rotação entra com o cenário #7.
+  - O `Seed` é uma classe injetada (`seed.credentials()`, `seed.streams()`).
+  - O `QrFixture` é um enum dos quatro arquivos.
+- O `CamerasAppContentTest` passou a estender a `FlowTest`. O `FlowTestSupportTest` (5 testes)
+  cobre os helpers.
+- **Os robots ficam para os cenários:** cada um nasce com o primeiro cenário que precisar dele, para
+  não criar API sem uso.
+
 **`FlowTest`** (classe base abstrata):
 
 ```kotlin

@@ -947,8 +947,8 @@ Useful commands:
 Note that `LayerDependencyTest` and `StreamHostTest` are ordinary unit tests, so a layering
 violation or a host/XML mismatch fails `testDebugUnitTest` like any other regression.
 
-**Instrumented screen tests.** 63 tests under `app/src/androidTest/` (51 Compose UI tests, seven
-tests of the Hilt test fakes, two storage tests, one service test, one dispatcher test and the default example), with packages mirroring `main`:
+**Instrumented screen tests.** 68 tests under `app/src/androidTest/` (51 Compose UI tests, twelve
+tests of the Hilt test fakes and flow helpers, two storage tests, one service test, one dispatcher test and the default example), with packages mirroring `main`:
 
 | Test | Covers |
 |---|---|
@@ -956,14 +956,15 @@ tests of the Hilt test fakes, two storage tests, one service test, one dispatche
 | `StreamURLsScreenTest` (18) | Loading, empty list, row order and removal, the add form, the four confirmation dialogs, the grid fields per orientation, when "Save grid" is enabled |
 | `EmptyStreamsScreenTest` (2) | The message and the "Reconfigure" shortcut |
 | `ToastDisplayerTest` (1) | Toast events reach the `ToastPresenter` provided through `LocalToastPresenter`, in order |
-| `CamerasAppContentTest` (1) | Smoke test of the composition root in `HiltTestActivity` (`@HiltAndroidTest`, production graph except storage, the VPN, its consent, the stream connections and the dispatchers, injected `EglBase`): first run lands on `Config` over `Loading`, read through a test-owned `NavController` in `runOnIdle`, with no `waitUntil` |
+| `CamerasAppContentTest` (1) | Smoke test of the composition root, on `FlowTest`: first run lands on `Config` over `Loading`, read with `backStackRoutes()` after idle, with no `waitUntil` |
+| `FlowTestSupportTest` (5) | The flow helpers: only the first QR fixture holds valid credentials; `Seed` persists credentials, URLs and grids; seeded credentials and streams open `Home`; `injectQr` reaches the Config and saves the credentials; the camera permission starts revoked and `DeviceState` grants it |
 | `TestStorageModuleTest` (1) | In a `@HiltAndroidTest`, the production repositories start empty and write to the `TestStorageModule` files, never to the production ones |
 | `IsolatedPreferencesStoreTest` (1) | A store built from `userPreferencesSerializer` on its own file and Keystore alias starts empty, encrypts and leaves the production file untouched |
 | `VpnLifecycleServiceTest` (1) | The real `VpnLifecycleService`, injected by Hilt over `FakeVpnRepository`: stopping it drops the tunnel. `onTaskRemoved` has no test API and stays a manual check |
 | `IdlingDispatcherTest` (2) | `IdlingDispatcher` is busy while its work runs and reports the transition to idle; the Compose test rule waits for main → `TestDispatchers.default` → `TestDispatchers.io` → main with no `waitUntil` |
 | `WebRtcVideoPlayerTest` (4) | The real player over a recording `WebRtcConnection`: `CONNECTING` with a spinner before any frame; real I420 frames fed into the sink turn it `PLAYING`; a stream in `LocalFailedStreams` is `FAILED` and shows `StreamErrorOverlay`; "Try again" disconnects and connects the same renderer again |
 | `HomeScreenTest` (11) | The real `HomeScreen` with fake callbacks: the move accessibility actions reorder one place and are absent at the ends; "Reconfigure" is an action in dynamic mode only; one real drag per grid mode reorders on drop; overscrolling the dynamic grid reveals "Reconfigure"; the fixed grid always shows it; the page buttons move between pages; "Reconfigure" never covers the page buttons; a focused stream replaces the grid |
-| `RealEnvironmentSmokeTest` (1, manual) | Real QR → real tunnel → a `PLAYING` card, on the production app and a physical phone. Excluded from the 63; run with `-PrealEnvironment` |
+| `RealEnvironmentSmokeTest` (1, manual) | Real QR → real tunnel → a `PLAYING` card, on the production app and a physical phone. Excluded from the 68; run with `-PrealEnvironment` |
 | `TestLocaleTest` (1) | What `setThemedContent` renders and what `string()` resolves agree, and follow the `testLocale` argument when it is given |
 | `QrCodeRouteTest` (2) | With a `FakeQrCodeScanner`, a scanned payload reaches `onCodeScanned`; a camera error toasts and navigates back |
 | `FakeVpnPermissionRepositoryTest` (3) | `TestPermissionModule` puts the fake in the graph; a stubbed consent dialog launched through the `ActivityResultRegistry` returns `RESULT_OK` and grants the consent, or `RESULT_CANCELED` and keeps it required |
@@ -1034,7 +1035,23 @@ shows and which callback each interaction fires, with no Hilt, navigation or fak
   handshake reports it. Since nothing else asks for `WhepClient`, the `PeerConnectionFactory` is
   never created. The real `EglBase` stays for the renderers.
 - The QR fixtures in `qr-code-gen/examples/` are assets of the test APK, read through
-  `InstrumentationRegistry.getInstrumentation().context.assets`.
+  `InstrumentationRegistry.getInstrumentation().context.assets` by the `QrFixture` enum
+  (`testing/QrFixtures.kt`): `VALID`, `INCOMPLETE`, `WRONG_TYPE` and `UNKNOWN_SHAPE`.
+- **`FlowTest`** (`testing/FlowTest.kt`) is the base class of the flow tests. Subclasses are
+  annotated `@HiltAndroidTest`. It holds the rules (Hilt, `IntentsRule`, Compose on
+  `HiltTestActivity`) and injects `EglBase` and the fakes. A test prepares the state first, then
+  calls `launchApp()`. That renders `CamerasAppContent` inside `InTestLocale` with a NavController
+  the test owns. The activity starts empty, so the ViewModels are created only there and read what
+  was seeded. To prepare the state:
+  - `seed.credentials(fixture)` and `seed.streams(urls, portraitGrid, landscapeGrid)` (`Seed`) write
+    through the production use cases;
+  - `vpnConsent`, `vpn` and `streams` drive the fakes;
+  - `DeviceState.grantCameraPermission()` grants the camera through `UiAutomation`.
+
+  To act on the app and read it:
+  - `injectQr(json)` hands a payload to the Config entry's `savedStateHandle`, as the scanner does;
+  - `backStackRoutes()` reads the back stack as `NavigationRoute` objects after idle;
+  - `storedUserPreferences()` and `storedStreamPreferences()` read what is persisted.
 
 Conventions:
 
