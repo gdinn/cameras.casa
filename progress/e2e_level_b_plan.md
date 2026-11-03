@@ -262,6 +262,28 @@ do relatório), `WhepClientModule`, `WhepNetworkModule` e `WhepRtcModule` (achad
 > connect não geram disconnect. Os contadores dos cenários #8 e #11 valem para transições que
 > esperam o túnel subir antes da próxima.
 
+**Resultado dos fakes de permissão e de streams — feito.** Eles ficam em `androidTest/testing/`,
+seguindo os do item 5c.
+
+- `FakeVpnPermissionRepository` + `TestPermissionModule`: o módulo substitui o `PermissionModule`
+  inteiro, recria o binding real da câmera e troca só o consentimento de VPN.
+  - Com `granted = false`, o fake devolve `VpnConsent.Required` com um Intent de ação própria
+    (`CONSENT_ACTION`), que nenhum app resolve. Um teste que esquecer o stub falha, em vez de abrir
+    o diálogo do sistema.
+  - `stubConsentDialog(accept)` usa `intending(...).respondWithFunction`. **Desvio:** aceitar também
+    marca `granted = true`, para que um `ConfigViewModel` criado depois (cenários #5 e #11) leia o
+    consentimento como o `VpnService.prepare` leria depois do diálogo real.
+  - Os testes usam o `IntentsRule` do `espresso-intents`.
+- `FakeStreamConnections` + `FakeStreamConnectionRepository` + `TestStreamConnectionModule`, como
+  previsto. Os eventos são um `sealed interface StreamEvent` (`Connect`, `Disconnect`, `CloseAll`).
+  Uma URL em `failingUrls` não abre, e reconectar uma URL aberta que passou a falhar a fecha, como
+  a substituição do real.
+- **Achado #8 confirmado:** o Hilt compilou trocando só o `WhepConnectionModule`.
+- O resultado stubado pelo Espresso-Intents chega pelo `ActivityResultRegistry`, que é o caminho do
+  `ConfigRoute`. O `FakeVpnPermissionRepositoryTest` cobre isso.
+- Suíte: **63 testes verdes** no `Pixel_8a` (56 + 3 do `FakeVpnPermissionRepositoryTest` + 4 do
+  `FakeStreamConnectionsTest`), em 4 min 14 s com a compilação.
+
 **`FlowTest`** (classe base abstrata):
 
 ```kotlin
