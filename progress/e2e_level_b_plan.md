@@ -343,6 +343,21 @@ diálogo.
 - Robots: `ConfigRobot` ganhou `tapStep` e `tapHome`. Entraram o `StreamURLsRobot` (`loadDefaults`,
   `saveUrls`, `back`, que rolam a `LazyColumn` até os botões) e o `HomeRobot`.
 
+**Resultado dos cenários #5 e #6 — feito.** O pacote `flow` passou inteiro no `Pixel_8a`: 22 de 22,
+em 1 min 49 s. A suíte completa não rodou de novo, porque só os robots e o `flow/` mudaram.
+
+- #5 `ReturningUserFlowTest` e #6 `StreamUrlValidationFlowTest`, com os testes da tabela.
+- **Achado novo (#16):** com credenciais e sem URLs, a Home mostra a `EmptyStreamsScreen`, mas o
+  `onResumed()` sobe o túnel do mesmo jeito. O `HomeViewModel` põe o `Empty` antes do estado da VPN
+  só na UI, e o coletor do ciclo de vida não olha as URLs. O plano esperava `vpn.connectCalls == 0`.
+  **Desvio:** o `credentialsWithoutUrlsShowEmptyHome` não afirma a contagem, até decidir se isso
+  muda em produção.
+- No #6, o URL inválido não tem linha para conferir, então "lista igual" vira "mensagem de lista
+  vazia ainda visível". No duplicado, a única linha continua e o repositório não muda.
+- Robots: o `StreamURLsRobot` ganhou `addUrl`, `assertAddFormOpen`, `assertNoUrls`, `assertRow`,
+  `assertDialog` e `confirmDialog` (público). Ele rola a `LazyColumn` até cada nó, inclusive os
+  campos do formulário. O `HomeRobot` ganhou `assertEmpty` e `tapEmptyReconfigure`.
+
 **`FlowTest`** (classe base abstrata):
 
 ```kotlin
