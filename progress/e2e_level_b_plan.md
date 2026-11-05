@@ -318,6 +318,31 @@ fica no Config.
   `ComposeTestSupport`, compartilhado.
 - O texto dos toasts continua fora, como decidido.
 
+**Resultado dos cenários #4 e #2 — feito.** A suíte completa rodou 81 testes, com 80 verdes no `Pixel_8a`.
+A falha (`grantedVpnConsentSkipsTheDialog`) foi corrigida (ver abaixo), e a classe rodou de novo
+sozinha: 5 de 5. O achado #5 está confirmado: a câmera já concedida devolve o resultado sem
+diálogo.
+
+- #4 `ConfigGateFlowTest`, com os 5 testes da tabela.
+  - O back passa pelo `OnBackPressedDispatcher` da activity (`FlowTest.pressBack()`), e "a activity
+    não fecha" vira `!activity.isFinishing`.
+  - No `backIsConsumedWithoutHomeBehindEvenWhenComplete`, as credenciais entram pelo QR depois do
+    `launchApp()`: semeadas, o gate de inicialização iria direto para a Home.
+  - **Desvio:** o consentimento vem do `FakeVpnPermissionRepository`, não do `appops`. No teste
+    negado, o `intended(hasAction(CONSENT_ACTION))` prova que o diálogo foi pedido.
+  - **Desvio:** no `grantedVpnConsentSkipsTheDialog`, o `assertNoUnverifiedIntents` do plano falhou.
+    O `IntentsRule` começa antes da activity e grava o Intent que abre a `HiltTestActivity`. O teste
+    passou a afirmar `intended(hasAction(CONSENT_ACTION), times(0))`.
+- #2 `OnboardingFlowTest`:
+  - A câmera é concedida **depois** do `launchApp()`. Concedida antes, o passo já começaria em
+    `Done`, e o clique não passaria pelo pedido de permissão.
+  - **Desvio:** a Home tem grid dinâmico e preguiçoso (1 coluna em retrato), então nem os 4 cards
+    estão compostos ao mesmo tempo. O `HomeRobot.assertShowsStreams` rola até cada card. Em vez de
+    "as 4 URLs em `streams.connected`", o teste afirma que cada URL teve um `Connect` em
+    `streams.events`, porque os cards que saem da tela soltam a conexão.
+- Robots: `ConfigRobot` ganhou `tapStep` e `tapHome`. Entraram o `StreamURLsRobot` (`loadDefaults`,
+  `saveUrls`, `back`, que rolam a `LazyColumn` até os botões) e o `HomeRobot`.
+
 **`FlowTest`** (classe base abstrata):
 
 ```kotlin

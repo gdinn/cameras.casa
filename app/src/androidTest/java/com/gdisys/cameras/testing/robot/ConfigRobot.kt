@@ -5,6 +5,7 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.ComposeTestRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
 import com.gdisys.cameras.R
 import com.gdisys.cameras.feature.config.ConfigButtonState
 import com.gdisys.cameras.feature.config.components.ConfigTestTags
@@ -25,6 +26,16 @@ enum class ConfigStep(val tag: String) {
  * state is read from its `stateDescription`, the same text TalkBack speaks.
  */
 class ConfigRobot(private val composeRule: ComposeTestRule) {
+
+  fun tapStep(step: ConfigStep) {
+    composeRule.onNodeWithTag(step.tag).performClick()
+    composeRule.waitForIdle()
+  }
+
+  fun tapHome() {
+    composeRule.onNodeWithTag(ConfigTestTags.NAVIGATE_TO_HOME_BUTTON).performClick()
+    composeRule.waitForIdle()
+  }
 
   fun assertStep(step: ConfigStep, state: ConfigButtonState) {
     composeRule.onNodeWithTag(step.tag).assert(hasStateDescription(state.descriptionRes()))

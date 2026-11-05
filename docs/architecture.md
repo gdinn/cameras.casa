@@ -896,8 +896,9 @@ on a device:
 - `HomeScreen` and the video grid, which need `EglBase` and WebRTC.
 - Most flows through the real composition root (`CamerasAppContent`): navigation, ViewModels, use
   cases and the encrypted DataStore together, with Hilt test doubles replacing only what leaves the
-  process (WireGuard tunnel, WHEP/WebRTC, the VPN consent). The first run and the QR step are
-  covered (`flow/`); onboarding, the Config gate, Home and its lifecycle are not yet.
+  process (WireGuard tunnel, WHEP/WebRTC, the VPN consent). The first run, the QR step, the
+  Config gate and the full onboarding are covered (`flow/`). Returning users, URL validation,
+  orientation, Home's lifecycle and failures, reconfiguring and reordering are not yet.
 - The system dialogs (VPN consent, camera permission), which only UI Automator can drive.
 
 The real world is covered by one smoke, `RealEnvironmentSmokeTest`, run by hand: the real QR, the
@@ -947,7 +948,7 @@ Useful commands:
 Note that `LayerDependencyTest` and `StreamHostTest` are ordinary unit tests, so a layering
 violation or a host/XML mismatch fails `testDebugUnitTest` like any other regression.
 
-**Instrumented screen tests.** 75 tests under `app/src/androidTest/` (51 Compose UI tests, eight flow tests, twelve
+**Instrumented screen tests.** 81 tests under `app/src/androidTest/` (51 Compose UI tests, fourteen flow tests, twelve
 tests of the Hilt test fakes and flow helpers, two storage tests, one service test, one dispatcher test and the default example), with packages mirroring `main`:
 
 | Test | Covers |
@@ -959,6 +960,8 @@ tests of the Hilt test fakes and flow helpers, two storage tests, one service te
 | `MainActivitySmokeTest` (1) | Scenario #0: the real `MainActivity`, with its injected `EglBase`, opens the four Config steps on a first run |
 | `FirstRunFlowTest` (2) | Scenario #1, on `FlowTest`: the first run lands on `[Loading, Config]` (read with `backStackRoutes()` after idle, with no `waitUntil`), every step is `Ready` and the button reads "Navigate to Home" |
 | `QrCodeFlowTest` (5) | Scenario #3: a valid QR turns the step `Done`, stores the credentials and the app stays on Config; each invalid fixture turns it `Error`, stores nothing and stays on Config; an invalid QR after a valid one wipes the stored credentials (current behavior, documented) |
+| `ConfigGateFlowTest` (5) | Scenario #4: with requirements missing, the Home button and the system back keep the app on `[Loading, Config]` and the activity alive; with everything complete but no Home behind, back is still consumed; a refused consent dialog (stubbed) leaves the VPN step `Ready`; a consent already granted starts the step `Done` and its click never launches the consent Intent |
+| `OnboardingFlowTest` (1) | Scenario #2: camera (granted after launch, so the click takes the request path), QR, VPN consent (dialog stubbed to accept) and the default URLs saved; Home is then the only destination, shows a card for each default URL, connected the tunnel and started its lifecycle once, and connected every URL |
 | `FlowTestSupportTest` (5) | The flow helpers: only the first QR fixture holds valid credentials; `Seed` persists credentials, URLs and grids; seeded credentials and streams open `Home`; `injectQr` reaches the Config and saves the credentials; the camera permission starts revoked and `DeviceState` grants it |
 | `TestStorageModuleTest` (1) | In a `@HiltAndroidTest`, the production repositories start empty and write to the `TestStorageModule` files, never to the production ones |
 | `IsolatedPreferencesStoreTest` (1) | A store built from `userPreferencesSerializer` on its own file and Keystore alias starts empty, encrypts and leaves the production file untouched |
@@ -966,7 +969,7 @@ tests of the Hilt test fakes and flow helpers, two storage tests, one service te
 | `IdlingDispatcherTest` (2) | `IdlingDispatcher` is busy while its work runs and reports the transition to idle; the Compose test rule waits for main → `TestDispatchers.default` → `TestDispatchers.io` → main with no `waitUntil` |
 | `WebRtcVideoPlayerTest` (4) | The real player over a recording `WebRtcConnection`: `CONNECTING` with a spinner before any frame; real I420 frames fed into the sink turn it `PLAYING`; a stream in `LocalFailedStreams` is `FAILED` and shows `StreamErrorOverlay`; "Try again" disconnects and connects the same renderer again |
 | `HomeScreenTest` (11) | The real `HomeScreen` with fake callbacks: the move accessibility actions reorder one place and are absent at the ends; "Reconfigure" is an action in dynamic mode only; one real drag per grid mode reorders on drop; overscrolling the dynamic grid reveals "Reconfigure"; the fixed grid always shows it; the page buttons move between pages; "Reconfigure" never covers the page buttons; a focused stream replaces the grid |
-| `RealEnvironmentSmokeTest` (1, manual) | Real QR → real tunnel → a `PLAYING` card, on the production app and a physical phone. Excluded from the 75; run with `-PrealEnvironment` |
+| `RealEnvironmentSmokeTest` (1, manual) | Real QR → real tunnel → a `PLAYING` card, on the production app and a physical phone. Excluded from the 81; run with `-PrealEnvironment` |
 | `TestLocaleTest` (1) | What `setThemedContent` renders and what `string()` resolves agree, and follow the `testLocale` argument when it is given |
 | `QrCodeRouteTest` (2) | With a `FakeQrCodeScanner`, a scanned payload reaches `onCodeScanned`; a camera error toasts and navigates back |
 | `FakeVpnPermissionRepositoryTest` (3) | `TestPermissionModule` puts the fake in the graph; a stubbed consent dialog launched through the `ActivityResultRegistry` returns `RESULT_OK` and grants the consent, or `RESULT_CANCELED` and keeps it required |
@@ -1058,7 +1061,10 @@ shows and which callback each interaction fires, with no Hilt, navigation or fak
   The scenarios live in `flow/`, one class each, since they cross features. Robots in
   `testing/robot/` keep the tags in one place. `config { assertStep(ConfigStep.QR_CODE, Done) }`
   (`ConfigRobot`) reads a step's state from its `stateDescription` through `hasStateDescription`
-  (`ComposeTestSupport`), which the screen tests use too. Each robot gets an action only when a
+  (`ComposeTestSupport`), which the screen tests use too. `StreamURLsRobot` scrolls the lazy list
+  to its buttons before tapping them, and `HomeRobot.assertShowsStreams` scrolls the lazy grid to
+  each card. `FlowTest.pressBack()` goes through the activity's `OnBackPressedDispatcher`, so a
+  back nothing consumes finishes the activity, as on the device. Each robot gets an action only when a
   scenario needs it.
 
 Conventions:

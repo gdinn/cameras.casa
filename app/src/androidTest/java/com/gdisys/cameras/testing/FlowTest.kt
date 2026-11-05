@@ -103,6 +103,15 @@ abstract class FlowTest {
     composeRule.waitForIdle()
   }
 
+  /**
+   * Presses the system back, through the activity's dispatcher like the gesture does. If nothing
+   * consumes it, the activity finishes: check `composeRule.activity.isFinishing`.
+   */
+  fun pressBack() {
+    composeRule.runOnUiThread { composeRule.activity.onBackPressedDispatcher.onBackPressed() }
+    composeRule.waitForIdle()
+  }
+
   /** What is persisted now, read through the production repository. */
   fun storedUserPreferences(): UserPreferences = runBlocking { userPreferencesRepository.userPreferences.first() }
 
