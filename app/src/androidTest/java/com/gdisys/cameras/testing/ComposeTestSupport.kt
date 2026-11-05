@@ -11,6 +11,8 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.test.platform.app.InstrumentationRegistry
 import com.gdisys.cameras.ui.theme.CamerasTheme
@@ -58,6 +60,10 @@ fun string(@StringRes resId: Int): String {
   val locale = testLocale ?: return context.getString(resId)
   return context.localizedResources(locale).getString(resId)
 }
+
+/** Matches a node whose `stateDescription` is [resId], resolved like [string]. */
+fun hasStateDescription(@StringRes resId: Int): SemanticsMatcher =
+  SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, string(resId))
 
 private class LocalizedContext(base: Context, locale: Locale) : ContextWrapper(base) {
   private val localizedResources = base.localizedResources(locale)

@@ -305,6 +305,19 @@ semeados abrem direto na Home, com a pilha `[Home]`.
 - **Os robots ficam para os cenários:** cada um nasce com o primeiro cenário que precisar dele, para
   não criar API sem uso.
 
+**Resultado dos cenários #0, #1 e #3 — feito.** Suíte com **75 testes verdes** no `Pixel_8a`
+(4 min 46 s com a compilação). O achado #13 continua sem regressão: depois de um QR válido, o app
+fica no Config.
+
+- #0 `MainActivitySmokeTest`, #1 `FirstRunFlowTest` e #3 `QrCodeFlowTest` em `flow/`, como na
+  tabela do §4.3.
+- **Desvio:** o `CamerasAppContentTest` foi removido. O `firstRunLandsOnConfig` do #1 é o mesmo
+  teste.
+- `ConfigRobot` com `assertStep`, `assertEveryStep` e `assertHomeButtonText`, e o enum
+  `ConfigStep` dos quatro passos. O `hasStateDescription` saiu do `ConfigScreenTest` para o
+  `ComposeTestSupport`, compartilhado.
+- O texto dos toasts continua fora, como decidido.
+
 **`FlowTest`** (classe base abstrata):
 
 ```kotlin

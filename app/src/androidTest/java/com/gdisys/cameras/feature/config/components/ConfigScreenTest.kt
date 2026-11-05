@@ -1,7 +1,5 @@
 package com.gdisys.cameras.feature.config.components
 
-import androidx.compose.ui.semantics.SemanticsProperties
-import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertTextContains
@@ -14,6 +12,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.gdisys.cameras.R
 import com.gdisys.cameras.feature.config.ConfigButtonState
 import com.gdisys.cameras.feature.config.ConfigUiState
+import com.gdisys.cameras.testing.hasStateDescription
 import com.gdisys.cameras.testing.setThemedContent
 import com.gdisys.cameras.testing.string
 import org.junit.Assert.assertEquals
@@ -158,9 +157,6 @@ class ConfigScreenTest {
         .assertTextContains(string(subtitle))
     }
   }
-
-  private fun hasStateDescription(resId: Int): SemanticsMatcher =
-    SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, string(resId))
 
   /** Records every callback ConfigScreen fires, in order. */
   private class ConfigScreenEvents {
