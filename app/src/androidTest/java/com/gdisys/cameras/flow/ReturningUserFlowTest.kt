@@ -36,6 +36,8 @@ class ReturningUserFlowTest : FlowTest() {
 
     assertEquals(listOf(NavigationRoute.Home), backStackRoutes())
     home { assertEmpty() }
+    // Nothing to show, so the tunnel stays down.
+    assertEquals(0, vpn.connectCalls.get())
   }
 
   @Test

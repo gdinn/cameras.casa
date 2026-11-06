@@ -1,6 +1,7 @@
 package com.gdisys.cameras.testing
 
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.lifecycle.Lifecycle
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavGraph
 import androidx.navigation.NavHostController
@@ -109,6 +110,15 @@ abstract class FlowTest {
    */
   fun pressBack() {
     composeRule.runOnUiThread { composeRule.activity.onBackPressedDispatcher.onBackPressed() }
+    composeRule.waitForIdle()
+  }
+
+  /**
+   * Moves the activity to [state], as leaving and returning to the app would: `STARTED` pauses it
+   * (Home gets `ON_PAUSE`), `RESUMED` resumes it.
+   */
+  fun moveActivityTo(state: Lifecycle.State) {
+    composeRule.activityRule.scenario.moveToState(state)
     composeRule.waitForIdle()
   }
 

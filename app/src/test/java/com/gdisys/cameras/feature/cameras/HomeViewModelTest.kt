@@ -438,6 +438,46 @@ class HomeViewModelTest {
   }
 
   @Test
+  fun `onResumed without stream urls leaves the tunnel down`() = runTest {
+    coEvery { disconnectVpnUseCase() } returns Result.success(Unit)
+    streamPreferences.value = StreamPreferences()
+
+    viewModel.onResumed()
+
+    // The first wish is "down", applied like a pause before any resume: a disconnect, never a connect.
+    coVerify(exactly = 0) { getVpnConfigUseCase() }
+    coVerify(exactly = 0) { connectVpnUseCase(any()) }
+    coVerify(exactly = 1) { disconnectVpnUseCase() }
+  }
+
+  @Test
+  fun `the first stream url brings the tunnel up on a resumed Home`() = runTest {
+    val tunnel = RecordingTunnel()
+    streamPreferences.value = StreamPreferences()
+    viewModel.onResumed()
+
+    streamPreferences.value = StreamPreferences(streamUrls = defaultStreams)
+    tunnel.finishConnect()
+
+    // The empty Home applied "down" first.
+    assertEquals(listOf("disconnect", "connect"), tunnel.calls)
+  }
+
+  @Test
+  fun `a pause on an empty Home still disconnects once`() = runTest {
+    coEvery { disconnectVpnUseCase() } returns Result.success(Unit)
+    streamPreferences.value = StreamPreferences()
+
+    viewModel.onResumed()
+    viewModel.onPaused()
+
+    // Resumed and empty already meant "down", applied as one disconnect; the pause repeats it, so
+    // it is skipped.
+    coVerify(exactly = 1) { disconnectVpnUseCase() }
+    coVerify(exactly = 0) { connectVpnUseCase(any()) }
+  }
+
+  @Test
   fun `onPaused disconnects after the tunnel was brought up`() = runTest {
     coEvery { getVpnConfigUseCase() } returns Result.success(validConfig)
     coEvery { connectVpnUseCase(validConfig) } returns Result.success(Unit)

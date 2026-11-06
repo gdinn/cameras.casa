@@ -21,11 +21,14 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -60,11 +63,21 @@ class HomeViewModel @Inject constructor(
 
   private var exitConfirmationJob: Job? = null
 
+  /** Whether the route is resumed. `null` until the first lifecycle event. */
+  private val _resumed = MutableStateFlow<Boolean?>(null)
+
   /**
-   * Whether the route is resumed, and so whether the tunnel should be up. `null` until the first
-   * lifecycle event.
+   * Whether the tunnel should be up: Home is resumed *and* has a stream to show. Without URLs Home
+   * is the empty screen, and a tunnel would carry nothing. `null` until the first lifecycle event.
+   *
+   * A StateFlow on purpose: it conflates, so the tunnel collector only ever sees the latest wish,
+   * and it skips values equal to the last one.
    */
-  private val _tunnelWanted = MutableStateFlow<Boolean?>(null)
+  private val tunnelWanted: StateFlow<Boolean?> = combine(
+    _resumed,
+    getStreamPreferencesUseCase().map { it.streamUrls.isNotEmpty() }
+  ) { resumed, hasStreams -> resumed?.let { it && hasStreams } }
+    .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
   init {
     viewModelScope.launch {
@@ -105,7 +118,7 @@ class HomeViewModel @Inject constructor(
     viewModelScope.launch {
       var tunnelRequested = false
       try {
-        _tunnelWanted.filterNotNull().collect { wanted ->
+        tunnelWanted.filterNotNull().collect { wanted ->
           tunnelRequested = wanted
           if (wanted) connectVpn() else disconnectVpn()
         }
@@ -172,11 +185,11 @@ class HomeViewModel @Inject constructor(
   }
 
   fun onResumed() {
-    _tunnelWanted.value = true
+    _resumed.value = true
   }
 
   fun onPaused() {
-    _tunnelWanted.value = false
+    _resumed.value = false
   }
 
   private suspend fun connectVpn() {

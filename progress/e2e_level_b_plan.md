@@ -352,11 +352,50 @@ em 1 min 49 s. A suíte completa não rodou de novo, porque só os robots e o `f
   só na UI, e o coletor do ciclo de vida não olha as URLs. O plano esperava `vpn.connectCalls == 0`.
   **Desvio:** o `credentialsWithoutUrlsShowEmptyHome` não afirma a contagem, até decidir se isso
   muda em produção.
+  **Decisão: corrigido em produção.** O `HomeViewModel` combina o `_resumed` com "há URL" num
+  `StateFlow<Boolean?>` (`tunnelWanted`). O coletor único continua o mesmo, e o `StateFlow` mantém a
+  conflação e o descarte de valores repetidos. A Home vazia faz um `disconnect` (o valor inicial é
+  "desligado", aplicado como um pause antes de qualquer resume), mas nunca um `connect`. Entraram 3
+  testes unitários no `HomeViewModelTest`. Na primeira execução, 2 deles falharam por esperarem
+  nenhum `disconnect`; as expectativas foram corrigidas. O
+  `credentialsWithoutUrlsShowEmptyHome` passou a afirmar `vpn.connectCalls == 0`.
 - No #6, o URL inválido não tem linha para conferir, então "lista igual" vira "mensagem de lista
   vazia ainda visível". No duplicado, a única linha continua e o repositório não muda.
 - Robots: o `StreamURLsRobot` ganhou `addUrl`, `assertAddFormOpen`, `assertNoUrls`, `assertRow`,
   `assertDialog` e `confirmDialog` (público). Ele rola a `LazyColumn` até cada nó, inclusive os
   campos do formulário. O `HomeRobot` ganhou `assertEmpty` e `tapEmptyReconfigure`.
+
+**Resultado dos cenários #8, #9 e #10 — feito.** Junto veio a correção do achado #16 em produção.
+
+- #8 `VpnLifecycleFlowTest`: o `FlowTest.moveActivityTo(state)` usa o
+  `activityRule.scenario.moveToState`. A Home pausada fica em `LOADING`, e os players saem da
+  composição.
+- #9 `VpnFailureFlowTest`: o consentimento é concedido no fake, para o "Back to Home" do Config
+  estar liberado no segundo teste. O teste também afirma que o `startCalls` fica em 0, porque o
+  `ConnectVpnUseCase` só sobe o serviço depois do `connect`.
+- #10 `StreamFailureFlowTest`. **Desvio:** o achado #7 foi resolvido pelo `09c146a`, então o card
+  com falha tem estado próprio. O teste afirma o overlay de erro no card certo e ganhou um segundo
+  teste, `retryConnectsTheStreamOnceItRecovers`, para o "Try again".
+- **Desvio comum:** os cenários que precisam de todos os cards conectados semeiam um grid de 2
+  colunas, porque o grid dinâmico é preguiçoso.
+- `HomeRobot`: `assertPlayback(url, state)`, que lê o `StreamPlaybackStateKey`, e `tapRetry`. A tag
+  do botão se repete em todos os cards, então ele é achado pelo card ancestral.
+- **Primeira execução completa:** os unitários (324) e a cobertura passaram. Dos 95 instrumentados,
+  92 passaram.
+  - O `pausingDisconnectsAndResumingReconnects` falhou com "No compose hierarchies found": com a
+    activity em `STARTED`, o Compose test rule não acha a hierarquia. A asserção de tela durante a
+    pausa saiu, e os contadores e o `streams.connected` cobrem a pausa.
+  - Os 2 do #10 falharam no `assertIsDisplayed` do overlay de erro: o nó existia, mas o teste não o
+    considerou exibido. O motivo não foi esclarecido. O card tem tamanho, porque usa a proporção
+    padrão sem frame, e o nível A afirma o texto e o botão do overlay num player de tela cheia. Os
+    testes passaram a ler o estado semântico do player (`FAILED`/`CONNECTING`), o mesmo contrato do
+    smoke real. **Pendente:** confirmar visualmente se o overlay aparece num card de 2 colunas.
+  - Segunda execução, só das duas classes: o #8 passou, e o #10 falhou de novo. O card é
+    clicável e funde a semântica dos filhos, então o player só existe na árvore não fundida. O
+    `assertPlayback` passou a usar `useUnmergedTree = true`. A fusão é a explicação mais provável
+    do overlay "não exibido", mas isso não foi provado.
+  - Terceira execução, só do #10: os 2 testes passaram. Com a primeira execução completa (o #9 e
+    os demais verdes) e a segunda (o #8 verde), os 95 instrumentados estão verdes.
 
 **`FlowTest`** (classe base abstrata):
 

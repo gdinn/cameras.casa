@@ -48,8 +48,8 @@ The end-to-end setup (only the Android client lives in this repository):
 
 Three product decisions shape most of the code:
 
-1. **The tunnel is foreground-only.** It is raised on `Lifecycle.Event.ON_RESUME` of the Home route
-   and dropped on `ON_PAUSE`, with `VpnLifecycleService` as the safety net for task removal. The
+1. **The tunnel is foreground-only.** It is raised on `Lifecycle.Event.ON_RESUME` of the Home route,
+   when there is at least one stream URL, and dropped on `ON_PAUSE`, with `VpnLifecycleService` as the safety net for task removal. The
    tunnel is an IPv6 split tunnel that only carries the Pi and the router, so this is not about
    other apps' traffic: it limits how long the device stays connected to the home network and the
    battery cost of the 25-second persistent keepalive.
@@ -455,8 +455,11 @@ waiting for a tunnel with nothing to connect to would show a permanent spinner.
 `preferences.orderFor(orientation)` / `gridFor(orientation)`.
 
 **The lifecycle is pushed down as intent.** `HomeRoute` only reports `onResumed()` / `onPaused()`,
-which set a `MutableStateFlow<Boolean?>` meaning "the tunnel should be up". A single collector
-applies it with `ConnectVpnUseCase` / `DisconnectVpnUseCase`:
+which set a `MutableStateFlow<Boolean?>`. It is combined with "there is a stream URL" into a
+`StateFlow<Boolean?>` meaning "the tunnel should be up". The empty Home therefore never raises a
+tunnel that would carry nothing, and the tunnel follows the URL list. Being a `StateFlow`, it
+conflates and skips repeated values. A single collector applies it with `ConnectVpnUseCase` /
+`DisconnectVpnUseCase`:
 
 - calls never overlap, and the last lifecycle state always wins. A quick Home → Config → Home drops
   the intermediate pause instead of racing a disconnect against the connect;
@@ -738,7 +741,8 @@ A concrete round trip — reordering a camera on Home:
 
 The sequence diagram above covers the full lifecycle in three phases:
 
-**1. Tunnel up.** `ON_RESUME` → `HomeViewModel.onResumed()` → `GetVpnConfigUseCase` (reads and maps
+**1. Tunnel up.** `ON_RESUME` → `HomeViewModel.onResumed()` (only with at least one stream URL) →
+`GetVpnConfigUseCase` (reads and maps
 `UserPreferences` to `VpnConfig` via `toVpnConfigOrNull()`) → `ConnectVpnUseCase` →
 `backend.setState(tunnel, UP, config)` and `VpnLifecycleController.start()`. Tunnel state flows back
 through `ObserveVpnStateUseCase`, and `HomeUiState` stays `Loading` until `CONNECTED`. Any failure
@@ -897,8 +901,9 @@ on a device:
 - Most flows through the real composition root (`CamerasAppContent`): navigation, ViewModels, use
   cases and the encrypted DataStore together, with Hilt test doubles replacing only what leaves the
   process (WireGuard tunnel, WHEP/WebRTC, the VPN consent). The first run, the QR step, the
-  Config gate, the full onboarding, returning users and URL validation are covered (`flow/`).
-  Orientation, Home's lifecycle and failures, reconfiguring and reordering are not yet.
+  Config gate, the full onboarding, returning users, URL validation, Home's lifecycle and the
+  tunnel and stream failures are covered (`flow/`). Orientation, reconfiguring and reordering are
+  not yet.
 - The system dialogs (VPN consent, camera permission), which only UI Automator can drive.
 
 The real world is covered by one smoke, `RealEnvironmentSmokeTest`, run by hand: the real QR, the
@@ -948,7 +953,7 @@ Useful commands:
 Note that `LayerDependencyTest` and `StreamHostTest` are ordinary unit tests, so a layering
 violation or a host/XML mismatch fails `testDebugUnitTest` like any other regression.
 
-**Instrumented screen tests.** 89 tests under `app/src/androidTest/` (51 Compose UI tests, twenty-two flow tests, twelve
+**Instrumented screen tests.** 95 tests under `app/src/androidTest/` (51 Compose UI tests, twenty-eight flow tests, twelve
 tests of the Hilt test fakes and flow helpers, two storage tests, one service test, one dispatcher test and the default example), with packages mirroring `main`:
 
 | Test | Covers |
@@ -962,8 +967,11 @@ tests of the Hilt test fakes and flow helpers, two storage tests, one service te
 | `QrCodeFlowTest` (5) | Scenario #3: a valid QR turns the step `Done`, stores the credentials and the app stays on Config; each invalid fixture turns it `Error`, stores nothing and stays on Config; an invalid QR after a valid one wipes the stored credentials (current behavior, documented) |
 | `ConfigGateFlowTest` (5) | Scenario #4: with requirements missing, the Home button and the system back keep the app on `[Loading, Config]` and the activity alive; with everything complete but no Home behind, back is still consumed; a refused consent dialog (stubbed) leaves the VPN step `Ready`; a consent already granted starts the step `Done` and its click never launches the consent Intent |
 | `OnboardingFlowTest` (1) | Scenario #2: camera (granted after launch, so the click takes the request path), QR, VPN consent (dialog stubbed to accept) and the default URLs saved; Home is then the only destination, shows a card for each default URL, connected the tunnel and started its lifecycle once, and connected every URL |
-| `ReturningUserFlowTest` (3) | Scenario #5: stored credentials and URLs open `[Home]` with their cards, never passing through Config; credentials without URLs open the empty Home; its shortcut opens Config over Home, with "Back to Home" |
+| `ReturningUserFlowTest` (3) | Scenario #5: stored credentials and URLs open `[Home]` with their cards, never passing through Config; credentials without URLs open the empty Home and never connect the tunnel; its shortcut opens Config over Home, with "Back to Home" |
 | `StreamUrlValidationFlowTest` (5) | Scenario #6, from Config: an invalid port, an invalid stream name or a duplicate URL keeps the add form open and the list unchanged; a valid URL is persisted on save and turns the Config step `Done`; leaving with an unsaved URL asks to discard, and discarding persists nothing |
+| `VpnLifecycleFlowTest` (2) | Scenario #8: moving the activity to `STARTED` drops the tunnel, stops the lifecycle service and releases every stream (nothing on screen is asserted while paused: the Compose test rule only finds resumed activities); back to `RESUMED`, the tunnel, the service and the streams come back |
+| `VpnFailureFlowTest` (2) | Scenario #9: a tunnel that fails to connect opens Config over Home (`[Home, Config]`, "Back to Home") without starting the lifecycle service; going back fails again and leaves the same stack |
+| `StreamFailureFlowTest` (2) | Scenario #10: a failing stream's player is `FAILED` (its playback-state semantics) while the other stays connected and `CONNECTING` (the fake never delivers a frame); once the stream recovers, its card's "Try again" connects it |
 | `FlowTestSupportTest` (5) | The flow helpers: only the first QR fixture holds valid credentials; `Seed` persists credentials, URLs and grids; seeded credentials and streams open `Home`; `injectQr` reaches the Config and saves the credentials; the camera permission starts revoked and `DeviceState` grants it |
 | `TestStorageModuleTest` (1) | In a `@HiltAndroidTest`, the production repositories start empty and write to the `TestStorageModule` files, never to the production ones |
 | `IsolatedPreferencesStoreTest` (1) | A store built from `userPreferencesSerializer` on its own file and Keystore alias starts empty, encrypts and leaves the production file untouched |
@@ -971,7 +979,7 @@ tests of the Hilt test fakes and flow helpers, two storage tests, one service te
 | `IdlingDispatcherTest` (2) | `IdlingDispatcher` is busy while its work runs and reports the transition to idle; the Compose test rule waits for main → `TestDispatchers.default` → `TestDispatchers.io` → main with no `waitUntil` |
 | `WebRtcVideoPlayerTest` (4) | The real player over a recording `WebRtcConnection`: `CONNECTING` with a spinner before any frame; real I420 frames fed into the sink turn it `PLAYING`; a stream in `LocalFailedStreams` is `FAILED` and shows `StreamErrorOverlay`; "Try again" disconnects and connects the same renderer again |
 | `HomeScreenTest` (11) | The real `HomeScreen` with fake callbacks: the move accessibility actions reorder one place and are absent at the ends; "Reconfigure" is an action in dynamic mode only; one real drag per grid mode reorders on drop; overscrolling the dynamic grid reveals "Reconfigure"; the fixed grid always shows it; the page buttons move between pages; "Reconfigure" never covers the page buttons; a focused stream replaces the grid |
-| `RealEnvironmentSmokeTest` (1, manual) | Real QR → real tunnel → a `PLAYING` card, on the production app and a physical phone. Excluded from the 89; run with `-PrealEnvironment` |
+| `RealEnvironmentSmokeTest` (1, manual) | Real QR → real tunnel → a `PLAYING` card, on the production app and a physical phone. Excluded from the 95; run with `-PrealEnvironment` |
 | `TestLocaleTest` (1) | What `setThemedContent` renders and what `string()` resolves agree, and follow the `testLocale` argument when it is given |
 | `QrCodeRouteTest` (2) | With a `FakeQrCodeScanner`, a scanned payload reaches `onCodeScanned`; a camera error toasts and navigates back |
 | `FakeVpnPermissionRepositoryTest` (3) | `TestPermissionModule` puts the fake in the graph; a stubbed consent dialog launched through the `ActivityResultRegistry` returns `RESULT_OK` and grants the consent, or `RESULT_CANCELED` and keeps it required |
@@ -1066,7 +1074,10 @@ shows and which callback each interaction fires, with no Hilt, navigation or fak
   (`ComposeTestSupport`), which the screen tests use too. `StreamURLsRobot` scrolls the lazy list
   to its buttons before tapping them, and `HomeRobot.assertShowsStreams` scrolls the lazy grid to
   each card. `FlowTest.pressBack()` goes through the activity's `OnBackPressedDispatcher`, so a
-  back nothing consumes finishes the activity, as on the device. Each robot gets an action only when a
+  back nothing consumes finishes the activity, as on the device. `FlowTest.moveActivityTo(state)`
+  pauses and resumes the activity through its `ActivityScenario`. The Home scenarios that need every
+  card connected at once seed a two-column grid, because the lazy grid composes only the visible
+  cards. Each robot gets an action only when a
   scenario needs it.
 
 Conventions:
