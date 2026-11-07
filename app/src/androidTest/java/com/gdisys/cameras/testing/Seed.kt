@@ -29,17 +29,19 @@ class Seed @Inject constructor(
   }
 
   /**
-   * Stores [urls] in the same order for both orientations, and the grids. The grids default to the
-   * app's, which are dynamic: scenarios that need the fixed grid (and its "Reconfigure" button)
-   * pass `dynamicRows = false`.
+   * Stores [urls], their order in each orientation, and the grids. Both orders default to [urls].
+   * The grids default to the app's, which are dynamic: scenarios that need the fixed grid (and its
+   * "Reconfigure" button) pass `dynamicRows = false`.
    */
   fun streams(
     urls: List<String>,
     portraitGrid: GridPreferences = StreamPreferences().portraitGrid,
-    landscapeGrid: GridPreferences = StreamPreferences().landscapeGrid
+    landscapeGrid: GridPreferences = StreamPreferences().landscapeGrid,
+    portraitOrder: List<String> = urls,
+    landscapeOrder: List<String> = urls
   ) {
     runBlocking {
-      saveStreamUrls(urls, urls, urls).getOrThrow()
+      saveStreamUrls(urls, portraitOrder, landscapeOrder).getOrThrow()
       saveGridPreferences(portraitGrid, landscapeGrid).getOrThrow()
     }
   }

@@ -1,5 +1,7 @@
 package com.gdisys.cameras.testing
 
+import android.content.pm.ActivityInfo
+import android.content.res.Configuration
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.Lifecycle
 import androidx.navigation.NavDestination.Companion.hasRoute
@@ -11,6 +13,7 @@ import com.gdisys.cameras.CamerasAppContent
 import com.gdisys.cameras.app.navigation.NavigationRoute
 import com.gdisys.cameras.core.storage.domain.StreamPreferencesRepository
 import com.gdisys.cameras.core.storage.domain.UserPreferencesRepository
+import com.gdisys.cameras.core.storage.domain.model.StreamOrientation
 import com.gdisys.cameras.core.storage.domain.model.StreamPreferences
 import com.gdisys.cameras.core.storage.domain.model.UserPreferences
 import com.gdisys.cameras.feature.config.QR_CODE_RESULT_KEY
@@ -30,6 +33,9 @@ private val ROUTES = listOf(
   NavigationRoute.StreamURLs,
   NavigationRoute.Home
 )
+
+// Generous: the emulator animates the rotation before the new configuration reaches the activity.
+private const val ROTATION_TIMEOUT_MS = 5_000L
 
 /**
  * Base class of the flow tests: the real composition root, navigation, ViewModels, use cases and
@@ -119,6 +125,24 @@ abstract class FlowTest {
    */
   fun moveActivityTo(state: Lifecycle.State) {
     composeRule.activityRule.scenario.moveToState(state)
+    composeRule.waitForIdle()
+  }
+
+  /**
+   * Turns the screen to [orientation] the way an app can, through `requestedOrientation`, and waits
+   * until the activity sees it. The activity handles the change itself (`configChanges`), so it is
+   * not recreated: the content stays and recomposes with the new configuration. The wait is the one
+   * place that polls, because the rotation comes from the system, outside Compose's idle tracking.
+   */
+  fun rotateTo(orientation: StreamOrientation) {
+    val (requested, expected) = when (orientation) {
+      StreamOrientation.PORTRAIT -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT to Configuration.ORIENTATION_PORTRAIT
+      StreamOrientation.LANDSCAPE -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE to Configuration.ORIENTATION_LANDSCAPE
+    }
+    composeRule.runOnUiThread { composeRule.activity.requestedOrientation = requested }
+    composeRule.waitUntil(ROTATION_TIMEOUT_MS) {
+      composeRule.activity.resources.configuration.orientation == expected
+    }
     composeRule.waitForIdle()
   }
 

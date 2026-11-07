@@ -385,17 +385,44 @@ em 1 min 49 s. A suíte completa não rodou de novo, porque só os robots e o `f
   - O `pausingDisconnectsAndResumingReconnects` falhou com "No compose hierarchies found": com a
     activity em `STARTED`, o Compose test rule não acha a hierarquia. A asserção de tela durante a
     pausa saiu, e os contadores e o `streams.connected` cobrem a pausa.
-  - Os 2 do #10 falharam no `assertIsDisplayed` do overlay de erro: o nó existia, mas o teste não o
-    considerou exibido. O motivo não foi esclarecido. O card tem tamanho, porque usa a proporção
+  - Os 2 do #10 falharam no `assertIsDisplayed` do overlay de erro: o teste não considerou o overlay
+    exibido. O card tem tamanho, porque usa a proporção
     padrão sem frame, e o nível A afirma o texto e o botão do overlay num player de tela cheia. Os
     testes passaram a ler o estado semântico do player (`FAILED`/`CONNECTING`), o mesmo contrato do
-    smoke real. **Pendente:** confirmar visualmente se o overlay aparece num card de 2 colunas.
+    smoke real. A confirmação visual veio depois (abaixo).
   - Segunda execução, só das duas classes: o #8 passou, e o #10 falhou de novo. O card é
     clicável e funde a semântica dos filhos, então o player só existe na árvore não fundida. O
-    `assertPlayback` passou a usar `useUnmergedTree = true`. A fusão é a explicação mais provável
-    do overlay "não exibido", mas isso não foi provado.
+    `assertPlayback` passou a usar `useUnmergedTree = true`. A fusão também explica o overlay "não
+    exibido" (conferência abaixo).
   - Terceira execução, só do #10: os 2 testes passaram. Com a primeira execução completa (o #9 e
     os demais verdes) e a segunda (o #8 verde), os 95 instrumentados estão verdes.
+  - **Conferência visual do overlay (feita):** um teste temporário, já apagado, repetiu o cenário
+    do #10, tirou um `screencap` e imprimiu a árvore de semântica. O overlay aparece inteiro no card
+    de 2 colunas: ícone, "Camera unavailable" e "Try again". A árvore confirmou a fusão: na árvore
+    fundida, o nó do overlay não existe, e o texto dele sobe para o card. O seletor achava zero
+    nós, e o `assertIsDisplayed` responde "not displayed" em vez de "não encontrado" quando nada
+    casa. O botão "Try again" continua na árvore fundida, porque é clicável e tem semântica
+    própria; por isso o `tapRetry` funciona sem `useUnmergedTree`. A produção também mostra um
+    toast "Failed to connect to camera stream" quando o stream falha.
+
+**Resultado do cenário #7 — feito.** Na primeira execução da classe, os 3 testes passaram.
+
+- `GridOrientationFlowTest`, 3 testes, com os nomes do plano. Ele semeia 3 streams, com grid de 1
+  coluna em retrato e de 3 colunas em paisagem, e a ordem de paisagem invertida. Com 3 streams, os
+  dois grids cabem numa tela, então todo card é composto e medido.
+- `FlowTest.rotateTo(orientation)` recebe o `StreamOrientation` da produção, aplica o
+  `requestedOrientation` e espera, com `waitUntil` de 5 s, até a configuração da activity mudar.
+  **Desvio:** é o único `waitUntil` dos fluxos, porque a rotação vem do sistema, fora do idle do
+  Compose. Um `@After` volta para retrato, para a orientação pedida não vazar se um teste falhar.
+- `HomeRobot.assertGrid(columns, order)` lê o layout pelos limites dos cards: a ordem de leitura
+  (topo, depois esquerda) e quantos cards dividem a primeira linha. **Desvio:** o plano falava em
+  `assertColumns`. Juntar colunas e ordem numa asserção cobre também "a ordem de paisagem".
+- `savedGridIsAppliedOnHome`. **Desvio:** a Home chega ao Config pela ação de acessibilidade
+  "Reconfigure" do card (`HomeRobot.reconfigureFrom`), porque o FAB e o overscroll são o assunto
+  do #11. Depois: passo de URLs, `setGridColumns(PORTRAIT, "2")`, `saveGrid()`, voltar e "Back to
+  Home". O teste afirma a pilha `[Home]`, o grid persistido e as 2 colunas na tela. O
+  consentimento é concedido no fake, para o "Back to Home" estar liberado.
+- `Seed.streams` ganhou `portraitOrder` e `landscapeOrder`, que por padrão repetem as URLs.
 
 **`FlowTest`** (classe base abstrata):
 

@@ -953,7 +953,7 @@ Useful commands:
 Note that `LayerDependencyTest` and `StreamHostTest` are ordinary unit tests, so a layering
 violation or a host/XML mismatch fails `testDebugUnitTest` like any other regression.
 
-**Instrumented screen tests.** 95 tests under `app/src/androidTest/` (51 Compose UI tests, twenty-eight flow tests, twelve
+**Instrumented screen tests.** 98 tests under `app/src/androidTest/` (51 Compose UI tests, thirty-one flow tests, twelve
 tests of the Hilt test fakes and flow helpers, two storage tests, one service test, one dispatcher test and the default example), with packages mirroring `main`:
 
 | Test | Covers |
@@ -969,6 +969,7 @@ tests of the Hilt test fakes and flow helpers, two storage tests, one service te
 | `OnboardingFlowTest` (1) | Scenario #2: camera (granted after launch, so the click takes the request path), QR, VPN consent (dialog stubbed to accept) and the default URLs saved; Home is then the only destination, shows a card for each default URL, connected the tunnel and started its lifecycle once, and connected every URL |
 | `ReturningUserFlowTest` (3) | Scenario #5: stored credentials and URLs open `[Home]` with their cards, never passing through Config; credentials without URLs open the empty Home and never connect the tunnel; its shortcut opens Config over Home, with "Back to Home" |
 | `StreamUrlValidationFlowTest` (5) | Scenario #6, from Config: an invalid port, an invalid stream name or a duplicate URL keeps the add form open and the list unchanged; a valid URL is persisted on save and turns the Config step `Done`; leaving with an unsaved URL asks to discard, and discarding persists nothing |
+| `GridOrientationFlowTest` (3) | Scenario #7, with a one-column portrait grid and a three-column landscape grid in the reverse order: portrait shows one column; rotating to landscape (`requestedOrientation`, a configuration change the activity handles, not a recreation) shows three columns in the landscape order, and rotating back restores the portrait layout; a portrait grid saved on the URLs screen (reached through a card's "Reconfigure" action) is persisted and laid out on Home |
 | `VpnLifecycleFlowTest` (2) | Scenario #8: moving the activity to `STARTED` drops the tunnel, stops the lifecycle service and releases every stream (nothing on screen is asserted while paused: the Compose test rule only finds resumed activities); back to `RESUMED`, the tunnel, the service and the streams come back |
 | `VpnFailureFlowTest` (2) | Scenario #9: a tunnel that fails to connect opens Config over Home (`[Home, Config]`, "Back to Home") without starting the lifecycle service; going back fails again and leaves the same stack |
 | `StreamFailureFlowTest` (2) | Scenario #10: a failing stream's player is `FAILED` (its playback-state semantics) while the other stays connected and `CONNECTING` (the fake never delivers a frame); once the stream recovers, its card's "Try again" connects it |
@@ -979,7 +980,7 @@ tests of the Hilt test fakes and flow helpers, two storage tests, one service te
 | `IdlingDispatcherTest` (2) | `IdlingDispatcher` is busy while its work runs and reports the transition to idle; the Compose test rule waits for main → `TestDispatchers.default` → `TestDispatchers.io` → main with no `waitUntil` |
 | `WebRtcVideoPlayerTest` (4) | The real player over a recording `WebRtcConnection`: `CONNECTING` with a spinner before any frame; real I420 frames fed into the sink turn it `PLAYING`; a stream in `LocalFailedStreams` is `FAILED` and shows `StreamErrorOverlay`; "Try again" disconnects and connects the same renderer again |
 | `HomeScreenTest` (11) | The real `HomeScreen` with fake callbacks: the move accessibility actions reorder one place and are absent at the ends; "Reconfigure" is an action in dynamic mode only; one real drag per grid mode reorders on drop; overscrolling the dynamic grid reveals "Reconfigure"; the fixed grid always shows it; the page buttons move between pages; "Reconfigure" never covers the page buttons; a focused stream replaces the grid |
-| `RealEnvironmentSmokeTest` (1, manual) | Real QR → real tunnel → a `PLAYING` card, on the production app and a physical phone. Excluded from the 95; run with `-PrealEnvironment` |
+| `RealEnvironmentSmokeTest` (1, manual) | Real QR → real tunnel → a `PLAYING` card, on the production app and a physical phone. Excluded from the 98; run with `-PrealEnvironment` |
 | `TestLocaleTest` (1) | What `setThemedContent` renders and what `string()` resolves agree, and follow the `testLocale` argument when it is given |
 | `QrCodeRouteTest` (2) | With a `FakeQrCodeScanner`, a scanned payload reaches `onCodeScanned`; a camera error toasts and navigates back |
 | `FakeVpnPermissionRepositoryTest` (3) | `TestPermissionModule` puts the fake in the graph; a stubbed consent dialog launched through the `ActivityResultRegistry` returns `RESULT_OK` and grants the consent, or `RESULT_CANCELED` and keeps it required |
@@ -1058,8 +1059,8 @@ shows and which callback each interaction fires, with no Hilt, navigation or fak
   calls `launchApp()`. That renders `CamerasAppContent` inside `InTestLocale` with a NavController
   the test owns. The activity starts empty, so the ViewModels are created only there and read what
   was seeded. To prepare the state:
-  - `seed.credentials(fixture)` and `seed.streams(urls, portraitGrid, landscapeGrid)` (`Seed`) write
-    through the production use cases;
+  - `seed.credentials(fixture)` and `seed.streams(urls, portraitGrid, landscapeGrid, portraitOrder,
+    landscapeOrder)` (`Seed`) write through the production use cases;
   - `vpnConsent`, `vpn` and `streams` drive the fakes;
   - `DeviceState.grantCameraPermission()` grants the camera through `UiAutomation`.
 
@@ -1075,7 +1076,11 @@ shows and which callback each interaction fires, with no Hilt, navigation or fak
   to its buttons before tapping them, and `HomeRobot.assertShowsStreams` scrolls the lazy grid to
   each card. `FlowTest.pressBack()` goes through the activity's `OnBackPressedDispatcher`, so a
   back nothing consumes finishes the activity, as on the device. `FlowTest.moveActivityTo(state)`
-  pauses and resumes the activity through its `ActivityScenario`. The Home scenarios that need every
+  pauses and resumes the activity through its `ActivityScenario`. `FlowTest.rotateTo(orientation)`
+  sets `requestedOrientation` and waits until the activity's configuration follows: the only poll
+  in the flows, because the rotation comes from the system, outside Compose's idle tracking.
+  `HomeRobot.assertGrid(columns, order)` reads the layout from the cards' bounds: their reading
+  order, and how many share the first row. The Home scenarios that need every
   card connected at once seed a two-column grid, because the lazy grid composes only the visible
   cards. Each robot gets an action only when a
   scenario needs it.

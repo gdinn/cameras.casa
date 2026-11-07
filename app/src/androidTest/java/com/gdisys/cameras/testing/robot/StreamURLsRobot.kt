@@ -12,6 +12,8 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
+import com.gdisys.cameras.core.storage.domain.model.StreamOrientation
 import com.gdisys.cameras.feature.streamurls.components.StreamURLsTestTags
 import com.gdisys.cameras.testing.FlowTest
 import com.gdisys.cameras.testing.string
@@ -41,6 +43,19 @@ class StreamURLsRobot(private val composeRule: ComposeTestRule) {
     composeRule.onNodeWithTag(StreamURLsTestTags.STREAM_NAME_INPUT).performTextInput(streamName)
     tapInList(StreamURLsTestTags.CONFIRM_ADD_URL_BUTTON)
     composeRule.waitForIdle()
+  }
+
+  /** Types [columns] into the column field of [orientation]'s grid. Not persisted until saved. */
+  fun setGridColumns(orientation: StreamOrientation, columns: String) {
+    val tag = StreamURLsTestTags.gridColumnsInput(orientation)
+    scrollTo(tag)
+    composeRule.onNodeWithTag(tag).performTextReplacement(columns)
+  }
+
+  /** Persists both grids, confirming the dialog. */
+  fun saveGrid() {
+    tapInList(StreamURLsTestTags.SAVE_GRID_BUTTON)
+    confirmDialog()
   }
 
   fun assertAddFormOpen() {
