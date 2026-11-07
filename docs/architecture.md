@@ -953,7 +953,7 @@ Useful commands:
 Note that `LayerDependencyTest` and `StreamHostTest` are ordinary unit tests, so a layering
 violation or a host/XML mismatch fails `testDebugUnitTest` like any other regression.
 
-**Instrumented screen tests.** 102 tests under `app/src/androidTest/` (51 Compose UI tests, thirty-five flow tests, twelve
+**Instrumented screen tests.** 104 tests under `app/src/androidTest/` (51 Compose UI tests, thirty-seven flow tests, twelve
 tests of the Hilt test fakes and flow helpers, two storage tests, one service test, one dispatcher test and the default example), with packages mirroring `main`:
 
 | Test | Covers |
@@ -973,6 +973,7 @@ tests of the Hilt test fakes and flow helpers, two storage tests, one service te
 | `VpnLifecycleFlowTest` (2) | Scenario #8: moving the activity to `STARTED` drops the tunnel, stops the lifecycle service and releases every stream (nothing on screen is asserted while paused: the Compose test rule only finds resumed activities); back to `RESUMED`, the tunnel, the service and the streams come back |
 | `VpnFailureFlowTest` (2) | Scenario #9: a tunnel that fails to connect opens Config over Home (`[Home, Config]`, "Back to Home") without starting the lifecycle service; going back fails again and leaves the same stack |
 | `ReconfigureFlowTest` (4) | Scenario #11: the fixed grid's floating "Reconfigure" and, in a dynamic grid that cannot scroll, the button revealed by swiping past the end both open Config over Home, with "Back to Home"; "Back to Home" and the system back both return to `[Home]`, never stacking a second Home; the round trip drops the tunnel, the lifecycle service and the streams (opening Config pauses Home's entry) and brings them back |
+| `ReorderStreamsFlowTest` (2) | Scenario #12, in a dynamic two-column portrait grid: dragging the first card's handle onto the second swaps them on screen and persists the new portrait order, with the URL set untouched; the landscape order stays as seeded, in storage and on screen after rotating |
 | `StreamFailureFlowTest` (2) | Scenario #10: a failing stream's player is `FAILED` (its playback-state semantics) while the other stays connected and `CONNECTING` (the fake never delivers a frame); once the stream recovers, its card's "Try again" connects it |
 | `FlowTestSupportTest` (5) | The flow helpers: only the first QR fixture holds valid credentials; `Seed` persists credentials, URLs and grids; seeded credentials and streams open `Home`; `injectQr` reaches the Config and saves the credentials; the camera permission starts revoked and `DeviceState` grants it |
 | `TestStorageModuleTest` (1) | In a `@HiltAndroidTest`, the production repositories start empty and write to the `TestStorageModule` files, never to the production ones |
@@ -981,7 +982,7 @@ tests of the Hilt test fakes and flow helpers, two storage tests, one service te
 | `IdlingDispatcherTest` (2) | `IdlingDispatcher` is busy while its work runs and reports the transition to idle; the Compose test rule waits for main → `TestDispatchers.default` → `TestDispatchers.io` → main with no `waitUntil` |
 | `WebRtcVideoPlayerTest` (4) | The real player over a recording `WebRtcConnection`: `CONNECTING` with a spinner before any frame; real I420 frames fed into the sink turn it `PLAYING`; a stream in `LocalFailedStreams` is `FAILED` and shows `StreamErrorOverlay`; "Try again" disconnects and connects the same renderer again |
 | `HomeScreenTest` (11) | The real `HomeScreen` with fake callbacks: the move accessibility actions reorder one place and are absent at the ends; "Reconfigure" is an action in dynamic mode only; one real drag per grid mode reorders on drop; overscrolling the dynamic grid reveals "Reconfigure"; the fixed grid always shows it; the page buttons move between pages; "Reconfigure" never covers the page buttons; a focused stream replaces the grid |
-| `RealEnvironmentSmokeTest` (1, manual) | Real QR → real tunnel → a `PLAYING` card, on the production app and a physical phone. Excluded from the 102; run with `-PrealEnvironment` |
+| `RealEnvironmentSmokeTest` (1, manual) | Real QR → real tunnel → a `PLAYING` card, on the production app and a physical phone. Excluded from the 104; run with `-PrealEnvironment` |
 | `TestLocaleTest` (1) | What `setThemedContent` renders and what `string()` resolves agree, and follow the `testLocale` argument when it is given |
 | `QrCodeRouteTest` (2) | With a `FakeQrCodeScanner`, a scanned payload reaches `onCodeScanned`; a camera error toasts and navigates back |
 | `FakeVpnPermissionRepositoryTest` (3) | `TestPermissionModule` puts the fake in the graph; a stubbed consent dialog launched through the `ActivityResultRegistry` returns `RESULT_OK` and grants the consent, or `RESULT_CANCELED` and keeps it required |
@@ -1082,6 +1083,7 @@ shows and which callback each interaction fires, with no Hilt, navigation or fak
   in the flows, because the rotation comes from the system, outside Compose's idle tracking.
   `HomeRobot.assertShowsStreams` scrolls only a grid that scrolls: the fixed grid pages instead.
   `HomeRobot.reconfigureByOverscroll()` swipes up three times, past the one-screen threshold.
+  `HomeRobot.dragOnto(from, onto)` drags a handle in ten small steps, as the screen test does.
   `HomeRobot.assertGrid(columns, order)` reads the layout from the cards' bounds: their reading
   order, and how many share the first row. The Home scenarios that need every
   card connected at once seed a two-column grid, because the lazy grid composes only the visible

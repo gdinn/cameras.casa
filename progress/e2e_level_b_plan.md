@@ -424,7 +424,7 @@ em 1 min 49 s. A suíte completa não rodou de novo, porque só os robots e o `f
   consentimento é concedido no fake, para o "Back to Home" estar liberado.
 - `Seed.streams` ganhou `portraitOrder` e `landscapeOrder`, que por padrão repetem as URLs.
 
-**Resultado do cenário #11 — feito.** Na primeira execução da classe, os 4 testes passaram. O §9 pede 3 execuções dos gestos antes de aceitar; as outras duas do overscroll ficam para junto do #12, que também é gesto.
+**Resultado do cenário #11 — feito.** Na primeira execução da classe, os 4 testes passaram. As 3 execuções que o §9 pede para os gestos foram feitas com o #12 (abaixo).
 
 - `ReconfigureFlowTest`, 4 testes, com os nomes do plano. Todos semeiam credenciais, 2 streams e o
   consentimento concedido no fake, para o "Back to Home" estar liberado.
@@ -437,6 +437,18 @@ em 1 min 49 s. A suíte completa não rodou de novo, porque só os robots e o `f
 - `HomeRobot` ganhou `tapReconfigureButton()` e `reconfigureByOverscroll()`, que faz 3 swipes.
   **Desvio:** o `assertShowsStreams` só rola o grid se ele tiver `ScrollToIndex`. No grid fixo, a
   tag `STREAM_GRID` está num container de páginas, que não rola.
+
+**Resultado do cenário #12 — feito.** O #12 e o #11 rodaram juntos 3 vezes seguidas, e os 6 testes passaram nas 3 rodadas. Isso cumpre a exigência do §9 para os gestos, o arraste e o overscroll. Nenhum precisou de `@FlakyTest`.
+
+- `ReorderStreamsFlowTest`, 2 testes, com os nomes do plano. Ele semeia 3 streams, com grid
+  dinâmico de 2 colunas em retrato, de 3 em paisagem, e a ordem de paisagem invertida.
+- `draggingAStreamPersistsTheNewOrder` arrasta a alça do primeiro card até o segundo. Na tela, a
+  ordem vira `[1, 0, 2]`, e o `portraitOrder` persistido também. O conjunto de URLs não muda.
+- `reorderingKeepsTheOtherOrientation`: o `landscapeOrder` persistido segue o semeado. **Desvio:** o
+  teste também gira para paisagem e confere essa ordem na tela, com o `rotateTo` do #7.
+- `HomeRobot.dragOnto(from, onto)` usa o mesmo gesto do `HomeScreenTest`: `down`, 10 `moveBy` e
+  `up`, na árvore não fundida, porque o card funde a alça.
+- O arraste do modo fixo segue fora, como o plano previa.
 
 **`FlowTest`** (classe base abstrata):
 

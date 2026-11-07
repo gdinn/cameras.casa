@@ -97,6 +97,24 @@ class HomeRobot(private val composeRule: ComposeTestRule) {
     composeRule.waitForIdle()
   }
 
+  /**
+   * Drags [from]'s handle onto [onto]'s card, in small steps. The grids move the dragged card by the
+   * finger's travel, so moving by the distance between the two centers lands it on [onto].
+   */
+  fun dragOnto(from: String, onto: String) {
+    val travel = centerOf(onto) - centerOf(from)
+    // The card is clickable, so it merges the handle into its own node.
+    composeRule.onNodeWithTag(HomeTestTags.dragHandle(from), useUnmergedTree = true).performTouchInput {
+      down(center)
+      repeat(DRAG_STEPS) { moveBy(travel / DRAG_STEPS.toFloat()) }
+      up()
+    }
+    composeRule.waitForIdle()
+  }
+
+  private fun centerOf(url: String) =
+    composeRule.onNodeWithTag(HomeTestTags.streamCard(url)).fetchSemanticsNode().boundsInRoot.center
+
   /** The "Try again" button on the failed card of [url]. */
   fun tapRetry(url: String) {
     composeRule.onNode(retryButtonOf(url)).performClick()
@@ -113,6 +131,9 @@ class HomeRobot(private val composeRule: ComposeTestRule) {
     composeRule.waitForIdle()
   }
 }
+
+// The same steps as the screen test's drag: small moves, as a finger makes them.
+private const val DRAG_STEPS = 10
 
 // Each swipe covers 80% of the grid, so three of them pass the one-screen threshold.
 private const val OVERSCROLL_SWIPES = 3
