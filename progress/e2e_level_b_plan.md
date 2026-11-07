@@ -424,6 +424,20 @@ em 1 min 49 s. A suíte completa não rodou de novo, porque só os robots e o `f
   consentimento é concedido no fake, para o "Back to Home" estar liberado.
 - `Seed.streams` ganhou `portraitOrder` e `landscapeOrder`, que por padrão repetem as URLs.
 
+**Resultado do cenário #11 — feito.** Na primeira execução da classe, os 4 testes passaram. O §9 pede 3 execuções dos gestos antes de aceitar; as outras duas do overscroll ficam para junto do #12, que também é gesto.
+
+- `ReconfigureFlowTest`, 4 testes, com os nomes do plano. Todos semeiam credenciais, 2 streams e o
+  consentimento concedido no fake, para o "Back to Home" estar liberado.
+- O FAB usa um grid fixo 2×1, e o overscroll usa um grid dinâmico de 2 colunas. Com os 2 streams
+  numa linha, o grid não rola, e todo swipe conta como overscroll, como no `HomeScreenTest`.
+- `returningToHomeDoesNotStackIt` cobre os dois caminhos de volta no mesmo teste: o "Back to
+  Home" e o back do sistema. Os dois terminam em `[Home]`.
+- `reconfigureCyclesTheTunnel` afirma o achado #12. Abrir o Config faz 1 `disconnect` e 1
+  `stop` e solta os streams. Voltar faz o 2º `connect` e o 2º `start` e reconecta os streams.
+- `HomeRobot` ganhou `tapReconfigureButton()` e `reconfigureByOverscroll()`, que faz 3 swipes.
+  **Desvio:** o `assertShowsStreams` só rola o grid se ele tiver `ScrollToIndex`. No grid fixo, a
+  tag `STREAM_GRID` está num container de páginas, que não rola.
+
 **`FlowTest`** (classe base abstrata):
 
 ```kotlin

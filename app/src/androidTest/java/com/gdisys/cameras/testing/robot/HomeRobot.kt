@@ -10,6 +10,8 @@ import androidx.compose.ui.test.junit4.ComposeTestRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
 import com.gdisys.cameras.R
 import com.gdisys.cameras.feature.cameras.components.HomeTestTags
 import com.gdisys.cameras.feature.cameras.components.StreamPlaybackState
@@ -23,12 +25,15 @@ import kotlin.math.abs
 class HomeRobot(private val composeRule: ComposeTestRule) {
 
   /**
-   * Every one of [urls] has a card in the grid. The grid is lazy, so each card is scrolled into
-   * view first: only the visible ones are composed (and connected).
+   * Every one of [urls] has a card in the grid. The dynamic grid is lazy, so each card is scrolled
+   * into view first: only the visible ones are composed (and connected).
    */
   fun assertShowsStreams(urls: List<String>) {
+    val grid = composeRule.onNodeWithTag(HomeTestTags.STREAM_GRID)
+    // The fixed grid pages instead of scrolling: its cards are on the current page, with no scroll.
+    val scrolls = SemanticsActions.ScrollToIndex in grid.fetchSemanticsNode().config
     urls.forEach { url ->
-      composeRule.onNodeWithTag(HomeTestTags.STREAM_GRID).performScrollToNode(hasTestTag(HomeTestTags.streamCard(url)))
+      if (scrolls) grid.performScrollToNode(hasTestTag(HomeTestTags.streamCard(url)))
       composeRule.onNodeWithTag(HomeTestTags.streamCard(url)).assertIsDisplayed()
     }
   }
@@ -69,6 +74,29 @@ class HomeRobot(private val composeRule: ComposeTestRule) {
     composeRule.waitForIdle()
   }
 
+  /** Fixed grid: the floating "Reconfigure" button, always on screen. */
+  fun tapReconfigureButton() {
+    composeRule.onNodeWithTag(HomeTestTags.RECONFIGURE_BUTTON).assertIsDisplayed().performClick()
+    composeRule.waitForIdle()
+  }
+
+  /**
+   * Dynamic grid: swipes up past the end of the grid until "Reconfigure" shows, then taps it. The
+   * button shows after an overscroll of one screen height, so the grid must not scroll (few
+   * streams): then every swipe counts.
+   */
+  fun reconfigureByOverscroll() {
+    val button = composeRule.onNodeWithTag(HomeTestTags.OVERSCROLL_RECONFIGURE_BUTTON)
+    button.assertDoesNotExist()
+    repeat(OVERSCROLL_SWIPES) {
+      composeRule.onNodeWithTag(HomeTestTags.STREAM_GRID).performTouchInput {
+        swipeUp(startY = height * 0.9f, endY = height * 0.1f)
+      }
+    }
+    button.assertIsDisplayed().performClick()
+    composeRule.waitForIdle()
+  }
+
   /** The "Try again" button on the failed card of [url]. */
   fun tapRetry(url: String) {
     composeRule.onNode(retryButtonOf(url)).performClick()
@@ -85,6 +113,9 @@ class HomeRobot(private val composeRule: ComposeTestRule) {
     composeRule.waitForIdle()
   }
 }
+
+// Each swipe covers 80% of the grid, so three of them pass the one-screen threshold.
+private const val OVERSCROLL_SWIPES = 3
 
 // The overlay tags are the same on every card, so the button is told apart by the card around it.
 private fun retryButtonOf(url: String): SemanticsMatcher =
