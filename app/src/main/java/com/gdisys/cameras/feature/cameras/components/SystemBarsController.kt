@@ -1,11 +1,10 @@
 package com.gdisys.cameras.feature.cameras.components
 
-import android.app.Activity
+import androidx.activity.compose.LocalActivity
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.platform.LocalContext
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -17,12 +16,12 @@ import androidx.core.view.WindowInsetsControllerCompat
  */
 @Composable
 fun rememberSystemBarsController(focusedStream: String?) {
-  val context = LocalContext.current
+  val activity = LocalActivity.current
   val lightBars = MaterialTheme.colorScheme.background.luminance() > 0.5f
   val isFocused = focusedStream != null
 
-  DisposableEffect(isFocused, lightBars) {
-    val window = (context as? Activity)?.window
+  DisposableEffect(activity, isFocused, lightBars) {
+    val window = activity?.window
     val controller = window?.let { WindowCompat.getInsetsController(it, it.decorView) }
 
     fun setLightBars(light: Boolean) {

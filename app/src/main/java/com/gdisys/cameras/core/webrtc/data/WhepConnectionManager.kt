@@ -39,14 +39,19 @@ class WhepConnectionManager @Inject constructor(
     onError: (Throwable) -> Unit
   ) {
     val job = scope.launch {
+      val whepClient = whepClientProvider.get()
+      // A client that fails or is cancelled halfway is never registered, so nothing else would
+      // release its PeerConnection: it is closed here. Without this, every retry of a failing
+      // stream would leak one.
       try {
-        val whepClient = whepClientProvider.get()
         whepClient.connect(streamUrl, videoSink)
         synchronized(lock) { clients[streamUrl] = whepClient }
       } catch (e: CancellationException) {
+        whepClient.close()
         throw e
       } catch (e: Exception) {
         Log.d(DEBUG_TAG, e.message.toString())
+        whepClient.close()
         onError(e)
       }
     }

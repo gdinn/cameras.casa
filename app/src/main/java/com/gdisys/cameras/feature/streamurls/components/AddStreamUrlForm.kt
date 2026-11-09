@@ -15,6 +15,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
@@ -36,7 +37,11 @@ fun AddStreamUrlForm(
   onConfirm: () -> Unit,
   onCancel: () -> Unit
 ) {
-  OutlinedCard(modifier = modifier.fillMaxWidth()) {
+  OutlinedCard(
+    modifier = modifier
+      .fillMaxWidth()
+      .testTag(StreamURLsTestTags.ADD_URL_FORM)
+  ) {
     Column(
       modifier = Modifier.padding(12.dp),
       verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -53,7 +58,9 @@ fun AddStreamUrlForm(
         horizontalArrangement = Arrangement.spacedBy(4.dp)
       ) {
         OutlinedTextField(
-          modifier = Modifier.weight(0.45f),
+          modifier = Modifier
+            .weight(0.45f)
+            .testTag(StreamURLsTestTags.PORT_INPUT),
           value = port,
           onValueChange = onPortChanged,
           singleLine = true,
@@ -64,7 +71,9 @@ fun AddStreamUrlForm(
         Text(text = "/")
 
         OutlinedTextField(
-          modifier = Modifier.weight(0.55f),
+          modifier = Modifier
+            .weight(0.55f)
+            .testTag(StreamURLsTestTags.STREAM_NAME_INPUT),
           value = streamName,
           onValueChange = onStreamNameChanged,
           singleLine = true,
@@ -77,10 +86,16 @@ fun AddStreamUrlForm(
         horizontalArrangement = Arrangement.End,
         verticalAlignment = Alignment.CenterVertically
       ) {
-        TextButton(onClick = onCancel) {
+        TextButton(
+          modifier = Modifier.testTag(StreamURLsTestTags.CANCEL_ADD_URL_BUTTON),
+          onClick = onCancel
+        ) {
           Text(stringResource(R.string.stream_urls_screen_cancel_add_url))
         }
-        Button(onClick = onConfirm) {
+        Button(
+          modifier = Modifier.testTag(StreamURLsTestTags.CONFIRM_ADD_URL_BUTTON),
+          onClick = onConfirm
+        ) {
           Text(stringResource(R.string.stream_urls_screen_confirm_add_url))
         }
       }

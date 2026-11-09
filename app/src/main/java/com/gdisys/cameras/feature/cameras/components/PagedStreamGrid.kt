@@ -6,6 +6,8 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.BoxWithConstraintsScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -42,6 +44,7 @@ import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -75,6 +78,9 @@ private val GRID_PADDING = 8.dp
  *
  * The dragged item is drawn as a floating ghost, so the real player stays in its cell. On drop, the
  * current orientation's complete order is persisted in one write.
+ *
+ * @param overlay drawn over the pages but above the page controls, so whatever floats there can
+ *   never cover them. It sits outside the drag container, so touching it never starts a drag.
  */
 @Composable
 fun PagedStreamGrid(
@@ -84,6 +90,7 @@ fun PagedStreamGrid(
   aspectRatioOf: (String) -> Float,
   onStreamsReordered: (List<String>) -> Unit,
   modifier: Modifier = Modifier,
+  overlay: @Composable BoxWithConstraintsScope.() -> Unit = {},
   itemContent: @Composable (url: String, dragHandleModifier: Modifier, cellModifier: Modifier) -> Unit
 ) {
   val density = LocalDensity.current
@@ -144,49 +151,58 @@ fun PagedStreamGrid(
   }
 
   Column(modifier = modifier) {
-    Box(
+    // Two layers: the drag container with the pages and the ghost, and the overlay as its sibling,
+    // so a touch on the overlay never reaches the container's Initial-pass drag detector.
+    BoxWithConstraints(
       modifier = Modifier
         .weight(1f)
         .fillMaxWidth()
-        .onGloballyPositioned { dragState.containerBounds = it.boundsInRoot() }
-        .then(dragGesture)
     ) {
-      HorizontalPager(
-        state = pagerState,
-        modifier = Modifier.fillMaxSize(),
-        beyondViewportPageCount = 0,
-        userScrollEnabled = dragState.draggedUrl == null
-      ) { page ->
-        FixedGrid(
-          streams = streamsOnPage(dragState.localOrder, page, perPage),
-          columns = grid.columns,
-          orientation = orientation,
-          aspectRatioOf = aspectRatioOf,
-          modifier = Modifier
-            .fillMaxSize()
-            .padding(GRID_PADDING),
-          onCellBounds = { url, bounds -> dragState.cellBounds[CellKey(page, url)] = bounds }
-        ) { url, cellModifier ->
-          val key = CellKey(page, url)
-          // A page being left takes its cells' bounds with it, or the drag's hit test would keep
-          // matching rectangles from a page that is no longer on screen.
-          DisposableEffect(key) {
-            onDispose { dragState.onCellDisposed(key) }
+      Box(
+        modifier = Modifier
+          .matchParentSize()
+          .onGloballyPositioned { dragState.containerBounds = it.boundsInRoot() }
+          .then(dragGesture)
+      ) {
+        HorizontalPager(
+          state = pagerState,
+          modifier = Modifier.fillMaxSize(),
+          beyondViewportPageCount = 0,
+          userScrollEnabled = dragState.draggedUrl == null
+        ) { page ->
+          FixedGrid(
+            streams = streamsOnPage(dragState.localOrder, page, perPage),
+            columns = grid.columns,
+            orientation = orientation,
+            aspectRatioOf = aspectRatioOf,
+            modifier = Modifier
+              .fillMaxSize()
+              .padding(GRID_PADDING),
+            onCellBounds = { url, bounds -> dragState.cellBounds[CellKey(page, url)] = bounds }
+          ) { url, cellModifier ->
+            val key = CellKey(page, url)
+            // A page being left takes its cells' bounds with it, or the drag's hit test would keep
+            // matching rectangles from a page that is no longer on screen.
+            DisposableEffect(key) {
+              onDispose { dragState.onCellDisposed(key) }
+            }
+            itemContent(
+              url,
+              Modifier.onGloballyPositioned { dragState.handleBounds[key] = it.boundsInRoot() },
+              cellModifier.alpha(if (url == dragState.draggedUrl) DRAGGED_CELL_ALPHA else 1f)
+            )
           }
-          itemContent(
-            url,
-            Modifier.onGloballyPositioned { dragState.handleBounds[key] = it.boundsInRoot() },
-            cellModifier.alpha(if (url == dragState.draggedUrl) DRAGGED_CELL_ALPHA else 1f)
-          )
         }
+
+        DraggedStreamGhost(
+          isVisible = dragState.draggedUrl != null,
+          size = dragState.draggedSize,
+          positionInRoot = dragState.dragPositionInRoot,
+          containerTopLeft = dragState.containerBounds.topLeft
+        )
       }
 
-      DraggedStreamGhost(
-        isVisible = dragState.draggedUrl != null,
-        size = dragState.draggedSize,
-        positionInRoot = dragState.dragPositionInRoot,
-        containerTopLeft = dragState.containerBounds.topLeft
-      )
+      overlay()
     }
 
     if (pages > 1) {
@@ -245,7 +261,11 @@ private fun PagerControls(currentPage: Int, pageCount: Int, onGoToPage: (Int) ->
     horizontalArrangement = Arrangement.Center,
     verticalAlignment = Alignment.CenterVertically
   ) {
-    IconButton(onClick = { onGoToPage(currentPage - 1) }, enabled = hasPrevious) {
+    IconButton(
+      onClick = { onGoToPage(currentPage - 1) },
+      enabled = hasPrevious,
+      modifier = Modifier.testTag(HomeTestTags.PREVIOUS_PAGE_BUTTON)
+    ) {
       Icon(
         imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
         contentDescription = stringResource(R.string.home_screen_previous_page),
@@ -256,7 +276,11 @@ private fun PagerControls(currentPage: Int, pageCount: Int, onGoToPage: (Int) ->
       text = stringResource(R.string.home_screen_page_indicator, currentPage + 1, pageCount),
       color = MaterialTheme.colorScheme.onSurfaceVariant
     )
-    IconButton(onClick = { onGoToPage(currentPage + 1) }, enabled = hasNext) {
+    IconButton(
+      onClick = { onGoToPage(currentPage + 1) },
+      enabled = hasNext,
+      modifier = Modifier.testTag(HomeTestTags.NEXT_PAGE_BUTTON)
+    ) {
       Icon(
         imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
         contentDescription = stringResource(R.string.home_screen_next_page),

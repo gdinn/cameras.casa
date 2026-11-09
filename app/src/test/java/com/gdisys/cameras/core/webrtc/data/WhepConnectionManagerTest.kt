@@ -56,14 +56,16 @@ class WhepConnectionManagerTest {
   }
 
   @Test
-  fun `connect does not register a client when the connection fails`() {
+  fun `connect closes a client that fails and does not register it`() {
     val videoSink = mockk<VideoSink>()
     coEvery { whepClient.connect(any(), any()) } throws IllegalStateException("boom")
 
     manager.connect("stream-url", videoSink)
-    manager.disconnect("stream-url")
+    verify(exactly = 1) { whepClient.close() }
 
-    verify(exactly = 0) { whepClient.close() }
+    // Not registered, so disconnecting does not close it a second time.
+    manager.disconnect("stream-url")
+    verify(exactly = 1) { whepClient.close() }
   }
 
   @Test
@@ -75,6 +77,7 @@ class WhepConnectionManagerTest {
     manager.connect("stream-url", videoSink) { reportedError = it }
 
     assertEquals(null, reportedError)
+    verify(exactly = 1) { whepClient.close() }
   }
 
   @Test

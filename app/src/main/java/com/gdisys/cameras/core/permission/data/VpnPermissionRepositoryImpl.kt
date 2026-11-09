@@ -2,6 +2,7 @@ package com.gdisys.cameras.core.permission.data
 
 import android.content.Context
 import android.net.VpnService
+import com.gdisys.cameras.core.permission.domain.VpnConsent
 import com.gdisys.cameras.core.permission.domain.VpnPermissionRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -12,5 +13,7 @@ class VpnPermissionRepositoryImpl @Inject constructor(
   @ApplicationContext private val context: Context
 ) : VpnPermissionRepository {
 
-  override fun hasVpnPermission(): Boolean = VpnService.prepare(context) == null
+  // `prepare` returns null when consent has already been given, or the consent Intent otherwise.
+  override fun getVpnConsent(): VpnConsent =
+    VpnService.prepare(context)?.let(VpnConsent::Required) ?: VpnConsent.Granted
 }

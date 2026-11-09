@@ -2,6 +2,7 @@ package com.gdisys.cameras.feature.cameras.components
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import com.gdisys.cameras.feature.cameras.logic.DEFAULT_STREAM_ASPECT_RATIO
 
 @Composable
@@ -12,7 +13,7 @@ fun FocusedStreamView(
 ) {
   VideoStreamCard(
     videoContent = videoContent,
-    modifier = modifier,
+    modifier = modifier.testTag(HomeTestTags.FOCUSED_STREAM),
     aspectRatio = aspectRatio
   )
 }

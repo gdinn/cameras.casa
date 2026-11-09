@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <!-- Host for the instrumented tests that render CamerasAppContent. The theme and
+             configChanges must match MainActivity's (main manifest): otherwise a rotation would
+             recreate this activity and the tests would cover a different behavior. -->
+        <activity
+            android:name=".testing.HiltTestActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
+            android:theme="@style/Theme.Cameras" />
+    </application>
+
+</manifest>

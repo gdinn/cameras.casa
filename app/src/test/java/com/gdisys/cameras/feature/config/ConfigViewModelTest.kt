@@ -4,8 +4,10 @@ import android.content.Intent
 import app.cash.turbine.test
 import com.gdisys.cameras.MainDispatcherRule
 import com.gdisys.cameras.core.components.ToastUiEvent
+import com.gdisys.cameras.core.permission.domain.VpnConsent
 import com.gdisys.cameras.core.permission.domain.usecase.HasCameraPermissionUseCase
 import com.gdisys.cameras.core.permission.domain.usecase.HasVpnPermissionUseCase
+import com.gdisys.cameras.core.permission.domain.usecase.RequestVpnPermissionUseCase
 import com.gdisys.cameras.core.storage.domain.VpnCredentialsStatus
 import com.gdisys.cameras.core.storage.domain.model.StreamPreferences
 import com.gdisys.cameras.core.storage.domain.model.UserPreferences
@@ -15,7 +17,6 @@ import com.gdisys.cameras.core.storage.domain.usecase.GetStreamPreferencesUseCas
 import com.gdisys.cameras.core.storage.domain.usecase.GetVpnConfigStatusUseCase
 import com.gdisys.cameras.core.storage.domain.usecase.ParseUserPreferencesFromQrCodeUseCase
 import com.gdisys.cameras.core.storage.domain.usecase.SaveUserPreferencesUseCase
-import com.gdisys.cameras.core.vpn.domain.usecase.RequestVpnPermissionUseCase
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -387,7 +388,7 @@ class ConfigViewModelTest {
 
   @Test
   fun `acceptVpnPermission shows a toast when permission is already granted`() = runTest {
-    every { requestVpnPermissionUseCase() } returns null
+    every { requestVpnPermissionUseCase() } returns VpnConsent.Granted
 
     viewModel.uiEvent.test {
       viewModel.acceptVpnPermission()
@@ -401,13 +402,14 @@ class ConfigViewModelTest {
 
   @Test
   fun `acceptVpnPermission emits a request permission event when consent is still needed`() = runTest {
-    every { requestVpnPermissionUseCase() } returns mockk<Intent>()
+    val consentIntent = mockk<Intent>()
+    every { requestVpnPermissionUseCase() } returns VpnConsent.Required(consentIntent)
 
     viewModel.vpnPermissionUiEvent.test {
       viewModel.acceptVpnPermission()
 
-      // The event carries no payload: the consent Intent is the route's to build and launch.
-      assertEquals(VpnPermissionUiEvent.RequestPermission, awaitItem())
+      // The route launches the Intent the repository returned, so it must arrive untouched.
+      assertEquals(VpnPermissionUiEvent.RequestPermission(consentIntent), awaitItem())
     }
   }
 

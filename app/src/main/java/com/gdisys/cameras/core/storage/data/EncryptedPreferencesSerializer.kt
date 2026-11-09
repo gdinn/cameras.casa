@@ -1,6 +1,7 @@
 package com.gdisys.cameras.core.storage.data
 
 import androidx.datastore.core.Serializer
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.KSerializer
@@ -17,15 +18,19 @@ import java.util.Base64
  * That fallback is also why [json] is configured rather than default: silently returning the
  * default value means silently discarding the user's settings, so the encoding is tuned to make
  * decoding fail as rarely as possible. See [json].
+ *
+ * [ioDispatcher] runs the stream reads and writes. Tests pass their own, so the work is one they
+ * can wait for.
  */
 class EncryptedPreferencesSerializer<T>(
   private val serializer: KSerializer<T>,
   override val defaultValue: T,
-  private val crypto: CryptoEngine
+  private val crypto: CryptoEngine,
+  private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : Serializer<T> {
 
   override suspend fun readFrom(input: InputStream): T {
-    val encryptedBytes = withContext(Dispatchers.IO) {
+    val encryptedBytes = withContext(ioDispatcher) {
       input.use { it.readBytes() }
     }
 
@@ -50,7 +55,7 @@ class EncryptedPreferencesSerializer<T>(
     val bytes = encodedJson.toByteArray()
     val encryptedBytes = crypto.encrypt(bytes)
     val encryptedBytesBase64 = Base64.getEncoder().encode(encryptedBytes)
-    withContext(Dispatchers.IO) {
+    withContext(ioDispatcher) {
       output.use {
         it.write(encryptedBytesBase64)
       }

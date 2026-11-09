@@ -48,8 +48,8 @@ The end-to-end setup (only the Android client lives in this repository):
 
 Three product decisions shape most of the code:
 
-1. **The tunnel is foreground-only.** It is raised on `Lifecycle.Event.ON_RESUME` of the Home route
-   and dropped on `ON_PAUSE`, with `VpnLifecycleService` as the safety net for task removal. The
+1. **The tunnel is foreground-only.** It is raised on `Lifecycle.Event.ON_RESUME` of the Home route,
+   when there is at least one stream URL, and dropped on `ON_PAUSE`, with `VpnLifecycleService` as the safety net for task removal. The
    tunnel is an IPv6 split tunnel that only carries the Pi and the router, so this is not about
    other apps' traffic: it limits how long the device stays connected to the home network and the
    battery cost of the 25-second persistent keepalive.
@@ -141,6 +141,8 @@ The caveat that kept minification off for so long has not gone away: a wrong kee
 rules, to a `@Serializable` model, or to the VPN/WebRTC dependencies has to be smoke-tested on a
 real device — scan the QR code, bring the tunnel up, play a stream. The rule set above was
 validated that way end to end on a physical device: QR scan, tunnel up, streams rendering.
+`RealEnvironmentSmokeTest` automates the QR-to-video path ([§10](#10-testing-and-quality-gates)),
+but only on the debug build so far. A minified build still needs the run by hand.
 `SourceFile` and `LineNumberTable` are kept so release stack traces can be de-obfuscated with
 `app/build/outputs/mapping/release/mapping.txt`.
 
@@ -187,7 +189,7 @@ top-level package groups live under `com.gdisys.cameras`:
 |---|---|
 | `app/*` | Composition root and navigation: `MainActivity`, `CamerasApp`, `app.navigation` |
 | `feature/*` | One package per screen. Route + ViewModel + UiState + `components/` + optional `logic/` |
-| `core/*` | Everything shared: `storage`, `vpn`, `webrtc`, `permission`, `network`, `components`, plus the presentation base classes at the package root |
+| `core/*` | Everything shared: `storage`, `vpn`, `webrtc`, `permission`, `network`, `coroutines`, `components`, plus the presentation base classes at the package root |
 | `ui/*` | `ui.theme` only — `CamerasTheme`, color and typography |
 
 ### 3.1 The layering rule
@@ -242,6 +244,15 @@ inside a `sealed interface`. `NavigationRoot.kt` maps each to a route composable
 inter-screen wiring, including passing the QR-code result back through
 `previousBackStackEntry.savedStateHandle`.
 
+**Composition root.** `CamerasAppContent(eglBase, navController)`, in `MainActivity.kt`, is the
+whole tree: `CamerasTheme`, `LocalEglBase` and `NavigationRoot`. `MainActivity` only injects
+`EglBase`, calls `enableEdgeToEdge()` and sets `CamerasAppContent` with `rememberNavController()`.
+The split exists for the instrumented tests: they set the same composable on `HiltTestActivity` with
+a `NavHostController` they own, so they can read the back stack and write the QR result to the
+`savedStateHandle`. `HiltTestActivity` lives in the `debug` source set
+(`app/src/debug/java/.../testing/`, declared in `app/src/debug/AndroidManifest.xml`), so it is not
+in release builds. Its theme and `configChanges` must match `MainActivity`'s; both manifests say so.
+
 | Destination | Route composable | File | ViewModel |
 |---|---|---|---|
 | `Loading` (start) | `InitRoute` | `feature/init/InitRoute.kt` | `InitViewModel` |
@@ -269,7 +280,9 @@ All five routes follow the same contract, which makes them easy to read once you
 - Toasts are centralized: every ViewModel extends `ToastEventViewModel` (`core/ToastEventViewModel.kt`),
   which owns a `Channel<ToastUiEvent>`; every route renders `ToastDisplayer(viewModel.uiEvent)`.
   Message catalogues are per-feature enums implementing `ToastMessage` (`@StringRes`), e.g.
-  `HomeToastMessage`, `ConfigToastMessage`.
+  `HomeToastMessage`, `ConfigToastMessage`. `ToastDisplayer` hands each message to the
+  `ToastPresenter` in `LocalToastPresenter`. Its default, `null`, means the platform `Toast`.
+  Instrumented tests provide a recording presenter, because Compose Test cannot see the toast window.
 
 ---
 
@@ -290,9 +303,11 @@ routes to `Home` or `Config` accordingly.
 | Messages | `InitToastMessage` |
 
 This is the only route with **no inbound UI events** — the screen has no input. The decision runs
-in the ViewModel's `init { }` block, which collects `GetVpnConfigStatusUseCase()`, ignores
-`VpnCredentialsStatus.Loading`, and emits `NavigateUiEvent.ToHome` or (after a toast)
-`NavigateUiEvent.ToConfig`.
+in the ViewModel's `init { }` block, which takes the first `VpnCredentialsStatus.Loaded` from
+`GetVpnConfigStatusUseCase()` and emits `NavigateUiEvent.ToHome` or (after a toast)
+`NavigateUiEvent.ToConfig`. It decides **once**: `Loading` stays in the back stack under `Config`,
+so a continuous collect would keep reacting to the credentials Config saves later, sending events
+nobody collects.
 
 ### 5.2 `feature/config` — configuration checklist
 
@@ -321,15 +336,22 @@ Points of interest:
 - **Platform round-trips are events, not state.** VPN consent and the camera permission request are
   emitted as `Channel` events and launched by the reusable
   `LaunchActivityResultOnEvent` composable (`core/components/ActivityResultEventEffect.kt`).
-  `VpnPermissionUiEvent.RequestPermission` is deliberately payload-free: the ViewModel decides
-  *whether* consent is needed (`RequestVpnPermissionUseCase() != null`) and `ConfigRoute` builds the
-  `Intent` with `VpnService.prepare(context)`. No `android.content.Intent` crosses the ViewModel
-  boundary, and a `null` from `prepare` simply launches nothing.
+  The VPN consent has a single source, `VpnPermissionRepository.getVpnConsent()`, which returns
+  `VpnConsent.Granted` or `VpnConsent.Required(intent)`. Both the step's initial state
+  (`HasVpnPermissionUseCase`) and the click (`RequestVpnPermissionUseCase`) read it, so a test fake
+  cannot put them out of step. On `Required`, the ViewModel sends
+  `VpnPermissionUiEvent.RequestPermission(intent)` and `ConfigRoute` launches that `Intent` as is.
+  The route never calls `VpnService.prepare`.
 - **QR result arrives via navigation, not a shared ViewModel.** `QrCodeRoute` writes the raw JSON
   into `previousBackStackEntry.savedStateHandle[QR_CODE_RESULT_KEY]`; `ConfigRoute` observes it,
   hands it to `onQrCodeScanned`, then clears it through `onQrCodeResultConsumed`.
 - `refreshCameraPermissionState()` runs on `ON_RESUME` because the user can grant camera access
   from system settings while the screen is backgrounded.
+- **A "disabled" step is still clickable.** `ConfigButton`'s `enabled` only dims the step (the QR
+  step, while `isQrCodeButtonEnabled` is false). The click still reaches the ViewModel, which owns
+  the rule and answers with a toast saying what is missing — `onShowScanner()` shows
+  `CAMERA_PERMISSION_REQUIRED_FOR_QR_CODE` instead of opening the scanner. For the same reason the
+  step is not marked disabled in semantics.
 
 ### 5.3 `feature/qrcode` — QR code scanner
 
@@ -342,8 +364,15 @@ payload it reads.
 |---|---|
 | View | `QrCodeRoute.kt`, `components/QrCodeScreen.kt` |
 | ViewModel | `QrCodeViewModel.kt` |
+| Scanner | `components/QrCodeScanner.kt` (contract + `LocalQrCodeScanner`), `components/CameraXQrCodeScanner.kt` |
 | Analyzer | `components/QrCodeAnalyzer.kt` (`ImageAnalysis.Analyzer`) |
 | Messages | `QrCodeToastMessage` |
+
+**The camera is a swappable `QrCodeScanner`.** `CameraXQrCodeScanner` holds the CameraX preview
+and the analyzer. `QrCodeRoute` reads it from `LocalQrCodeScanner`, whose default is
+`CameraXQrCodeScanner`, and passes it to `QrCodeScreen` as a parameter, the same split as
+`LocalEglBase` (§6.3). Instrumented tests provide a fake that reports a payload or a camera error,
+so the scan path runs through the real route and ViewModel without a camera.
 
 The analyzer sits under `components/`, not under a `data/` sub-package: it is an
 `ImageAnalysis.Analyzer` handed straight to CameraX by the screen, so it is a platform/UI concern
@@ -356,6 +385,12 @@ holds a plain `hasScanned` boolean (deliberately not state) to make the scan sin
 `QrCodeRoute` calls `resetScan()` in a `LaunchedEffect(Unit)` because the ViewModel survives
 between scanner visits. `QrCodeAnalyzer` keeps its own `isScanned` guard, so debouncing exists at
 both levels.
+
+**The payload is never logged.** A real QR code carries the WireGuard private key and the
+preshared key, and logcat is readable over adb and ends up in test artifacts. So neither
+`QrCodeAnalyzer` nor `QrCodeRoute` logs the raw value, and `ConfigViewModel` logs only the
+exception *type* of a failed decode — kotlinx.serialization quotes the offending JSON input in its
+exception messages, which would leak the same keys.
 
 ### 5.4 `feature/streamurls` — stream and grid configuration
 
@@ -403,14 +438,14 @@ configuration.
 
 | Role | Type |
 |---|---|
-| View | `HomeRoute.kt` + 15 files in `components/` |
+| View | `HomeRoute.kt` + 17 files in `components/` |
 | ViewModel | `HomeViewModel.kt` |
-| State | `HomeUiState.kt` — `Loading` \| `Empty` \| `Ready(streams, focusedStream, grid, orientation)` |
+| State | `HomeUiState.kt` — `Loading` \| `Empty` \| `Ready(streams, focusedStream, grid, orientation, failedStreams)` |
 | Logic | `logic/StreamPaging.kt`, `logic/FixedGridLayout.kt` |
 | Model | 6 use cases + `StreamConnectionRepository` |
 
-**State composition.** `HomeUiState` is a single `combine` of four sources — persisted preferences,
-orientation, focused stream, and VPN tunnel state — collected into a `MutableStateFlow`. The
+**State composition.** `HomeUiState` is a single `combine` of five sources — persisted preferences,
+orientation, focused stream, failed streams and VPN tunnel state — collected into a `MutableStateFlow`. The
 precedence matters: an empty URL list yields `Empty` *before* the VPN state is considered, because
 waiting for a tunnel with nothing to connect to would show a permanent spinner.
 
@@ -419,12 +454,26 @@ waiting for a tunnel with nothing to connect to would show a permanent spinner.
 `onOrientationChanged()`. The ViewModel then picks the matching order and grid via
 `preferences.orderFor(orientation)` / `gridFor(orientation)`.
 
+**The lifecycle is pushed down as intent.** `HomeRoute` only reports `onResumed()` / `onPaused()`,
+which set a `MutableStateFlow<Boolean?>`. It is combined with "there is a stream URL" into a
+`StateFlow<Boolean?>` meaning "the tunnel should be up". The empty Home therefore never raises a
+tunnel that would carry nothing, and the tunnel follows the URL list. Being a `StateFlow`, it
+conflates and skips repeated values. A single collector applies it with `ConnectVpnUseCase` /
+`DisconnectVpnUseCase`:
+
+- calls never overlap, and the last lifecycle state always wins. A quick Home → Config → Home drops
+  the intermediate pause instead of racing a disconnect against the connect;
+- not `collectLatest`, which would cancel a native `setState` halfway. The use case calls run in
+  `NonCancellable`, so an operation that started always finishes;
+- if the ViewModel is cleared with a connect as the last operation (the pause arrived while it ran),
+  the collector's `finally` disconnects. Home is the only owner of the tunnel.
+
 **Two rendering modes**, both in `HomeScreen.kt`:
 
 | Mode | Condition | Behaviour |
 |---|---|---|
 | Dynamic | `grid.dynamicRows == true` | `ReorderableStreamGrid` in a scrolling `LazyVerticalGrid`; the "Reconfigure" button is revealed by overscrolling past the end (`OverscrollReconfigure.kt`) |
-| Fixed | `grid.dynamicRows == false` | `PagedStreamGrid`: no scroll, `rows × columns` per page in a `HorizontalPager`; the "Reconfigure" button floats and is draggable (`DraggableReconfigureButton.kt`), since without scroll there is no other way to move it off a stream |
+| Fixed | `grid.dynamicRows == false` | `PagedStreamGrid`: no scroll, `rows × columns` per page in a `HorizontalPager`; the "Reconfigure" button floats and is draggable (`DraggableReconfigureButton.kt`), since without scroll there is no other way to move it off a stream. It floats over the pages only, through `PagedStreamGrid`'s `overlay` slot, so it can never cover the page controls |
 
 **Notable UI mechanics:**
 
@@ -443,10 +492,32 @@ waiting for a tunnel with nothing to connect to would show a permanent spinner.
   scales all rows uniformly if they overflow — no cropping, no distortion, no scrolling.
 - **Drag state is View state.** `PagedDragState` holds touch coordinates and cell bounds and is
   explicitly documented as *not* belonging in the ViewModel. The pure reordering math it calls
-  (`reorderedTo`, `movedToPage`) lives in `logic/StreamPaging.kt` and is unit-tested.
+  (`reorderedTo`, `movedToPage`) lives in `logic/StreamPaging.kt` and is unit-tested, and so is the
+  class itself (`PagedDragStateTest`): the pointer loop in `PagedStreamGrid` only feeds it.
+- **Reordering has an accessibility path.** Dragging is out of reach for TalkBack, so each
+  `CameraGridItem` carries custom accessibility actions: "Move earlier" / "Move later" (absent at
+  the ends of the list), computed in `HomeScreen` with `reorderedTo` and persisted through the same
+  `onStreamsReordered` as a drop. In dynamic mode the card also offers "Reconfigure", because the
+  overscroll that reveals that button is a drag too. The instrumented tests reorder through these
+  actions, with no coordinates.
+- **Each player exposes its playback state.** `WebRtcVideoPlayer` derives a `StreamPlaybackState`:
+  `FAILED` when the URL is in `LocalFailedStreams`, `PLAYING` once the renderer reports its first
+  frame (`onFirstFrameRendered`, posted to the main thread), `CONNECTING` otherwise. The state is
+  View state, like the resolution, and resets with every new renderer. `CONNECTING` draws a spinner
+  over the card. The state is also published as the `StreamPlaybackStateKey` semantics property, so
+  a test can wait for real video without matching text or pixels. A stream that drops after its
+  first frame stays `PLAYING`, frozen on the last frame.
 - **Reorder persists on drop, per orientation.** `onStreamsReordered` calls
   `UpdateStreamOrderUseCase(orientation, newOrder)`, which rewrites only the current orientation's
   order.
+- **A failed stream shows on its card.** When `StreamConnectionRepository` reports a connection
+  error, `HomeViewModel` adds the URL to `failedStreams` (and still toasts). `HomeScreen` provides
+  the set as `LocalFailedStreams`, a local rather than a parameter because each player is movable
+  content created once per URL. The player of a failed stream draws `StreamErrorOverlay` over the
+  video: "Camera unavailable" and a "Try again" button. Retrying disconnects and connects the same
+  renderer again, the same path as leaving and coming back. Any new attempt, and any disconnect,
+  clears the failure. Only the negotiation is covered: a stream that drops after connecting reports
+  nothing.
 - **Back press is a two-stage exit.** The first press toasts "press back again"; a second press
   within a 2 s window emits `ExitApp` and the route calls `activity.finish()`.
 - `onCleared()` calls `streamConnectionRepository.closeAll()`.
@@ -464,6 +535,22 @@ key does not invalidate the other:
 |---|---|---|---|
 | User preferences | `user-preferences` | `UserPreferences` (VPN credentials) | `gdi-sys-storage` |
 | Stream preferences | `stream-preferences` | `StreamPreferences` (URLs, orders, grids) | `gdi-sys-stream-preferences` |
+
+The file names and aliases are released values, kept as constants next to each `by dataStore`
+delegate (`DataStore.kt`, `StreamPreferencesDataStore.kt`). `PreferencesSerializersTest` pins them,
+because renaming one orphans every installed user's settings.
+
+**Test seam.** The delegates are one per process, with a fixed file, so tests cannot reset them.
+What they are built from is exposed instead: `userPreferencesSerializer(crypto)` and
+`streamPreferencesSerializer(crypto)` (`PreferencesSerializers.kt`, `internal`). A test builds a
+store with `DataStoreFactory.create(serializer = userPreferencesSerializer(KeystoreCryptoEngine(alias)),
+produceFile = { file })`, on a file and alias of its own, with the production encoding and the real
+Keystore (`IsolatedPreferencesStoreTest`). The factories are in their own file on purpose: touching
+a delegate's file class initializes the delegate and its `KeystoreCryptoEngine`, which fails on the
+JVM. In instrumented tests, `TestStorageModule` (`androidTest/.../testing/`) replaces `StorageModule`
+with `@TestInstallIn`, building both stores this way on files under the cache directory and on
+`test-` aliases. Hilt creates a new `SingletonComponent` per test, so every `@HiltAndroidTest`
+starts with new, empty stores (`TestStorageModuleTest`).
 
 **Encryption.** `KeystoreCryptoEngine` (`Crypto.kt`) does AES/CBC/PKCS7 with a randomized IV
 prepended to the ciphertext, keyed from `AndroidKeyStore`.
@@ -505,11 +592,12 @@ transform underneath is what makes a partial write possible when one is needed.
 
 | Piece | Responsibility |
 |---|---|
-| `VpnRepository` / `VpnRepositoryImpl` | Wraps `GoBackend`; exposes `StateFlow<VpnTunnelState>`; provides the consent `Intent` via `VpnService.prepare()` |
+| `VpnRepository` / `VpnRepositoryImpl` | Wraps `GoBackend`; exposes `StateFlow<VpnTunnelState>`. The consent `Intent` belongs to `core/permission` (§6.4) |
 | `VpnLifecycleController` / `Impl` | Starts and stops `VpnLifecycleService` |
-| `VpnLifecycleService` | `START_STICKY` service whose only job is to drop the tunnel on `onTaskRemoved` / `onDestroy` |
+| `VpnLifecycleService` | `START_STICKY` service whose only job is to drop the tunnel on `onTaskRemoved` / `onDestroy`, through `VpnTeardown` |
+| `VpnTeardown` | The service's logic, kept out of it to be JVM-testable: disconnects at most once per service instance (`onTaskRemoved` stops the service, which then reaches `onDestroy`), retries after a failure, and logs instead of throwing, since the service scope has no exception handler |
 | `VpnConfig` | Domain model, plus `isValid()` |
-| Use cases (4) | `ConnectVpnUseCase`, `DisconnectVpnUseCase`, `ObserveVpnStateUseCase`, `RequestVpnPermissionUseCase` |
+| Use cases (3) | `ConnectVpnUseCase`, `DisconnectVpnUseCase`, `ObserveVpnStateUseCase` |
 
 `VpnConfig.toWireGuardConfig()` is a **free function extracted deliberately** from
 `VpnRepositoryImpl.connect()` so the `VpnConfig → com.wireguard.config.Config` mapping can be
@@ -540,9 +628,17 @@ for every screen opened after the first was destroyed. `WhepClientImpl` is likew
 `ViewModelComponent`-bound because it holds a mutable `peerConnection`. Only the stateless
 `WhepRemoteDataSource` and the `PeerConnectionFactory` / `EglBase` are singletons.
 
+**Every `PeerConnection` is disposed, not just closed, on every exit path.** `WhepClientImpl.close()`
+calls `PeerConnection.dispose()`, which closes the connection and also frees the native transceivers,
+receivers, tracks and the sink attached to the video track. `PeerConnection.close()` alone keeps all of
+that alive. The field is cleared before disposing, so a second `close()` does nothing: disposing twice
+is not allowed. `WhepConnectionManager` calls `close()` on a registered client in `disconnect` /
+`closeAll`, and on an unregistered client, one that failed or was cancelled while negotiating, in
+the `connect` coroutine itself.
+
 **`EglBase` reaches the UI as a `CompositionLocal`, not as a parameter.** `MainActivity` injects the
-singleton and provides `LocalEglBase` (`core/webrtc/EglBaseCompositionLocal.kt`) around the whole
-composition; `HomeRoute` reads it and passes it to `HomeScreen` explicitly. Threading it down as a
+singleton, and `CamerasAppContent` provides it as `LocalEglBase` (`core/webrtc/EglBaseCompositionLocal.kt`)
+around the whole composition; `HomeRoute` reads it and passes it to `HomeScreen` explicitly. Threading it down as a
 parameter instead would put a WebRTC SDK type in `NavigationRoot`'s signature, making the navigation
 graph depend on the video stack it only routes to. The local stops at the route on purpose —
 `HomeScreen` keeps an explicit `eglBase` parameter so it stays pure and previewable.
@@ -550,9 +646,15 @@ graph depend on the video stack it only routes to. The local stops at the route 
 ### 6.4 `core/permission`
 
 Thin repositories over two platform calls — `ContextCompat.checkSelfPermission(CAMERA)` and
-`VpnService.prepare(context) == null` — behind `CameraPermissionRepository` /
-`VpnPermissionRepository` and two use cases. The value is testability: `ConfigViewModel` can be
-unit-tested without a `Context`.
+`VpnService.prepare(context)` — behind `CameraPermissionRepository` / `VpnPermissionRepository` and
+three use cases (`HasCameraPermissionUseCase`, `HasVpnPermissionUseCase`,
+`RequestVpnPermissionUseCase`). The value is testability: `ConfigViewModel` can be unit-tested
+without a `Context`.
+
+`VpnPermissionRepository.getVpnConsent()` is the only place in the app that calls
+`VpnService.prepare`. It maps the result to `VpnConsent`: `null` becomes `Granted`, an `Intent`
+becomes `Required(intent)`. Both VPN use cases derive from it, so the "is it granted?" question and
+the "which dialog to open?" question can never disagree, in production or under a fake.
 
 ### 6.5 `core/network`
 
@@ -565,15 +667,33 @@ Because `network_security_config.xml` cannot reference a Kotlin constant, `Strea
 the XML and asserts the two stay in sync — turning what would be a runtime cleartext failure on
 device into a build failure.
 
-### 6.6 `core` (root) and `core/components`
+### 6.6 `core/coroutines` — injected dispatchers
+
+`IoDispatcher` and `DefaultDispatcher` are Hilt qualifiers for the `CoroutineDispatcher`s the app
+uses off the main thread, and `DispatchersModule` binds them to `Dispatchers.IO` and
+`Dispatchers.Default`. Nothing in `main` names those two directly. The VPN use cases,
+`VpnRepositoryImpl`, `VpnLifecycleService` and `WhepRemoteDataSourceImpl` inject them. The storage
+serializers take an `ioDispatcher` parameter instead, defaulting to `Dispatchers.IO`, because the
+production stores are `by dataStore` delegates built outside Hilt.
+
+The qualifiers sit at the package root, without `domain`/`data`, because the use cases in `domain`
+import them. `Dispatchers.Main` stays hardcoded: the instrumented tests already sync with the main
+looper, and the unit tests replace it with `MainDispatcherRule`. `WhepConnectionManager` runs on
+`Main.immediate` and hands the slow part to `WhepRemoteDataSource`.
+
+The seam exists for the tests. Unit tests pass a `TestDispatcher`, and instrumented tests swap in
+dispatchers that the Compose test rule waits for (§10).
+
+### 6.7 `core` (root) and `core/components`
 
 - `ToastEventViewModel` — abstract base owning the toast `Channel`; every ViewModel extends it.
 - `ToastMessage` — `@StringRes` interface implemented by per-feature enums.
 - `Constants.kt` — `DEBUG_TAG`.
-- `core/components/` — exactly three genuinely shared widgets: `ToastDisplayer`, `LoadingScreen` and
-  `LaunchActivityResultOnEvent`. Anything that is a screen of its own belongs in `feature/`.
+- `core/components/` — exactly three genuinely shared widgets: `ToastDisplayer` (with its
+  `ToastPresenter` seam, `LocalToastPresenter`), `LoadingScreen` and `LaunchActivityResultOnEvent`.
+  Anything that is a screen of its own belongs in `feature/`.
 
-### 6.7 `ui/theme`
+### 6.8 `ui/theme`
 
 `CamerasTheme` with Material 3 dynamic color on API 31+. Light and dark themes are both supported:
 `darkTheme` defaults to `isSystemInDarkTheme()`, so the app follows the system setting. The window
@@ -621,7 +741,8 @@ A concrete round trip — reordering a camera on Home:
 
 The sequence diagram above covers the full lifecycle in three phases:
 
-**1. Tunnel up.** `ON_RESUME` → `HomeViewModel.connectVpn()` → `GetVpnConfigUseCase` (reads and maps
+**1. Tunnel up.** `ON_RESUME` → `HomeViewModel.onResumed()` (only with at least one stream URL) →
+`GetVpnConfigUseCase` (reads and maps
 `UserPreferences` to `VpnConfig` via `toVpnConfigOrNull()`) → `ConnectVpnUseCase` →
 `backend.setState(tunnel, UP, config)` and `VpnLifecycleController.start()`. Tunnel state flows back
 through `ObserveVpnStateUseCase`, and `HomeUiState` stays `Loading` until `CONNECTED`. Any failure
@@ -633,7 +754,9 @@ toasts and emits `HomeNavigateUiEvent.ToConfig`.
 `RECV_ONLY` video transceiver, creates the offer, sets it locally, waits for ICE gathering to
 complete, and `POST`s the SDP to `{streamUrl}/whep`. The `201` response body is the answer SDP;
 `onAddTrack` then attaches the video track to the sink. The first frame triggers
-`onFrameResolutionChanged`, which feeds `StreamResolutionRegistry` and re-measures the grid.
+`onFrameResolutionChanged`, which feeds `StreamResolutionRegistry` and re-measures the grid. If the
+negotiation fails, the manager closes that client (it was never registered, so nothing else would)
+and reports the error, which turns into the card's error overlay (§5.5).
 
 Note the dependency direction: the ViewModel talks only to `StreamConnectionRepository`, never to
 `WhepConnectionManager` — this is what keeps the Konsist `feature → .data.` rule satisfied and makes
@@ -641,7 +764,8 @@ swapping WHEP for RTSP/HLS a change that stops at that boundary.
 
 **3. Tear down.** Leaving a cell or changing page disposes the player, which disconnects the stream
 *before* releasing the renderer (order matters: the stream must stop writing to the sink first).
-`ON_PAUSE` drops the tunnel and stops the lifecycle service. `onCleared()` calls `closeAll()`.
+`ON_PAUSE` (`onPaused()`) drops the tunnel and stops the lifecycle service, applied after any
+connect still running (§5.5). `onCleared()` calls `closeAll()`.
 
 ---
 
@@ -655,7 +779,7 @@ swapping WHEP for RTSP/HLS a change that stops at that boundary.
 | **WireGuard peer** (home gateway) | WireGuard over UDP/IPv6, endpoint from `pEndpoint` | `VpnRepositoryImpl` (`GoBackend`) |
 | **QR-code provisioning payload** | JSON blob scanned from screen/paper, carrying `[Interface]`/`[Peer]` fields | `ParseUserPreferencesFromQrCodeUseCase` |
 | **Android Keystore** | Hardware-backed key storage | `KeystoreCryptoEngine` |
-| **Device camera** | CameraX + ML Kit (on-device, no network) | `QrCodeScreen`, `QrCodeAnalyzer` |
+| **Device camera** | CameraX + ML Kit (on-device, no network) | `CameraXQrCodeScanner`, `QrCodeAnalyzer` |
 
 **Network reachability is tightly constrained.** All stream traffic is cleartext HTTP to a
 ULA IPv6 literal, reachable only through the tunnel. `network_security_config.xml` whitelists *the*
@@ -731,7 +855,11 @@ Declared in `gradle/libs.versions.toml` and consumed via the version catalog.
 | `org.jetbrains.kotlinx:kotlinx-coroutines-test` | 1.9.0 | `MainDispatcherRule`, virtual time |
 | `com.squareup.okhttp3:mockwebserver` | 4.12.0 | `WhepRemoteDataSourceImplTest` |
 | `com.lemonappdev:konsist` | 0.17.3 | `LayerDependencyTest` |
-| `androidx.compose.ui:ui-test-junit4`, `androidx.test.ext:junit`, `espresso-core` | — | Wired for instrumented tests |
+| `androidx.compose.ui:ui-test-junit4`, `androidx.test.ext:junit`, `espresso-core` | — | Instrumented screen tests (§10) |
+| `androidx.test:runner` | 1.7.0 | Base of `HiltTestRunner` |
+| `com.google.dagger:hilt-android-testing` (+ `kspAndroidTest` Hilt compiler) | 2.59.2 | `HiltTestApplication`, `@HiltAndroidTest`, `@TestInstallIn` |
+| `androidx.test.espresso:espresso-intents` | 3.7.0 | Stubbing the VPN consent `Intent` in flow tests |
+| `androidx.test:orchestrator`, `androidx.test.services:test-services` (`androidTestUtil`) | 1.6.1, 1.6.0 | One process per test, with `clearPackageData` |
 
 ### 8.3 Non-Gradle external asset
 
@@ -747,7 +875,7 @@ values.
 
 Everything a strict Clean Architecture + MVVM reading of this tree used to flag has been closed,
 except the two entries below. Both are recorded on purpose: the first is a deliberate exception you
-should not "fix", the second is a real gap that is simply not closed yet.
+should not "fix", the second is a real gap that is only partly closed.
 
 ### 9.1 `core/webrtc` contracts sit at the package root — deliberate
 
@@ -762,14 +890,24 @@ actually protects that boundary is the separate `feature → .data.` rule — th
 depends on the contracts and never on `core/webrtc/data`. This is written on `domainFiles()` in
 `LayerDependencyTest` as well, which is where someone extending the rules will be looking.
 
-### 9.2 Instrumented tests are still the generated stub — open
+### 9.2 Instrumented tests cover the screens, not the flows — open
 
-`src/androidTest/` holds only the generated `ExampleInstrumentedTest`. The Compose UI Test
-dependencies are wired but unused. That no longer contradicts anything — the JaCoCo KDoc says
-Compose UI is excluded *by decision* rather than claiming it is covered elsewhere — but the
-highest-value tests to add, if someone picks this up, are `ConfigScreen` (the four
-`ConfigButtonState` renderings and the navigation gate), `StreamURLsScreen` (add/remove/reset and
-the per-section dirty flags) and `EmptyStreamsScreen`.
+`ConfigScreen`, `StreamURLsScreen` and `EmptyStreamsScreen` now have Compose UI tests
+([§10](#10-testing-and-quality-gates)). They render each screen alone, with a hand-written state, so
+they prove what a screen shows and which callback it fires, and nothing past that. Still uncovered
+on a device:
+
+- `HomeScreen` and the video grid, which need `EglBase` and WebRTC.
+- Most flows through the real composition root (`CamerasAppContent`): navigation, ViewModels, use
+  cases and the encrypted DataStore together, with Hilt test doubles replacing only what leaves the
+  process (WireGuard tunnel, WHEP/WebRTC, the VPN consent). The first run, the QR step, the
+  Config gate, the full onboarding, returning users, URL validation, Home's lifecycle and the
+  tunnel and stream failures are covered (`flow/`). Orientation, reconfiguring and reordering are
+  not yet.
+- The system dialogs (VPN consent, camera permission), which only UI Automator can drive.
+
+The real world is covered by one smoke, `RealEnvironmentSmokeTest`, run by hand: the real QR, the
+real tunnel and a stream playing on the debug build. Running it on a minified build is still open.
 
 The gap that used to sit next to this one — release builds not being minified — is closed:
 `isMinifyEnabled = true` and `proguard-rules.pro` carries the keep rules, described in
@@ -781,16 +919,16 @@ runtime.
 
 ## 10. Testing and quality gates
 
-**44 test files** under `app/src/test/`, mirroring the production package structure. Coverage is
+**46 test files** under `app/src/test/`, mirroring the production package structure. Coverage is
 concentrated where the project decided it belongs: ViewModels, use cases, repository
 implementations, pure logic and serialization.
 
 | Area | Representative tests |
 |---|---|
 | ViewModels (all 5) | `HomeViewModelTest`, `ConfigViewModelTest`, `StreamURLsViewModelTest`, `InitViewModelTest`, `QrCodeViewModelTest` |
-| Pure logic | `StreamPagingTest`, `FixedGridLayoutTest`, `GridPreferencesValidationTest`, `StreamUrlValidationTest` |
+| Pure logic | `StreamPagingTest`, `PagedDragStateTest`, `FixedGridLayoutTest`, `GridPreferencesValidationTest`, `StreamUrlValidationTest` |
 | Storage | `EncryptedPreferencesSerializerTest`, `StreamPreferencesSerializationTest`, `DataStoreManagerTest`, repository and all 8 use-case tests |
-| VPN | `VpnRepositoryImplTest`, `VpnConfigTest`, `VpnLifecycleControllerImplTest`, 4 use-case tests |
+| VPN | `VpnRepositoryImplTest`, `VpnConfigTest`, `VpnLifecycleControllerImplTest`, `VpnTeardownTest`, 4 use-case tests |
 | WebRTC | `WhepConnectionManagerTest`, `WhepRemoteDataSourceImplTest` (MockWebServer) |
 | Architecture | `LayerDependencyTest` (Konsist) |
 | Config drift | `StreamHostTest` (Kotlin constant vs. XML), `JacocoExclusionsTest` (coverage patterns vs. compiled classes) |
@@ -814,6 +952,224 @@ Useful commands:
 
 Note that `LayerDependencyTest` and `StreamHostTest` are ordinary unit tests, so a layering
 violation or a host/XML mismatch fails `testDebugUnitTest` like any other regression.
+
+**Instrumented screen tests.** 104 tests under `app/src/androidTest/` (51 Compose UI tests, thirty-seven flow tests, twelve
+tests of the Hilt test fakes and flow helpers, two storage tests, one service test, one dispatcher test and the default example), with packages mirroring `main`:
+
+| Test | Covers |
+|---|---|
+| `ConfigScreenTest` (10) | Each step's state as `stateDescription`, the callback each step and the Home button fire, the Home button label ("Navigate to" vs. "Back to") |
+| `StreamURLsScreenTest` (18) | Loading, empty list, row order and removal, the add form, the four confirmation dialogs, the grid fields per orientation, when "Save grid" is enabled |
+| `EmptyStreamsScreenTest` (2) | The message and the "Reconfigure" shortcut |
+| `ToastDisplayerTest` (1) | Toast events reach the `ToastPresenter` provided through `LocalToastPresenter`, in order |
+| `MainActivitySmokeTest` (1) | Scenario #0: the real `MainActivity`, with its injected `EglBase`, opens the four Config steps on a first run |
+| `FirstRunFlowTest` (2) | Scenario #1, on `FlowTest`: the first run lands on `[Loading, Config]` (read with `backStackRoutes()` after idle, with no `waitUntil`), every step is `Ready` and the button reads "Navigate to Home" |
+| `QrCodeFlowTest` (5) | Scenario #3: a valid QR turns the step `Done`, stores the credentials and the app stays on Config; each invalid fixture turns it `Error`, stores nothing and stays on Config; an invalid QR after a valid one wipes the stored credentials (current behavior, documented) |
+| `ConfigGateFlowTest` (5) | Scenario #4: with requirements missing, the Home button and the system back keep the app on `[Loading, Config]` and the activity alive; with everything complete but no Home behind, back is still consumed; a refused consent dialog (stubbed) leaves the VPN step `Ready`; a consent already granted starts the step `Done` and its click never launches the consent Intent |
+| `OnboardingFlowTest` (1) | Scenario #2: camera (granted after launch, so the click takes the request path), QR, VPN consent (dialog stubbed to accept) and the default URLs saved; Home is then the only destination, shows a card for each default URL, connected the tunnel and started its lifecycle once, and connected every URL |
+| `ReturningUserFlowTest` (3) | Scenario #5: stored credentials and URLs open `[Home]` with their cards, never passing through Config; credentials without URLs open the empty Home and never connect the tunnel; its shortcut opens Config over Home, with "Back to Home" |
+| `StreamUrlValidationFlowTest` (5) | Scenario #6, from Config: an invalid port, an invalid stream name or a duplicate URL keeps the add form open and the list unchanged; a valid URL is persisted on save and turns the Config step `Done`; leaving with an unsaved URL asks to discard, and discarding persists nothing |
+| `GridOrientationFlowTest` (3) | Scenario #7, with a one-column portrait grid and a three-column landscape grid in the reverse order: portrait shows one column; rotating to landscape (`requestedOrientation`, a configuration change the activity handles, not a recreation) shows three columns in the landscape order, and rotating back restores the portrait layout; a portrait grid saved on the URLs screen (reached through a card's "Reconfigure" action) is persisted and laid out on Home |
+| `VpnLifecycleFlowTest` (2) | Scenario #8: moving the activity to `STARTED` drops the tunnel, stops the lifecycle service and releases every stream (nothing on screen is asserted while paused: the Compose test rule only finds resumed activities); back to `RESUMED`, the tunnel, the service and the streams come back |
+| `VpnFailureFlowTest` (2) | Scenario #9: a tunnel that fails to connect opens Config over Home (`[Home, Config]`, "Back to Home") without starting the lifecycle service; going back fails again and leaves the same stack |
+| `ReconfigureFlowTest` (4) | Scenario #11: the fixed grid's floating "Reconfigure" and, in a dynamic grid that cannot scroll, the button revealed by swiping past the end both open Config over Home, with "Back to Home"; "Back to Home" and the system back both return to `[Home]`, never stacking a second Home; the round trip drops the tunnel, the lifecycle service and the streams (opening Config pauses Home's entry) and brings them back |
+| `ReorderStreamsFlowTest` (2) | Scenario #12, in a dynamic two-column portrait grid: dragging the first card's handle onto the second swaps them on screen and persists the new portrait order, with the URL set untouched; the landscape order stays as seeded, in storage and on screen after rotating |
+| `StreamFailureFlowTest` (2) | Scenario #10: a failing stream's player is `FAILED` (its playback-state semantics) while the other stays connected and `CONNECTING` (the fake never delivers a frame); once the stream recovers, its card's "Try again" connects it |
+| `FlowTestSupportTest` (5) | The flow helpers: only the first QR fixture holds valid credentials; `Seed` persists credentials, URLs and grids; seeded credentials and streams open `Home`; `injectQr` reaches the Config and saves the credentials; the camera permission starts revoked and `DeviceState` grants it |
+| `TestStorageModuleTest` (1) | In a `@HiltAndroidTest`, the production repositories start empty and write to the `TestStorageModule` files, never to the production ones |
+| `IsolatedPreferencesStoreTest` (1) | A store built from `userPreferencesSerializer` on its own file and Keystore alias starts empty, encrypts and leaves the production file untouched |
+| `VpnLifecycleServiceTest` (1) | The real `VpnLifecycleService`, injected by Hilt over `FakeVpnRepository`: stopping it drops the tunnel. `onTaskRemoved` has no test API and stays a manual check |
+| `IdlingDispatcherTest` (2) | `IdlingDispatcher` is busy while its work runs and reports the transition to idle; the Compose test rule waits for main → `TestDispatchers.default` → `TestDispatchers.io` → main with no `waitUntil` |
+| `WebRtcVideoPlayerTest` (4) | The real player over a recording `WebRtcConnection`: `CONNECTING` with a spinner before any frame; real I420 frames fed into the sink turn it `PLAYING`; a stream in `LocalFailedStreams` is `FAILED` and shows `StreamErrorOverlay`; "Try again" disconnects and connects the same renderer again |
+| `HomeScreenTest` (11) | The real `HomeScreen` with fake callbacks: the move accessibility actions reorder one place and are absent at the ends; "Reconfigure" is an action in dynamic mode only; one real drag per grid mode reorders on drop; overscrolling the dynamic grid reveals "Reconfigure"; the fixed grid always shows it; the page buttons move between pages; "Reconfigure" never covers the page buttons; a focused stream replaces the grid |
+| `RealEnvironmentSmokeTest` (1, manual) | Real QR → real tunnel → a `PLAYING` card, on the production app and a physical phone. Excluded from the 104; run with `-PrealEnvironment` |
+| `TestLocaleTest` (1) | What `setThemedContent` renders and what `string()` resolves agree, and follow the `testLocale` argument when it is given |
+| `QrCodeRouteTest` (2) | With a `FakeQrCodeScanner`, a scanned payload reaches `onCodeScanned`; a camera error toasts and navigates back |
+| `FakeVpnPermissionRepositoryTest` (3) | `TestPermissionModule` puts the fake in the graph; a stubbed consent dialog launched through the `ActivityResultRegistry` returns `RESULT_OK` and grants the consent, or `RESULT_CANCELED` and keeps it required |
+| `FakeStreamConnectionsTest` (4) | The stream fake records `connect`/`disconnect` in order; `closeAll` closes only its own instance's URLs; a failing URL stays closed and reports on the main thread; a retry after the failure is cleared connects |
+
+Most of them test screens in isolation: `createComposeRule` renders a `*Screen` with a hand-written
+`uiState` inside `setThemedContent` (`testing/ComposeTestSupport.kt`), and the test asserts what it
+shows and which callback each interaction fires, with no Hilt, navigation or fakes.
+
+**How the suite runs.** Three settings in `app/build.gradle.kts` apply to every instrumented test:
+
+- **`HiltTestRunner`** (`androidTest/.../HiltTestRunner.kt`) starts the app as `HiltTestApplication`.
+  A test that is not `@HiltAndroidTest` and only uses the `ComponentActivity` of `ui-test-manifest`
+  does not notice. A test that opens an `@AndroidEntryPoint` activity (`HiltTestActivity`) must be
+  `@HiltAndroidTest`, with `HiltAndroidRule` as rule `order = 0` and `hiltRule.inject()` in `@Before`.
+  Without it, Hilt fails because the test component was never created.
+- **The orchestrator with `clearPackageData`** runs each test in a new process and runs `pm clear`
+  on the app first. Every test therefore starts with empty DataStores and the camera permission
+  revoked. `pm clear` does **not** reset app ops: `ACTIVATE_VPN` keeps whatever it was set to
+  (checked on the `Pixel_8a`). The cost is time: the suite went from 49 s to 128 s for the same 36
+  tests. With the 104 tests of today it takes about 6 min 20 s on the `Pixel_8a` emulator (6 min
+  37 s in pt-BR).
+- **`animationsDisabled = true`** turns animations off for the instrumentation.
+- **`TestStorageModule`** replaces `StorageModule` in every `@HiltAndroidTest`, so storage is isolated
+  per test by Hilt even without the orchestrator. Tests that need to look at the files inject
+  `TestStoreFiles`.
+- **`TestDispatchersModule`** replaces `DispatchersModule` in every `@HiltAndroidTest` with the
+  `TestDispatchers` (`testing/IdlingDispatcher.kt`). Each one wraps the real dispatcher and is an
+  Espresso `IdlingResource`, busy while any block it dispatched is queued or running.
+  `HiltTestRunner.onStart` registers both with the `IdlingRegistry`, once per process. The Compose
+  test rule syncs through Espresso, so `waitForIdle`, `runOnIdle` and every assertion wait for the
+  VPN use cases and the DataStore reads and writes (`TestStorageModule` runs the stores and their
+  serializers on the injected IO dispatcher) as they wait for the main thread. They count
+  dispatched blocks, not coroutines. Work that suspends outside them is not waited for: a `delay`,
+  a native WebRTC callback, or a dispatcher the test did not wrap (the `IsolatedPreferencesStoreTest`
+  store, for example). Those cases still need `waitUntil`.
+- **`@RealEnvironment` is excluded** from every run through the `notAnnotation` runner argument.
+  `RealEnvironmentSmokeTest` (`e2e/`, with its own README) needs the real QR, tunnel and Pi. It
+  runs only by hand with `-PrealEnvironment`, which makes three changes:
+  - it swaps the runner for the plain `AndroidJUnitRunner`, so the test runs on the production
+    `CamerasApp`. The switch lives in Gradle because a runner picks the `Application` before it
+    receives the instrumentation arguments;
+  - it runs only that annotation;
+  - it wires `pushRealQrPayload` / `removeRealQrPayload` around `connectedDebugAndroidTest`. They
+    move the test peer's QR JSON (`CAMERAS_E2E_QR_FILE`) to `/data/local/tmp` and back off the
+    device, so the private key never appears on a command line.
+
+  The test parses that JSON with `ParseUserPreferencesFromQrCodeUseCase` and saves it through the
+  production use cases. It saves the stream from `CAMERAS_E2E_STREAM_PATH`, grants the VPN consent
+  through `appops`, opens `MainActivity` and waits for a `PLAYING` card. On a timeout it names the
+  step that stopped it: Config, the tunnel, WHEP or the first frame.
+- **`TestVpnModule`** replaces `VpnModule` in every `@HiltAndroidTest` with `FakeVpnRepository` and
+  `FakeVpnLifecycleController` (`testing/FakeVpnRepository.kt`), so no test brings up WireGuard.
+  Both are `@Singleton`: tests inject the fakes directly to drive the tunnel state and read the
+  atomic call counters.
+- **`TestPermissionModule`** replaces `PermissionModule` with the real camera repository and
+  `FakeVpnPermissionRepository`. The camera permission stays real because `UiAutomation` can grant
+  it without killing the process. The VPN consent is faked because its app op survives `pm clear`.
+  While `granted` is false, the fake reports `VpnConsent.Required` with an Intent that no app
+  resolves (`CONSENT_ACTION`). Tests answer it with `stubConsentDialog(accept)`, which needs
+  Espresso-Intents to be recording (`IntentsRule`). Accepting also sets `granted`, so later reads
+  agree, as they do after the system dialog.
+- **`TestStreamConnectionModule`** replaces `WhepConnectionModule` (in `ViewModelComponent`) with
+  `FakeStreamConnectionRepository` (`testing/FakeStreamConnections.kt`). Like the real one, it is
+  unscoped: one instance per ViewModel, and `closeAll` closes only that ViewModel's URLs. Every
+  instance reports to the `@Singleton` `FakeStreamConnections`, which tests inject. It tells which
+  URLs are `connected` and the ordered `events` (`Connect`, `Disconnect`, `CloseAll`). URLs in its
+  `failingUrls` stay closed, and their `onError` is posted to the main thread, as the real
+  handshake reports it. Since nothing else asks for `WhepClient`, the `PeerConnectionFactory` is
+  never created. The real `EglBase` stays for the renderers.
+- The QR fixtures in `qr-code-gen/examples/` are assets of the test APK, read through
+  `InstrumentationRegistry.getInstrumentation().context.assets` by the `QrFixture` enum
+  (`testing/QrFixtures.kt`): `VALID`, `INCOMPLETE`, `WRONG_TYPE` and `UNKNOWN_SHAPE`.
+- **`FlowTest`** (`testing/FlowTest.kt`) is the base class of the flow tests. Subclasses are
+  annotated `@HiltAndroidTest`. It holds the rules (Hilt, `IntentsRule`, Compose on
+  `HiltTestActivity`) and injects `EglBase` and the fakes. A test prepares the state first, then
+  calls `launchApp()`. That renders `CamerasAppContent` inside `InTestLocale` with a NavController
+  the test owns. The activity starts empty, so the ViewModels are created only there and read what
+  was seeded. To prepare the state:
+  - `seed.credentials(fixture)` and `seed.streams(urls, portraitGrid, landscapeGrid, portraitOrder,
+    landscapeOrder)` (`Seed`) write through the production use cases;
+  - `vpnConsent`, `vpn` and `streams` drive the fakes;
+  - `DeviceState.grantCameraPermission()` grants the camera through `UiAutomation`.
+
+  To act on the app and read it:
+  - `injectQr(json)` hands a payload to the Config entry's `savedStateHandle`, as the scanner does;
+  - `backStackRoutes()` reads the back stack as `NavigationRoute` objects after idle;
+  - `storedUserPreferences()` and `storedStreamPreferences()` read what is persisted.
+
+  The scenarios live in `flow/`, one class each, since they cross features. Robots in
+  `testing/robot/` keep the tags in one place. `config { assertStep(ConfigStep.QR_CODE, Done) }`
+  (`ConfigRobot`) reads a step's state from its `stateDescription` through `hasStateDescription`
+  (`ComposeTestSupport`), which the screen tests use too. `StreamURLsRobot` scrolls the lazy list
+  to its buttons before tapping them, and `HomeRobot.assertShowsStreams` scrolls the lazy grid to
+  each card. `FlowTest.pressBack()` goes through the activity's `OnBackPressedDispatcher`, so a
+  back nothing consumes finishes the activity, as on the device. `FlowTest.moveActivityTo(state)`
+  pauses and resumes the activity through its `ActivityScenario`. `FlowTest.rotateTo(orientation)`
+  sets `requestedOrientation` and waits until the composition has applied the new orientation: the
+  only poll in the flows, because the rotation comes from the system, outside Compose's idle
+  tracking.
+  `HomeRobot.assertShowsStreams` scrolls only a grid that scrolls: the fixed grid pages instead.
+  `HomeRobot.reconfigureByOverscroll()` swipes up three times, past the one-screen threshold.
+  `HomeRobot.dragOnto(from, onto)` drags a handle in ten small steps, as the screen test does.
+  `HomeRobot.assertGrid(columns, order)` reads the layout from the cards' bounds: their reading
+  order, and how many share the first row. The Home scenarios that need every
+  card connected at once seed a two-column grid, because the lazy grid composes only the visible
+  cards. Each robot gets an action only when a
+  scenario needs it.
+
+Conventions:
+
+- Nodes are found by test tag. The tags are `const val`s in one object per feature, in `main` next
+  to the components (`ConfigTestTags`, `StreamURLsTestTags`, `HomeTestTags`). Their names match the
+  `**/*Test*.*` coverage filter, so they stay out of JaCoCo. Per-stream nodes take functions instead
+  (`HomeTestTags.streamCard(url)`, `dragHandle(url)`, `streamPlayer(url)`). `HomeTestTags` covers
+  every node the flows need: loading, grid, focused stream, both "Reconfigure" buttons, the page
+  buttons, and the stream overlays.
+- State is read from semantics, not from icons or colors: `ConfigButton` exposes its
+  `ConfigButtonState` as `stateDescription`, which is also what TalkBack announces, and each player
+  exposes its `StreamPlaybackState` through `StreamPlaybackStateKey`.
+- Reordering goes through the accessibility actions; real drags are kept to one per grid mode.
+- The camera is replaced by `FakeQrCodeScanner` (`testing/FakeQrCodeScanner.kt`), provided through
+  `LocalQrCodeScanner`.
+- Toasts are asserted by `@StringRes` id: wrap the content in
+  `CompositionLocalProvider(LocalToastPresenter provides RecordingToastPresenter())`
+  (`testing/RecordingToastPresenter.kt`) and wait for the id in `shown`.
+- Text is asserted only when the test is about the text, and always resolved with
+  `string(R.string.x)`, never written as a literal (see the locale run below). Accessibility
+  action labels are resolved the same way.
+- Test names are camelCase (`homeButtonRequestsNavigation`). Backtick names with spaces, as in the
+  unit tests, cannot be compiled into the test APK while `minSdk` is below 30.
+
+These tests are not in JaCoCo, which measures unit tests only, and no CI job runs them yet
+(§10.1). They need a running emulator or a device:
+
+```bash
+./gradlew :app:connectedDebugAndroidTest       # the whole instrumented suite
+./gradlew :app:connectedDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=com.gdisys.cameras.feature.config.components.ConfigScreenTest
+# report → app/build/reports/androidTests/connected/debug/index.html
+```
+
+The suite was validated on an AVD `Pixel_8a` running API 37 with the AOSP image
+`system-images;android-37.0;default;arm64-v8a` (4 GB RAM). Three things matter on that setup:
+`platform-tools` 37 or newer (an older `adb` leaves the API 37 emulator `offline`), a cold boot
+(`emulator -avd Pixel_8a -no-snapshot-load`, since restoring the snapshot had the same effect), and
+animations turned off, which keeps dialogs and ripples from making tests flaky:
+
+```bash
+for k in window_animation_scale transition_animation_scale animator_duration_scale; do
+  adb shell settings put global $k 0
+done
+```
+
+**Run it in both languages.** The screens are translated (`values-en`, `values-pt-rBR`), so the
+suite must pass in both. A test that passes only in English has hardcoded a text somewhere.
+
+The quick way is the `testLocale` instrumentation argument. It needs no root, so it also works on a
+physical device:
+
+```bash
+./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.testLocale=pt-BR
+```
+
+`setThemedContent` (`testing/ComposeTestSupport.kt`) wraps the content in `InTestLocale`, which
+provides a `LocalContext` whose resources use that locale. In Compose 1.10, `stringResource` reads
+`LocalResources`, which derives from `LocalContext`. The wrapper is a `ContextWrapper` over the
+activity, so code that needs the activity reads `LocalActivity` (as `rememberSystemBarsController`
+does) and keeps working. `string()` resolves in the same locale, and `TestLocaleTest` checks that the
+two agree. The wrapper is rebuilt from the current `LocalConfiguration`, so a rotation the activity
+handles itself still reaches the content: built once, it froze the orientation, and the pt-BR run
+caught it in the rotation flows. The argument reaches only what is composed through
+`setThemedContent` or `InTestLocale`. A test that drives a real activity with text on screen should
+wrap its content in `InTestLocale`, as `FlowTest.launchApp()` does.
+
+To run the whole app in another language, change the device locale instead. From the shell that
+needs `adb root`, which is why the emulator image is the AOSP `default` one: it is a `userdebug`
+build, while the Play Store images are `user` builds and refuse root. The framework restart takes
+about 15 s:
+
+```bash
+adb root
+adb shell "setprop persist.sys.locale pt-BR; stop; start"
+adb shell 'while [ "$(getprop sys.boot_completed)" != "1" ]; do sleep 2; done'
+./gradlew :app:connectedDebugAndroidTest
+adb shell "setprop persist.sys.locale en-US; stop; start"   # back to the default
+```
 
 ### 10.1 Continuous integration
 
@@ -928,8 +1284,8 @@ id, which is why the tagged build is attached to a Release instead: a stable URL
 tag exists. The mapping file rides along with the APK it belongs to, since a crash report from the
 field cannot be de-obfuscated without the exact file from the build that produced that binary.
 
-Two things neither pipeline does: there is no instrumented-test job, because `src/androidTest/`
-still holds only the generated stub (§9.2), and there is no separate lint job, because
+Two things neither pipeline does: there is no instrumented-test job yet, so the screen tests
+(§10) only run on a local emulator, and there is no separate lint job, because
 `assembleRelease` already runs `lintVitalRelease`. Adding either one is a matter of adding a job,
 not of reworking a workflow.
 

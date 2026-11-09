@@ -1,5 +1,6 @@
 package com.gdisys.cameras.core.permission.domain.usecase
 
+import com.gdisys.cameras.core.permission.domain.VpnConsent
 import com.gdisys.cameras.core.permission.domain.VpnPermissionRepository
 import io.mockk.every
 import io.mockk.mockk
@@ -19,15 +20,15 @@ class HasVpnPermissionUseCaseTest {
   }
 
   @Test
-  fun `returns true when repository grants permission`() {
-    every { vpnPermissionRepository.hasVpnPermission() } returns true
+  fun `returns true when consent is granted`() {
+    every { vpnPermissionRepository.getVpnConsent() } returns VpnConsent.Granted
 
     assertTrue(useCase())
   }
 
   @Test
-  fun `returns false when repository denies permission`() {
-    every { vpnPermissionRepository.hasVpnPermission() } returns false
+  fun `returns false when consent is still required`() {
+    every { vpnPermissionRepository.getVpnConsent() } returns VpnConsent.Required(mockk())
 
     assertFalse(useCase())
   }
