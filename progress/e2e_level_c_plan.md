@@ -92,17 +92,17 @@ QR.
 
 ## 6. Critérios de pronto
 
-- [ ] C.1 e C.2 verdes no `Pixel_8a`, em `en` e em `pt-BR`.
-- [ ] Os diálogos passam 3 vezes seguidas.
+- [x] C.1 e C.2 verdes no `Pixel_8a`, em `en` e em `pt-BR`.
+- [x] Os diálogos passam 3 vezes seguidas.
 - [x] O teste de decodificação falha com os PNGs antigos e passa com os regerados.
 - [ ] A C.3 decidida e, se for a opção A, rodada no celular.
-- [ ] Documentação atualizada.
+- [x] Documentação atualizada (C.1 e C.2; a C.3 atualiza a sua parte).
 
 ---
 
 ## 7. Resultados
 
-**C.1 e C.2 — feitas.** Na segunda execução das 3 classes, os 6 testes passaram. Faltam os critérios do §6 (suíte inteira em `en` e `pt-BR`, e os diálogos 3 vezes seguidas).
+**C.1 e C.2 — feitas.** Na segunda execução das 3 classes, os 6 testes passaram.
 
 - C.2: `main.py --examples` (o modo padrão virou `generate_from_vpn_json()`, sem mudar o que faz),
   `QrFixture.readImage()` e `QrCodeImageDecodingTest`, um teste só que lista as fixtures que não
@@ -134,3 +134,7 @@ QR.
 **Segunda execução das 3 classes:** os 6 testes passaram. O id do segundo "Don't allow" era mesmo
 `permission_deny_and_dont_ask_again_button`, e o `pm clear` entre testes zerou a negação definitiva
 da câmera: os três testes passaram em sequência, sem `clear-permission-flags`.
+
+**Critérios da C.1 e da C.2:** a suíte inteira passou em `en` (110 testes, 7 min 21 s) e em `pt-BR`
+(110 testes, 7 min 22 s), e o pacote `systemdialog` passou 3 vezes seguidas. Os fluxos do nível B
+seguem verdes com os toasts gravados.
