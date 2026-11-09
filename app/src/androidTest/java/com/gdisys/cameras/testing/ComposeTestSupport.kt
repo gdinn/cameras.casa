@@ -36,7 +36,9 @@ fun ComposeContentTestRule.setThemedContent(content: @Composable () -> Unit) =
 /**
  * Renders [content] in [testLocale]. The Compose resources (`stringResource`) come from
  * `LocalContext`, so this swaps it for one whose resources use the test locale. The wrapper keeps
- * the activity as its base, so whatever needs the real context still reaches it.
+ * the activity as its base, so whatever needs the real context still reaches it. It is rebuilt
+ * from the current `LocalConfiguration`, so a configuration change the activity handles itself (a
+ * rotation) still reaches the content.
  */
 @Composable
 fun InTestLocale(content: @Composable () -> Unit) {
@@ -45,7 +47,8 @@ fun InTestLocale(content: @Composable () -> Unit) {
     content()
   } else {
     val context = LocalContext.current
-    val localized = remember(context, locale) { LocalizedContext(context, locale) }
+    val configuration = LocalConfiguration.current
+    val localized = remember(context, configuration, locale) { LocalizedContext(context, configuration, locale) }
     CompositionLocalProvider(
       LocalContext provides localized,
       LocalConfiguration provides localized.resources.configuration,
@@ -58,20 +61,20 @@ fun InTestLocale(content: @Composable () -> Unit) {
 fun string(@StringRes resId: Int): String {
   val context = InstrumentationRegistry.getInstrumentation().targetContext
   val locale = testLocale ?: return context.getString(resId)
-  return context.localizedResources(locale).getString(resId)
+  return context.localizedResources(context.resources.configuration, locale).getString(resId)
 }
 
 /** Matches a node whose `stateDescription` is [resId], resolved like [string]. */
 fun hasStateDescription(@StringRes resId: Int): SemanticsMatcher =
   SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, string(resId))
 
-private class LocalizedContext(base: Context, locale: Locale) : ContextWrapper(base) {
-  private val localizedResources = base.localizedResources(locale)
+private class LocalizedContext(base: Context, configuration: Configuration, locale: Locale) : ContextWrapper(base) {
+  private val localizedResources = base.localizedResources(configuration, locale)
 
   override fun getResources(): Resources = localizedResources
 }
 
-private fun Context.localizedResources(locale: Locale): Resources {
-  val configuration = Configuration(resources.configuration).apply { setLocales(LocaleList(locale)) }
-  return createConfigurationContext(configuration).resources
+private fun Context.localizedResources(configuration: Configuration, locale: Locale): Resources {
+  val localized = Configuration(configuration).apply { setLocales(LocaleList(locale)) }
+  return createConfigurationContext(localized).resources
 }

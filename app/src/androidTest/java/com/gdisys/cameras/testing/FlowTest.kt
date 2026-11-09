@@ -2,6 +2,8 @@ package com.gdisys.cameras.testing
 
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.Lifecycle
 import androidx.navigation.NavDestination.Companion.hasRoute
@@ -73,6 +75,10 @@ abstract class FlowTest {
   lateinit var navController: NavHostController
     private set
 
+  /** The orientation of the last applied composition, which is what the app has laid out. */
+  @Volatile
+  private var composedOrientation = Configuration.ORIENTATION_UNDEFINED
+
   @Before
   fun injectDependencies() {
     hiltRule.inject()
@@ -82,6 +88,8 @@ abstract class FlowTest {
   fun launchApp() {
     composeRule.setContent {
       InTestLocale {
+        val orientation = LocalConfiguration.current.orientation
+        SideEffect { composedOrientation = orientation }
         navController = rememberNavController()
         CamerasAppContent(eglBase = eglBase, navController = navController)
       }
@@ -130,9 +138,12 @@ abstract class FlowTest {
 
   /**
    * Turns the screen to [orientation] the way an app can, through `requestedOrientation`, and waits
-   * until the activity sees it. The activity handles the change itself (`configChanges`), so it is
-   * not recreated: the content stays and recomposes with the new configuration. The wait is the one
-   * place that polls, because the rotation comes from the system, outside Compose's idle tracking.
+   * until the composition has applied it. The activity handles the change itself (`configChanges`),
+   * so it is not recreated: the content stays and recomposes with the new configuration. The wait
+   * is the one place that polls, because the rotation comes from the system, outside Compose's idle
+   * tracking. It waits for the orientation the composition applied, which is what the app lays
+   * out, rather than for the activity's resources: if the content does not follow the rotation, the
+   * wait times out here instead of a grid assertion failing later.
    */
   fun rotateTo(orientation: StreamOrientation) {
     val (requested, expected) = when (orientation) {
@@ -140,9 +151,7 @@ abstract class FlowTest {
       StreamOrientation.LANDSCAPE -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE to Configuration.ORIENTATION_LANDSCAPE
     }
     composeRule.runOnUiThread { composeRule.activity.requestedOrientation = requested }
-    composeRule.waitUntil(ROTATION_TIMEOUT_MS) {
-      composeRule.activity.resources.configuration.orientation == expected
-    }
+    composeRule.waitUntil(ROTATION_TIMEOUT_MS) { composedOrientation == expected }
     composeRule.waitForIdle()
   }
 

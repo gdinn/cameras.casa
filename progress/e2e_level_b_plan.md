@@ -450,6 +450,26 @@ em 1 min 49 s. A suíte completa não rodou de novo, porque só os robots e o `f
   `up`, na árvore não fundida, porque o card funde a alça.
 - O arraste do modo fixo segue fora, como o plano previa.
 
+**Critérios de pronto (§8) — primeira passada.**
+
+- A cobertura passou. A suíte inteira em `en` passou 3 vezes seguidas, em 382 s, 381 s e 375 s.
+  O `assembleRelease` passou.
+- Em `pt-BR`, falharam 3 testes:
+  - `GridOrientationFlowTest.rotatingSwitchesToLandscapeGrid` e
+    `ReorderStreamsFlowTest.reorderingKeepsTheOtherOrientation`: depois de girar, a Home seguia com
+    o grid de retrato. **Causa:** o `InTestLocale` montava o contexto localizado com
+    `remember(context, locale)`, e o `LocalConfiguration` que ele fornece ficava congelado na
+    configuração da primeira composição. Em `en` o wrapper não entra, por isso o `en` passou.
+    **Correção:** o wrapper é refeito a partir do `LocalConfiguration` atual. O `rotateTo` agora
+    espera a orientação que a composição aplicou (`SideEffect` no `launchApp`), e não a dos
+    recursos da activity. Assim, um conteúdo que não acompanha a rotação estoura o tempo no próprio
+    `rotateTo`.
+  - `FakeVpnPermissionRepositoryTest.refusingTheDialogKeepsTheConsentRequired`: o corpo passou, mas
+    no encerramento a activity ficou presa em `PAUSED` ("never becomes DESTROYED"). Não tem relação
+    com o idioma, e parece coisa do emulador. A execução parou ali, e os 10 testes seguintes do
+    pacote `testing` não rodaram: o relatório tem 94 testes, não 104. Fica em observação na nova
+    rodada.
+
 **`FlowTest`** (classe base abstrata):
 
 ```kotlin
@@ -596,12 +616,28 @@ Rodar também em pt-BR uma vez, como no nível A (§5 do `e2e_level_a_plan.md`).
 
 ## 8. Critérios de pronto
 
-- [ ] `./gradlew :app:connectedDebugAndroidTest` verde no `Pixel_8a`, em `en` e em `pt-BR`.
-- [ ] A suíte inteira 3x seguidas sem falha intermitente.
-- [ ] `./gradlew :app:jacocoTestCoverageVerification` continua verde.
-- [ ] `assembleRelease` sem a `HiltTestActivity`, e o app real sem mudança visível.
-- [ ] Tempo da suíte anotado (antes e depois do Orchestrator).
-- [ ] Documentação do §6 atualizada.
+- [x] `./gradlew :app:connectedDebugAndroidTest` verde no `Pixel_8a`, em `en` e em `pt-BR`.
+- [x] A suíte inteira 3x seguidas sem falha intermitente.
+- [x] `./gradlew :app:jacocoTestCoverageVerification` continua verde.
+- [x] `assembleRelease` sem a `HiltTestActivity`, e o app real sem mudança visível.
+- [x] Tempo da suíte anotado (antes e depois do Orchestrator).
+- [x] Documentação do §6 atualizada.
+
+**Resultado do §8 — feito.** Detalhes na seção "Critérios de pronto (§8) — primeira passada" e
+abaixo:
+
+- Segunda execução em `pt-BR`, depois da correção do `InTestLocale`: os 104 testes passaram, em
+  6 min 37 s. As duas classes de rotação também passaram em `en`, depois da mudança do `rotateTo`.
+- O `FakeVpnPermissionRepositoryTest` passou. A activity presa em `PAUSED` não se repetiu, então
+  fica registrada como falha isolada do emulador.
+- Release: o manifesto mesclado só cita a `HiltTestActivity` num comentário, e o `classes.dex` do
+  APK não tem o nome dela. A única mudança de comportamento no app real é a correção do achado #16
+  (a Home vazia não sobe o túnel), que foi decisão de produto.
+- Tempo: o "antes e depois" foi medido no §3.1, com os 36 testes de então: 49 s sem o
+  Orchestrator e 128 s com ele (já no `architecture.md`). Hoje, com o Orchestrator, a suíte de 104
+  testes leva cerca de 6 min 20 s em `en` (382 s, 381 s e 375 s) e 6 min 37 s em `pt-BR`. O tempo
+  não atrapalhou, então o caminho alternativo do §9 (`StorageModule` com arquivo temporário, sem
+  `clearPackageData`) não foi necessário.
 
 ## 9. Riscos
 

@@ -1003,7 +1003,8 @@ shows and which callback each interaction fires, with no Hilt, navigation or fak
   on the app first. Every test therefore starts with empty DataStores and the camera permission
   revoked. `pm clear` does **not** reset app ops: `ACTIVATE_VPN` keeps whatever it was set to
   (checked on the `Pixel_8a`). The cost is time: the suite went from 49 s to 128 s for the same 36
-  tests.
+  tests. With the 104 tests of today it takes about 6 min 20 s on the `Pixel_8a` emulator (6 min
+  37 s in pt-BR).
 - **`animationsDisabled = true`** turns animations off for the instrumentation.
 - **`TestStorageModule`** replaces `StorageModule` in every `@HiltAndroidTest`, so storage is isolated
   per test by Hilt even without the orchestrator. Tests that need to look at the files inject
@@ -1079,8 +1080,9 @@ shows and which callback each interaction fires, with no Hilt, navigation or fak
   each card. `FlowTest.pressBack()` goes through the activity's `OnBackPressedDispatcher`, so a
   back nothing consumes finishes the activity, as on the device. `FlowTest.moveActivityTo(state)`
   pauses and resumes the activity through its `ActivityScenario`. `FlowTest.rotateTo(orientation)`
-  sets `requestedOrientation` and waits until the activity's configuration follows: the only poll
-  in the flows, because the rotation comes from the system, outside Compose's idle tracking.
+  sets `requestedOrientation` and waits until the composition has applied the new orientation: the
+  only poll in the flows, because the rotation comes from the system, outside Compose's idle
+  tracking.
   `HomeRobot.assertShowsStreams` scrolls only a grid that scrolls: the fixed grid pages instead.
   `HomeRobot.reconfigureByOverscroll()` swipes up three times, past the one-screen threshold.
   `HomeRobot.dragOnto(from, onto)` drags a handle in ten small steps, as the screen test does.
@@ -1150,9 +1152,11 @@ provides a `LocalContext` whose resources use that locale. In Compose 1.10, `str
 `LocalResources`, which derives from `LocalContext`. The wrapper is a `ContextWrapper` over the
 activity, so code that needs the activity reads `LocalActivity` (as `rememberSystemBarsController`
 does) and keeps working. `string()` resolves in the same locale, and `TestLocaleTest` checks that the
-two agree. The argument reaches only what is composed through `setThemedContent` or `InTestLocale`.
-A test that drives a real activity with text on screen should wrap its content in `InTestLocale`.
-Today none of the `@HiltAndroidTest` tests asserts text.
+two agree. The wrapper is rebuilt from the current `LocalConfiguration`, so a rotation the activity
+handles itself still reaches the content: built once, it froze the orientation, and the pt-BR run
+caught it in the rotation flows. The argument reaches only what is composed through
+`setThemedContent` or `InTestLocale`. A test that drives a real activity with text on screen should
+wrap its content in `InTestLocale`, as `FlowTest.launchApp()` does.
 
 To run the whole app in another language, change the device locale instead. From the shell that
 needs `adb root`, which is why the emulator image is the AOSP `default` one: it is a `userdebug`
