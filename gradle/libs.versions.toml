@@ -8,6 +8,7 @@ espressoCore = "3.7.0"
 androidxTestRunner = "1.7.0"
 androidxTestOrchestrator = "1.6.1"
 androidxTestServices = "1.6.0"
+uiautomator = "2.3.0"
 lifecycleRuntimeKtx = "2.10.0"
 lifecycleProcess = "2.10.0"
 activityCompose = "1.13.0"
@@ -38,6 +39,7 @@ androidx-espresso-intents = { group = "androidx.test.espresso", name = "espresso
 androidx-test-runner = { group = "androidx.test", name = "runner", version.ref = "androidxTestRunner" }
 androidx-test-orchestrator = { group = "androidx.test", name = "orchestrator", version.ref = "androidxTestOrchestrator" }
 androidx-test-services = { group = "androidx.test.services", name = "test-services", version.ref = "androidxTestServices" }
+androidx-test-uiautomator = { group = "androidx.test.uiautomator", name = "uiautomator", version.ref = "uiautomator" }
 androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycleRuntimeKtx" }
 androidx-lifecycle-process = { group = "androidx.lifecycle", name = "lifecycle-process", version.ref = "lifecycleProcess" }
 androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }

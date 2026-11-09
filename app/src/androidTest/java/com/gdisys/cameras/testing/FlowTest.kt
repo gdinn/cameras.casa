@@ -2,6 +2,7 @@ package com.gdisys.cameras.testing
 
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -13,6 +14,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.test.espresso.intent.rule.IntentsRule
 import com.gdisys.cameras.CamerasAppContent
 import com.gdisys.cameras.app.navigation.NavigationRoute
+import com.gdisys.cameras.core.components.LocalToastPresenter
 import com.gdisys.cameras.core.storage.domain.StreamPreferencesRepository
 import com.gdisys.cameras.core.storage.domain.UserPreferencesRepository
 import com.gdisys.cameras.core.storage.domain.model.StreamOrientation
@@ -71,6 +73,9 @@ abstract class FlowTest {
   @Inject lateinit var userPreferencesRepository: UserPreferencesRepository
   @Inject lateinit var streamPreferencesRepository: StreamPreferencesRepository
 
+  /** The toasts the app showed, as string resources, in order. They are recorded, not shown. */
+  val toasts = RecordingToastPresenter()
+
   /** The NavController of the running app. Set by [launchApp]. */
   lateinit var navController: NavHostController
     private set
@@ -91,7 +96,9 @@ abstract class FlowTest {
         val orientation = LocalConfiguration.current.orientation
         SideEffect { composedOrientation = orientation }
         navController = rememberNavController()
-        CamerasAppContent(eglBase = eglBase, navController = navController)
+        CompositionLocalProvider(LocalToastPresenter provides toasts) {
+          CamerasAppContent(eglBase = eglBase, navController = navController)
+        }
       }
     }
   }

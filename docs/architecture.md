@@ -859,13 +859,17 @@ Declared in `gradle/libs.versions.toml` and consumed via the version catalog.
 | `androidx.test:runner` | 1.7.0 | Base of `HiltTestRunner` |
 | `com.google.dagger:hilt-android-testing` (+ `kspAndroidTest` Hilt compiler) | 2.59.2 | `HiltTestApplication`, `@HiltAndroidTest`, `@TestInstallIn` |
 | `androidx.test.espresso:espresso-intents` | 3.7.0 | Stubbing the VPN consent `Intent` in flow tests |
+| `androidx.test.uiautomator:uiautomator` | 2.3.0 | Answering the system dialogs (VPN consent, camera permission) in the level C tests |
 | `androidx.test:orchestrator`, `androidx.test.services:test-services` (`androidTestUtil`) | 1.6.1, 1.6.0 | One process per test, with `clearPackageData` |
 
 ### 8.3 Non-Gradle external asset
 
 `qr-code-gen/` holds a small Python utility (with its own virtualenv checked in) that turns a
 `vpn.json` file (a JSON array with one credentials document per device) into one scannable QR
-code per entry (`qrcode-<index>.png`). It is not part of the Android build. **`vpn.json` and the
+code per entry (`qrcode-<tunnel address>.png`). It is not part of the Android build.
+`python main.py --examples` instead regenerates the fictional test QR codes of `examples/`, one PNG
+per JSON, with the file's text as is: `QrCodeImageDecodingTest` compares the two byte for byte, so
+a JSON change needs this run. **`vpn.json` and the
 QR codes it produces contain WireGuard private key material** and must never be committed with real
 values.
 
@@ -890,24 +894,17 @@ actually protects that boundary is the separate `feature → .data.` rule — th
 depends on the contracts and never on `core/webrtc/data`. This is written on `domainFiles()` in
 `LayerDependencyTest` as well, which is where someone extending the rules will be looking.
 
-### 9.2 Instrumented tests cover the screens, not the flows — open
+### 9.2 Instrumented tests: what is still not on a device — open
 
-`ConfigScreen`, `StreamURLsScreen` and `EmptyStreamsScreen` now have Compose UI tests
-([§10](#10-testing-and-quality-gates)). They render each screen alone, with a hand-written state, so
-they prove what a screen shows and which callback it fires, and nothing past that. Still uncovered
-on a device:
+The screens (Compose UI tests), the flows through the real composition root (`flow/`, with Hilt
+test doubles replacing only what leaves the process), the system dialogs (`systemdialog/`, through
+UI Automator) and the QR decoder (`QrCodeImageDecodingTest`) are covered
+([§10](#10-testing-and-quality-gates)). Still uncovered on a device:
 
-- `HomeScreen` and the video grid, which need `EglBase` and WebRTC.
-- Most flows through the real composition root (`CamerasAppContent`): navigation, ViewModels, use
-  cases and the encrypted DataStore together, with Hilt test doubles replacing only what leaves the
-  process (WireGuard tunnel, WHEP/WebRTC, the VPN consent). The first run, the QR step, the
-  Config gate, the full onboarding, returning users, URL validation, Home's lifecycle and the
-  tunnel and stream failures are covered (`flow/`). Orientation, reconfiguring and reordering are
-  not yet.
-- The system dialogs (VPN consent, camera permission), which only UI Automator can drive.
-
-The real world is covered by one smoke, `RealEnvironmentSmokeTest`, run by hand: the real QR, the
-real tunnel and a stream playing on the debug build. Running it on a minified build is still open.
+- The scanner's camera feed. The decoder is tested on the example images, and the camera behind it
+  is swapped out (`QrCodeScanner`), so a real frame never reaches ML Kit in a test.
+- A minified build. The real world is covered by one smoke, `RealEnvironmentSmokeTest`, run by
+  hand: the real QR, the real tunnel and a stream playing, on the debug build.
 
 The gap that used to sit next to this one — release builds not being minified — is closed:
 `isMinifyEnabled = true` and `proguard-rules.pro` carries the keep rules, described in
@@ -953,8 +950,9 @@ Useful commands:
 Note that `LayerDependencyTest` and `StreamHostTest` are ordinary unit tests, so a layering
 violation or a host/XML mismatch fails `testDebugUnitTest` like any other regression.
 
-**Instrumented screen tests.** 104 tests under `app/src/androidTest/` (51 Compose UI tests, thirty-seven flow tests, twelve
-tests of the Hilt test fakes and flow helpers, two storage tests, one service test, one dispatcher test and the default example), with packages mirroring `main`:
+**Instrumented screen tests.** 110 tests under `app/src/androidTest/` (51 Compose UI tests, thirty-seven flow tests, five
+system dialog tests, one QR image decoding test, twelve tests of the Hilt test fakes and flow helpers, two storage tests, one
+service test, one dispatcher test and the default example), with packages mirroring `main`:
 
 | Test | Covers |
 |---|---|
@@ -982,8 +980,11 @@ tests of the Hilt test fakes and flow helpers, two storage tests, one service te
 | `IdlingDispatcherTest` (2) | `IdlingDispatcher` is busy while its work runs and reports the transition to idle; the Compose test rule waits for main → `TestDispatchers.default` → `TestDispatchers.io` → main with no `waitUntil` |
 | `WebRtcVideoPlayerTest` (4) | The real player over a recording `WebRtcConnection`: `CONNECTING` with a spinner before any frame; real I420 frames fed into the sink turn it `PLAYING`; a stream in `LocalFailedStreams` is `FAILED` and shows `StreamErrorOverlay`; "Try again" disconnects and connects the same renderer again |
 | `HomeScreenTest` (11) | The real `HomeScreen` with fake callbacks: the move accessibility actions reorder one place and are absent at the ends; "Reconfigure" is an action in dynamic mode only; one real drag per grid mode reorders on drop; overscrolling the dynamic grid reveals "Reconfigure"; the fixed grid always shows it; the page buttons move between pages; "Reconfigure" never covers the page buttons; a focused stream replaces the grid |
-| `RealEnvironmentSmokeTest` (1, manual) | Real QR → real tunnel → a `PLAYING` card, on the production app and a physical phone. Excluded from the 104; run with `-PrealEnvironment` |
+| `RealEnvironmentSmokeTest` (1, manual) | Real QR → real tunnel → a `PLAYING` card, on the production app and a physical phone. Excluded from the 110; run with `-PrealEnvironment` |
 | `TestLocaleTest` (1) | What `setThemedContent` renders and what `string()` resolves agree, and follow the `testLocale` argument when it is given |
+| `QrCodeImageDecodingTest` (1) | Level C: every PNG of `qr-code-gen/examples/` decodes, on the device's ML Kit, to exactly the JSON next to it, so the scanner's decoder is covered without the camera and a PNG left behind by a JSON change fails. A failure names the fixtures only |
+| `VpnConsentDialogTest` (2) | Level C, through UI Automator: with the production consent repository (`vpnConsent.useSystemConsent`: Hilt cannot uninstall a `@TestInstallIn` module for one class, so the fake hands over to `VpnPermissionRepositoryImpl`) and the `ACTIVATE_VPN` app op reset, the VPN step opens the system dialog; OK completes the step, toasts "accepted" and `VpnService.prepare` returns `null`; Cancel keeps the step `Ready` and toasts "denied" |
+| `CameraPermissionDialogTest` (3) | Level C, through UI Automator: allowing the camera completes the step; one denial keeps it `Ready` without reporting a permanent denial; a second denial, final since Android 11, toasts the permanent denial |
 | `QrCodeRouteTest` (2) | With a `FakeQrCodeScanner`, a scanned payload reaches `onCodeScanned`; a camera error toasts and navigates back |
 | `FakeVpnPermissionRepositoryTest` (3) | `TestPermissionModule` puts the fake in the graph; a stubbed consent dialog launched through the `ActivityResultRegistry` returns `RESULT_OK` and grants the consent, or `RESULT_CANCELED` and keeps it required |
 | `FakeStreamConnectionsTest` (4) | The stream fake records `connect`/`disconnect` in order; `closeAll` closes only its own instance's URLs; a failing URL stays closed and reports on the main thread; a retry after the failure is cleared connects |
@@ -1055,7 +1056,16 @@ shows and which callback each interaction fires, with no Hilt, navigation or fak
   never created. The real `EglBase` stays for the renderers.
 - The QR fixtures in `qr-code-gen/examples/` are assets of the test APK, read through
   `InstrumentationRegistry.getInstrumentation().context.assets` by the `QrFixture` enum
-  (`testing/QrFixtures.kt`): `VALID`, `INCOMPLETE`, `WRONG_TYPE` and `UNKNOWN_SHAPE`.
+  (`testing/QrFixtures.kt`): `VALID`, `INCOMPLETE`, `WRONG_TYPE` and `UNKNOWN_SHAPE`. `read()`
+  returns the JSON and `readImage()` the PNG next to it.
+- **`SystemDialogs`** (`testing/SystemDialogs.kt`) answers the windows of other processes through
+  UI Automator: the VPN consent (`com.android.vpndialogs`) and the runtime permission dialog. It
+  finds buttons by resource id, so the device language does not matter, and matches the permission
+  controller's ids on any package, since AOSP and Google builds name it differently. Those windows
+  are outside Compose's idle tracking, so it waits for them (10 s). `VpnConsent.reset()` resets the
+  `ACTIVATE_VPN` app op through the shell, because `pm clear` does not.
+- `FlowTest` records toasts instead of showing them: `launchApp()` provides a
+  `RecordingToastPresenter` (`toasts.shown`) through `LocalToastPresenter`.
 - **`FlowTest`** (`testing/FlowTest.kt`) is the base class of the flow tests. Subclasses are
   annotated `@HiltAndroidTest`. It holds the rules (Hilt, `IntentsRule`, Compose on
   `HiltTestActivity`) and injects `EglBase` and the fakes. A test prepares the state first, then
