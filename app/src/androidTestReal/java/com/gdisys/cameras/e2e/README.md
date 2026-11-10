@@ -4,6 +4,10 @@
 a camera stream playing. It runs on the production app (`CamerasApp`, its Hilt graph, `GoBackend`,
 WHEP), never on CI, and only by hand on a phone that can reach the home endpoint over IPv6.
 
+It runs on `e2eRelease`: the release build as R8 makes it, signed with the debug key and installed as
+`com.gdisys.cameras.e2e`. R8 mistakes in this stack (a missing keep rule for a serializer, a JNI
+entry point) only show at runtime, so this is the run that catches them.
+
 It skips the camera only. The QR JSON goes through the same `ParseUserPreferencesFromQrCodeUseCase`
 the scanner feeds, and the production use cases save it.
 
@@ -16,21 +20,23 @@ the scanner feeds, and the production use cases save it.
 - **A physical phone** with USB debugging, the screen unlocked and animations off. The emulator's
   IPv6 and VPN support are not reliable enough.
 - **The Pi streaming video** on the path you pass.
-- **No other VPN active on the phone.** Android runs one VPN at a time, so the debug app's tunnel
+- **No other VPN active on the phone.** Android runs one VPN at a time, so the tested app's tunnel
   replaces any other, including the release app's.
 
 ## Running it
 
 ```bash
 CAMERAS_E2E_QR_FILE=~/path/to/test-peer.json \
-CAMERAS_E2E_STREAM_PATH=8889/cam_160 \
+CAMERAS_E2E_STREAM_PATH=8889/cam_10 \
 ANDROID_SERIAL=<phone serial from `adb devices`> \
-./gradlew :app:connectedDebugAndroidTest -PrealEnvironment
+./gradlew :app:connectedE2eReleaseAndroidTest -PrealEnvironment
 ```
 
 - `-PrealEnvironment` swaps the runner for the plain `AndroidJUnitRunner`, so the test runs on the
-  production app instead of `HiltTestApplication`. It also runs only `@RealEnvironment` tests.
-  Without it, every run excludes them.
+  production app instead of `HiltTestApplication`. It also runs only `@RealEnvironment` tests, and
+  compiles only this directory (`src/androidTestReal/`). Without it, every run excludes them.
+- `-PrealEnvironment=debug` with `connectedDebugAndroidTest` runs the same test on the debug build.
+  If the minified run fails and this one passes, the problem is R8, not the tunnel or the camera.
 - `CAMERAS_E2E_STREAM_PATH` is the port and path after `http://[fd00:20::cafe]:`.
 - `ANDROID_SERIAL` is needed only with more than one device attached.
 
@@ -59,8 +65,17 @@ The QR holds the test peer's private key. It never appears on a command line (it
 pushed file) and never in a log or failure message. A parse failure reports only the exception
 type, because kotlinx.serialization quotes the JSON in its messages.
 
-## Not covered yet
+## R8 and the test APK
 
-This runs on the debug build, so it does not catch R8 breakage yet. Running the same test on a
-minified, release-derived build type is the next step. Until then, a minified build still needs the
-manual smoke described in `docs/architecture.md` §2.
+The test calls a few app classes directly (the QR parser, the storage use cases and repositories,
+the playback state). `app/proguard-e2e.pro` keeps exactly those in `e2eRelease`, and nothing else
+differs from release. The libraries the app also depends on are left out of the test APK, so the
+test framework runs on the app's shrunk copy of them: `proguard-e2e.pro` keeps the ones it needs too
+(`androidx.tracing`, used by AndroidX Test; the Kotlin standard library and kotlinx.coroutines;
+the Compose runtime and UI layer, which Compose UI Test drives, with `androidx.lifecycle`,
+`androidx.core` and `androidx.concurrent.futures`). Foundation and Material 3 stay shrunk. To list
+what the test APK still lacks without a device, run R8's `TraceReferences --check` with the test
+APK as `--source` and the app APK as `--target` (both zipped dex), and drop from its output the
+classes the app's dex defines (`dexdump`): the tool reports those as missing too.. If R8 removes something the test calls, the test APK fails to build with a
+missing class, or the test fails with `NoSuchMethodError`: add that class to `proguard-e2e.pro`,
+never a broader rule, since a wider keep hides the breakage this run is for.

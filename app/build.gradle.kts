@@ -81,12 +81,18 @@ fun versionCodeOf(versionName: String): Int {
 val taggedVersionName = System.getenv("CAMERAS_VERSION_NAME")?.trim()?.takeIf { it.isNotEmpty() }
 
 // The level C smoke (`@RealEnvironment`) needs the real world: the real QR, the tunnel and the Pi.
-// It runs only by hand, on a physical phone; app/src/androidTest/java/com/gdisys/cameras/e2e/README.md
+// It runs only by hand, on a physical phone; app/src/androidTestReal/java/com/gdisys/cameras/e2e/README.md
 // has the command. `-PrealEnvironment` swaps the runner for the plain AndroidJUnitRunner, so the
 // smoke runs on the production CamerasApp and its Hilt graph instead of HiltTestApplication and its
 // fakes. The switch has to be made here: a runner picks the Application in `newApplication`, before
 // it receives the instrumentation arguments.
-val realEnvironment = providers.gradleProperty("realEnvironment").isPresent
+//
+// The smoke runs on `e2eRelease`, the minified build type below, because R8 mistakes in this stack
+// only show at runtime. `-PrealEnvironment=debug` runs it on the debug build instead, to tell an R8
+// problem from a tunnel or camera one.
+val realEnvironmentBuildType = providers.gradleProperty("realEnvironment").orNull
+  ?.let { if (it == "debug") "debug" else "e2eRelease" }
+val realEnvironment = realEnvironmentBuildType != null
 val realEnvironmentAnnotation = "com.gdisys.cameras.e2e.RealEnvironment"
 
 // The QR carries the test peer's private key, so it travels as a file pushed to the device, never
@@ -100,7 +106,7 @@ if (realEnvironment) {
   if (realQrFile?.isFile != true || realStreamPath == null) {
     throw GradleException(
       "-PrealEnvironment needs CAMERAS_E2E_QR_FILE (the test peer's QR JSON) and " +
-        "CAMERAS_E2E_STREAM_PATH (port/path of a camera, e.g. 8889/cam_160)."
+        "CAMERAS_E2E_STREAM_PATH (port/path of a camera, e.g. 8889/cam_10)."
     )
   }
 }
@@ -194,7 +200,7 @@ android {
       // green `assembleRelease` is necessary but not sufficient: any change to the keep rules, to
       // a @Serializable model or to the VPN/WebRTC dependencies must be smoke-tested on a real
       // device — scan the QR code, bring the tunnel up, and play a stream. RealEnvironmentSmokeTest
-      // automates that path, but on the debug build only, so a minified build still needs it by hand.
+      // automates that path on `e2eRelease`, this build type as R8 makes it (see below).
       isMinifyEnabled = true
       proguardFiles(
         getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -202,7 +208,22 @@ android {
       )
       signingConfig = signingConfigs.findByName("release")
     }
+
+    // The release build as R8 makes it, for the level C smoke (`-PrealEnvironment`): same shrinking,
+    // obfuscation and keep rules, plus proguard-e2e.pro, which keeps only the app classes the smoke
+    // calls directly. It is signed with the debug key, so it installs on any phone, and its own id
+    // keeps it apart from the real release (data, Keystore, VPN consent). Never distributed.
+    create("e2eRelease") {
+      initWith(getByName("release"))
+      applicationIdSuffix = ".e2e"
+      versionNameSuffix = "-e2e"
+      proguardFile("proguard-e2e.pro")
+      testProguardFile("proguard-e2e-test.pro")
+      signingConfig = signingConfigs.getByName("debug")
+      matchingFallbacks += listOf("release")
+    }
   }
+  testBuildType = realEnvironmentBuildType ?: "debug"
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_17
     targetCompatibility = JavaVersion.VERSION_17
@@ -219,9 +240,24 @@ android {
     animationsDisabled = true
   }
   sourceSets {
-    // The fictional QR fixtures are the single source of truth: instrumented tests read the .json
-    // files from the test APK's assets instead of keeping a copy.
-    getByName("androidTest").assets.srcDir("$rootDir/qr-code-gen/examples")
+    getByName("androidTest") {
+      // The fictional QR fixtures are the single source of truth: instrumented tests read the .json
+      // files from the test APK's assets instead of keeping a copy.
+      assets.srcDir("$rootDir/qr-code-gen/examples")
+
+      // The smoke lives apart from the hermetic tests. A `-PrealEnvironment` run compiles it alone:
+      // the hermetic tests need HiltTestActivity, which only the debug build has, and every class a
+      // test APK calls must survive R8 in the minified app. Other runs compile it too, excluded by
+      // its annotation, so it never stops compiling unnoticed.
+      val realEnvironmentTests = "src/androidTestReal/java"
+      if (realEnvironment) {
+        java.setSrcDirs(listOf(realEnvironmentTests))
+        kotlin.setSrcDirs(listOf(realEnvironmentTests))
+      } else {
+        java.srcDir(realEnvironmentTests)
+        kotlin.srcDir(realEnvironmentTests)
+      }
+    }
   }
   packaging {
     resources {
@@ -253,6 +289,7 @@ dependencies {
   androidTestImplementation(libs.androidx.ui.test.junit4)
   androidTestImplementation(libs.androidx.test.runner)
   androidTestImplementation(libs.androidx.espresso.intents)
+  androidTestImplementation(libs.androidx.test.uiautomator)
   androidTestImplementation(libs.hilt.android.testing)
   kspAndroidTest(libs.hilt.compiler)
   androidTestUtil(libs.androidx.test.orchestrator)
@@ -310,7 +347,7 @@ if (realEnvironment) {
     args("shell", "rm", "-f", realQrDevicePath)
     isIgnoreExitValue = true
   }
-  tasks.matching { it.name == "connectedDebugAndroidTest" }.configureEach {
+  tasks.matching { it.name == "connectedDebugAndroidTest" || it.name == "connectedE2eReleaseAndroidTest" }.configureEach {
     dependsOn(pushRealQrPayload)
     finalizedBy(removeRealQrPayload)
   }

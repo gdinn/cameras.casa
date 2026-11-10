@@ -5,6 +5,7 @@ import android.app.Instrumentation.ActivityResult
 import android.content.Intent
 import androidx.test.espresso.intent.Intents.intending
 import androidx.test.espresso.intent.matcher.IntentMatchers.hasAction
+import com.gdisys.cameras.core.permission.data.VpnPermissionRepositoryImpl
 import com.gdisys.cameras.core.permission.domain.VpnConsent
 import com.gdisys.cameras.core.permission.domain.VpnPermissionRepository
 import java.util.concurrent.atomic.AtomicInteger
@@ -18,9 +19,20 @@ import javax.inject.Singleton
  *
  * Being the single source of the consent (`VpnPermissionRepository`), it keeps the Config step's
  * initial state and the click on that step in agreement, as `VpnService.prepare` does in production.
+ *
+ * The level C tests switch it to the system's answer with [useSystemConsent]: Hilt cannot uninstall
+ * a `@TestInstallIn` module for one class, so the fake hands over to the production repository.
  */
 @Singleton
-class FakeVpnPermissionRepository @Inject constructor() : VpnPermissionRepository {
+class FakeVpnPermissionRepository @Inject constructor(
+  private val system: VpnPermissionRepositoryImpl
+) : VpnPermissionRepository {
+
+  /**
+   * Answers with the production repository (`VpnService.prepare`) instead, so the app launches the
+   * real system dialog. Set it before `launchApp()`; [granted] is then ignored.
+   */
+  @Volatile var useSystemConsent = false
 
   /** Whether the user has already consented. Set it before `launchApp()` to start with consent. */
   @Volatile var granted = false
@@ -30,6 +42,7 @@ class FakeVpnPermissionRepository @Inject constructor() : VpnPermissionRepositor
 
   override fun getVpnConsent(): VpnConsent {
     consentChecks.incrementAndGet()
+    if (useSystemConsent) return system.getVpnConsent()
     return if (granted) VpnConsent.Granted else VpnConsent.Required(Intent(CONSENT_ACTION))
   }
 

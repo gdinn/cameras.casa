@@ -1,5 +1,7 @@
 package com.gdisys.cameras.testing
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import androidx.test.platform.app.InstrumentationRegistry
 
 /**
@@ -20,8 +22,11 @@ enum class QrFixture(private val fileName: String) {
   UNKNOWN_SHAPE("4_validqr_dif_type_2.json");
 
   /** The raw JSON, as the scanner would hand it over. */
-  fun read(): String =
-    InstrumentationRegistry.getInstrumentation().context.assets.open(fileName)
-      .bufferedReader()
-      .use { it.readText() }
+  fun read(): String = open(fileName).bufferedReader().use { it.readText() }
+
+  /** The QR code image next to the JSON, generated from it by `qr-code-gen/main.py --examples`. */
+  fun readImage(): Bitmap =
+    open(fileName.replace(".json", ".png")).use { checkNotNull(BitmapFactory.decodeStream(it)) { "$this: unreadable PNG" } }
+
+  private fun open(name: String) = InstrumentationRegistry.getInstrumentation().context.assets.open(name)
 }
