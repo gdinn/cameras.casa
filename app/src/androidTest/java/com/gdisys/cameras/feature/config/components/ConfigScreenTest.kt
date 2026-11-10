@@ -8,6 +8,7 @@ import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.gdisys.cameras.R
 import com.gdisys.cameras.feature.config.ConfigButtonState
@@ -105,7 +106,7 @@ class ConfigScreenTest {
     // Requirements are still missing here: the gate belongs to the ViewModel, not to the screen.
     val events = composeRule.setConfigScreen(ConfigUiState())
 
-    composeRule.onNodeWithTag(ConfigTestTags.NAVIGATE_TO_HOME_BUTTON).performClick()
+    composeRule.onNodeWithTag(ConfigTestTags.NAVIGATE_TO_HOME_BUTTON).performScrollTo().performClick()
 
     assertEquals(listOf("navigateToHome"), events.calls)
   }

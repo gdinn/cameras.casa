@@ -2,11 +2,16 @@ package com.gdisys.cameras.feature.config.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Key
@@ -41,76 +46,86 @@ fun ConfigScreen(
   onNavigateToHome: () -> Unit
 ) {
   Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-    Column(
+    // The column is at least as tall as the viewport, so SpaceBetween keeps the Home button at the
+    // bottom on tall screens; on short ones it grows past the viewport and scrolls, keeping the
+    // button reachable instead of pushing it off screen.
+    BoxWithConstraints(
       modifier = Modifier
         .fillMaxSize()
-        .padding(innerPadding),
-      verticalArrangement = Arrangement.SpaceBetween,
-      horizontalAlignment = Alignment.CenterHorizontally
+        .padding(innerPadding)
     ) {
       Column(
-        modifier = Modifier.padding(
-          8.dp,30.dp, 8.dp,0.dp
-        ),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-      ) {
-        ConfigButton(
-          modifier = Modifier.testTag(ConfigTestTags.CAMERA_PERMISSION_STEP),
-          imageVector = Icons.Filled.CameraAlt,
-          title = stringResource(R.string.config_screen_camera_permission_title),
-          subTitle = stringResource(R.string.config_screen_camera_permission_subtitle),
-          uiState = uiState.cameraPermissionButtonState,
-          onClicked = onRequestCameraPermission
-        )
-
-        ConfigButton(
-          modifier = Modifier.testTag(ConfigTestTags.QR_CODE_STEP),
-          imageVector = Icons.Filled.QrCode,
-          title = stringResource(R.string.config_screen_load_configuration_title),
-          subTitle = stringResource(R.string.config_screen_load_configuration_subtitle),
-          uiState = uiState.qrCodeButtonState,
-          enabled = uiState.isQrCodeButtonEnabled,
-          onClicked = onShowScanner
-        )
-
-        ConfigButton(
-          modifier = Modifier.testTag(ConfigTestTags.VPN_PERMISSION_STEP),
-          imageVector = Icons.Filled.Key,
-          title = stringResource(R.string.config_screen_vpn_permission_title),
-          subTitle = stringResource(R.string.config_screen_vpn_permission_subtitle),
-          uiState = uiState.vpnPermissionButtonState,
-          onClicked = acceptVpnPermission
-        )
-
-        ConfigButton(
-          modifier = Modifier.testTag(ConfigTestTags.STREAM_URLS_STEP),
-          imageVector = Icons.Filled.LiveTv,
-          title = stringResource(R.string.config_screen_stream_urls_title),
-          subTitle = stringResource(R.string.config_screen_stream_urls_subtitle),
-          uiState = uiState.streamURLsButtonState,
-          onClicked = onNavigateToStreamURLs
-        )
-      }
-
-      Button(
         modifier = Modifier
-          .padding(0.dp, 0.dp, 0.dp, 30.dp)
-          .testTag(ConfigTestTags.NAVIGATE_TO_HOME_BUTTON),
-        colors = ButtonDefaults.buttonColors().copy(
-          contentColor = MaterialTheme.colorScheme.onPrimary,
-          containerColor = MaterialTheme.colorScheme.primary
-        ),
-        onClick = onNavigateToHome
+          .fillMaxWidth()
+          .verticalScroll(rememberScrollState())
+          .heightIn(min = maxHeight),
+        verticalArrangement = Arrangement.SpaceBetween,
+        horizontalAlignment = Alignment.CenterHorizontally
       ) {
-        Text(
-          stringResource(
-            if (uiState.canNavigateBackToHome) {
-              R.string.config_screen_back_to_home
-            } else {
-              R.string.config_screen_navigate_to_home
-            }
+        Column(
+          modifier = Modifier.padding(
+            8.dp,30.dp, 8.dp,0.dp
+          ),
+          verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+          ConfigButton(
+            modifier = Modifier.testTag(ConfigTestTags.CAMERA_PERMISSION_STEP),
+            imageVector = Icons.Filled.CameraAlt,
+            title = stringResource(R.string.config_screen_camera_permission_title),
+            subTitle = stringResource(R.string.config_screen_camera_permission_subtitle),
+            uiState = uiState.cameraPermissionButtonState,
+            onClicked = onRequestCameraPermission
           )
-        )
+
+          ConfigButton(
+            modifier = Modifier.testTag(ConfigTestTags.QR_CODE_STEP),
+            imageVector = Icons.Filled.QrCode,
+            title = stringResource(R.string.config_screen_load_configuration_title),
+            subTitle = stringResource(R.string.config_screen_load_configuration_subtitle),
+            uiState = uiState.qrCodeButtonState,
+            enabled = uiState.isQrCodeButtonEnabled,
+            onClicked = onShowScanner
+          )
+
+          ConfigButton(
+            modifier = Modifier.testTag(ConfigTestTags.VPN_PERMISSION_STEP),
+            imageVector = Icons.Filled.Key,
+            title = stringResource(R.string.config_screen_vpn_permission_title),
+            subTitle = stringResource(R.string.config_screen_vpn_permission_subtitle),
+            uiState = uiState.vpnPermissionButtonState,
+            onClicked = acceptVpnPermission
+          )
+
+          ConfigButton(
+            modifier = Modifier.testTag(ConfigTestTags.STREAM_URLS_STEP),
+            imageVector = Icons.Filled.LiveTv,
+            title = stringResource(R.string.config_screen_stream_urls_title),
+            subTitle = stringResource(R.string.config_screen_stream_urls_subtitle),
+            uiState = uiState.streamURLsButtonState,
+            onClicked = onNavigateToStreamURLs
+          )
+        }
+
+        Button(
+          modifier = Modifier
+            .padding(0.dp, 0.dp, 0.dp, 30.dp)
+            .testTag(ConfigTestTags.NAVIGATE_TO_HOME_BUTTON),
+          colors = ButtonDefaults.buttonColors().copy(
+            contentColor = MaterialTheme.colorScheme.onPrimary,
+            containerColor = MaterialTheme.colorScheme.primary
+          ),
+          onClick = onNavigateToHome
+        ) {
+          Text(
+            stringResource(
+              if (uiState.canNavigateBackToHome) {
+                R.string.config_screen_back_to_home
+              } else {
+                R.string.config_screen_navigate_to_home
+              }
+            )
+          )
+        }
       }
     }
   }

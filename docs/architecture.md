@@ -365,6 +365,11 @@ Points of interest:
   the rule and answers with a toast saying what is missing — `onShowScanner()` shows
   `CAMERA_PERMISSION_REQUIRED_FOR_QR_CODE` instead of opening the scanner. For the same reason the
   step is not marked disabled in semantics.
+- **The screen scrolls instead of clipping.** `ConfigScreen`'s column is `verticalScroll` with a
+  minimum height of the viewport (`BoxWithConstraints` + `heightIn(min = maxHeight)`). On tall
+  screens `Arrangement.SpaceBetween` keeps the Home button at the bottom; on short ones the content
+  scrolls, so the button is never pushed out of reach. Tests scroll to it (`performScrollTo`) before
+  clicking.
 
 ### 5.3 `feature/qrcode` — QR code scanner
 

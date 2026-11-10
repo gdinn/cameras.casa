@@ -88,6 +88,7 @@ fun ConfigButton(
         color = MaterialTheme.colorScheme.onPrimary,
       )
     }
+    Spacer(Modifier.width(8.dp))
     Row(
       modifier = Modifier
           .size(30.dp)
@@ -181,6 +182,18 @@ fun ConfigButtonPreviewError() {
     title = "Load configuration",
     subTitle = "Read configuration QR code to configure Wireguard VPN",
     uiState = ConfigButtonState.Error,
+    onClicked = {}
+  )
+}
+
+@Preview
+@Composable
+fun ConfigButtonPreviewDoneFullText() {
+  ConfigButton(
+    imageVector = Icons.Default.QrCode,
+    title = "Load configuration",
+    subTitle = "Aaaaa aaaaaaaaaa aaaaaaaaaaaaaaaaaaaaaaa a a aaaaaa",
+    uiState = ConfigButtonState.Done,
     onClicked = {}
   )
 }
