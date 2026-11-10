@@ -106,7 +106,7 @@ if (realEnvironment) {
   if (realQrFile?.isFile != true || realStreamPath == null) {
     throw GradleException(
       "-PrealEnvironment needs CAMERAS_E2E_QR_FILE (the test peer's QR JSON) and " +
-        "CAMERAS_E2E_STREAM_PATH (port/path of a camera, e.g. 8889/cam_160)."
+        "CAMERAS_E2E_STREAM_PATH (port/path of a camera, e.g. 8889/cam_10)."
     )
   }
 }

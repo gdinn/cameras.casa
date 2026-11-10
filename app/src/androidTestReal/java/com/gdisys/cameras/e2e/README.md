@@ -27,7 +27,7 @@ the scanner feeds, and the production use cases save it.
 
 ```bash
 CAMERAS_E2E_QR_FILE=~/path/to/test-peer.json \
-CAMERAS_E2E_STREAM_PATH=8889/cam_160 \
+CAMERAS_E2E_STREAM_PATH=8889/cam_10 \
 ANDROID_SERIAL=<phone serial from `adb devices`> \
 ./gradlew :app:connectedE2eReleaseAndroidTest -PrealEnvironment
 ```
