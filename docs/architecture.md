@@ -89,6 +89,17 @@ distinct data directories, Keystore entries and backup sets:
 |---|---|---|---|
 | `debug` | `com.gdisys.cameras.debug` | `1.0-debug` | Cameras (debug) |
 | `release` | `com.gdisys.cameras` | `1.0`, or the tag's version | Cameras |
+| `e2eRelease` | `com.gdisys.cameras.e2e` | `1.0-e2e` | Cameras |
+
+`e2eRelease` is the release build type as R8 makes it (`initWith(release)`), signed with the debug
+key and never distributed. It exists for the level C smoke (`-PrealEnvironment`), which tests it
+instead of `debug` (`testBuildType`). On top of the release keep rules it adds `proguard-e2e.pro`,
+which keeps only the app classes `RealEnvironmentSmokeTest` calls directly, plus the shared
+libraries the test framework needs from the app's copy (AGP leaves out of the test APK every library
+the app also depends on; AndroidX Test needs `androidx.tracing`, the test code the Kotlin standard library and
+kotlinx.coroutines, Compose UI Test the Compose runtime and UI layer; Foundation and Material 3 stay
+shrunk). AGP minifies the test
+APK too, with the app's mapping, and `proguard-e2e-test.pro` holds that APK's own rules.
 
 Without the suffix both claim `com.gdisys.cameras`, and because they are signed with different
 keys (the debug key vs. the release key) Android treats an install of one over the other as a
@@ -141,8 +152,10 @@ The caveat that kept minification off for so long has not gone away: a wrong kee
 rules, to a `@Serializable` model, or to the VPN/WebRTC dependencies has to be smoke-tested on a
 real device — scan the QR code, bring the tunnel up, play a stream. The rule set above was
 validated that way end to end on a physical device: QR scan, tunnel up, streams rendering.
-`RealEnvironmentSmokeTest` automates the QR-to-video path ([§10](#10-testing-and-quality-gates)),
-but only on the debug build so far. A minified build still needs the run by hand.
+`RealEnvironmentSmokeTest` automates the QR-to-video path ([§10](#10-testing-and-quality-gates))
+on `e2eRelease`, this rule set plus the few keeps the test needs, so the check is one Gradle command
+on a phone. It still skips the camera: a QR scanned by the real scanner on a minified build stays a
+manual step.
 `SourceFile` and `LineNumberTable` are kept so release stack traces can be de-obfuscated with
 `app/build/outputs/mapping/release/mapping.txt`.
 
@@ -903,8 +916,9 @@ UI Automator) and the QR decoder (`QrCodeImageDecodingTest`) are covered
 
 - The scanner's camera feed. The decoder is tested on the example images, and the camera behind it
   is swapped out (`QrCodeScanner`), so a real frame never reaches ML Kit in a test.
-- A minified build. The real world is covered by one smoke, `RealEnvironmentSmokeTest`, run by
-  hand: the real QR, the real tunnel and a stream playing, on the debug build.
+- The real world on CI. `RealEnvironmentSmokeTest` (the real QR, the real tunnel and a stream
+  playing, on the minified `e2eRelease`) runs only by hand, on the phone of whoever holds the test
+  peer's QR.
 
 The gap that used to sit next to this one — release builds not being minified — is closed:
 `isMinifyEnabled = true` and `proguard-rules.pro` carries the keep rules, described in
@@ -980,7 +994,7 @@ service test, one dispatcher test and the default example), with packages mirror
 | `IdlingDispatcherTest` (2) | `IdlingDispatcher` is busy while its work runs and reports the transition to idle; the Compose test rule waits for main → `TestDispatchers.default` → `TestDispatchers.io` → main with no `waitUntil` |
 | `WebRtcVideoPlayerTest` (4) | The real player over a recording `WebRtcConnection`: `CONNECTING` with a spinner before any frame; real I420 frames fed into the sink turn it `PLAYING`; a stream in `LocalFailedStreams` is `FAILED` and shows `StreamErrorOverlay`; "Try again" disconnects and connects the same renderer again |
 | `HomeScreenTest` (11) | The real `HomeScreen` with fake callbacks: the move accessibility actions reorder one place and are absent at the ends; "Reconfigure" is an action in dynamic mode only; one real drag per grid mode reorders on drop; overscrolling the dynamic grid reveals "Reconfigure"; the fixed grid always shows it; the page buttons move between pages; "Reconfigure" never covers the page buttons; a focused stream replaces the grid |
-| `RealEnvironmentSmokeTest` (1, manual) | Real QR → real tunnel → a `PLAYING` card, on the production app and a physical phone. Excluded from the 110; run with `-PrealEnvironment` |
+| `RealEnvironmentSmokeTest` (1, manual) | Real QR → real tunnel → a `PLAYING` card, on the production app minified as release (`e2eRelease`) and a physical phone. Excluded from the 110; run with `-PrealEnvironment` |
 | `TestLocaleTest` (1) | What `setThemedContent` renders and what `string()` resolves agree, and follow the `testLocale` argument when it is given |
 | `QrCodeImageDecodingTest` (1) | Level C: every PNG of `qr-code-gen/examples/` decodes, on the device's ML Kit, to exactly the JSON next to it, so the scanner's decoder is covered without the camera and a PNG left behind by a JSON change fails. A failure names the fixtures only |
 | `VpnConsentDialogTest` (2) | Level C, through UI Automator: with the production consent repository (`vpnConsent.useSystemConsent`: Hilt cannot uninstall a `@TestInstallIn` module for one class, so the fake hands over to `VpnPermissionRepositoryImpl`) and the `ACTIVATE_VPN` app op reset, the VPN step opens the system dialog; OK completes the step, toasts "accepted" and `VpnService.prepare` returns `null`; Cancel keeps the step `Ready` and toasts "denied" |
@@ -1021,13 +1035,18 @@ shows and which callback each interaction fires, with no Hilt, navigation or fak
   a native WebRTC callback, or a dispatcher the test did not wrap (the `IsolatedPreferencesStoreTest`
   store, for example). Those cases still need `waitUntil`.
 - **`@RealEnvironment` is excluded** from every run through the `notAnnotation` runner argument.
-  `RealEnvironmentSmokeTest` (`e2e/`, with its own README) needs the real QR, tunnel and Pi. It
-  runs only by hand with `-PrealEnvironment`, which makes three changes:
+  `RealEnvironmentSmokeTest` (`src/androidTestReal/`, package `e2e`, with its own README) needs
+  the real QR, tunnel and Pi. It runs only by hand with `-PrealEnvironment`, which makes four
+  changes:
   - it swaps the runner for the plain `AndroidJUnitRunner`, so the test runs on the production
     `CamerasApp`. The switch lives in Gradle because a runner picks the `Application` before it
     receives the instrumentation arguments;
-  - it runs only that annotation;
-  - it wires `pushRealQrPayload` / `removeRealQrPayload` around `connectedDebugAndroidTest`. They
+  - it runs only that annotation, and compiles only `src/androidTestReal/` (other runs compile it
+    too, so it does not rot);
+  - it tests `e2eRelease`, the minified build type (`-PrealEnvironment=debug` tests `debug`, to
+    tell an R8 failure from a tunnel one);
+  - it wires `pushRealQrPayload` / `removeRealQrPayload` around `connectedE2eReleaseAndroidTest`
+    (and `connectedDebugAndroidTest`). They
     move the test peer's QR JSON (`CAMERAS_E2E_QR_FILE`) to `/data/local/tmp` and back off the
     device, so the private key never appears on a command line.
 
@@ -1302,8 +1321,8 @@ not of reworking a workflow.
 `assembleRelease` on every pull request is deliberate: R8 is the part of the build most likely to
 break from an ordinary dependency bump. It remains the necessary-but-not-sufficient check
 described in §2 — a wrong keep rule still only shows up at runtime, so the device smoke test
-(QR scan → tunnel up → stream playing) is still owed on any change to the keep rules, to a
-`@Serializable` model, or to the VPN/WebRTC dependencies.
+(QR → tunnel up → stream playing, automated on `e2eRelease` by `RealEnvironmentSmokeTest`) is still
+owed on any change to the keep rules, to a `@Serializable` model, or to the VPN/WebRTC dependencies.
 
 ### 10.2 Release signing
 

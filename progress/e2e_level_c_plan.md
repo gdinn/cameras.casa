@@ -78,8 +78,7 @@ o ponto #8: o smoke chama classes internas, e o R8 não sabe disso. As saídas:
 | B | O smoke passa a dirigir o app só pela tela, sem chamar classes internas. O QR entra por um caminho de depuração do build `e2eRelease` | Alto, e acrescenta código de teste ao app |
 | C | Gerar o APK de release e rodar o roteiro manual (QR → túnel → vídeo) a cada release, como hoje | Zero, mas continua manual |
 
-**Recomendação:** a opção A, decidida antes de começar a C.3. Ela só roda no celular de quem tem o
-QR.
+**Decidido:** a opção A. Ela só roda no celular de quem tem o QR.
 
 ---
 
@@ -95,7 +94,7 @@ QR.
 - [x] C.1 e C.2 verdes no `Pixel_8a`, em `en` e em `pt-BR`.
 - [x] Os diálogos passam 3 vezes seguidas.
 - [x] O teste de decodificação falha com os PNGs antigos e passa com os regerados.
-- [ ] A C.3 decidida e, se for a opção A, rodada no celular.
+- [x] A C.3 decidida e, se for a opção A, rodada no celular.
 - [x] Documentação atualizada (C.1 e C.2; a C.3 atualiza a sua parte).
 
 ---
@@ -138,3 +137,63 @@ da câmera: os três testes passaram em sequência, sem `clear-permission-flags`
 **Critérios da C.1 e da C.2:** a suíte inteira passou em `en` (110 testes, 7 min 21 s) e em `pt-BR`
 (110 testes, 7 min 22 s), e o pacote `systemdialog` passou 3 vezes seguidas. Os fluxos do nível B
 seguem verdes com os toasts gravados.
+
+**C.3 — concluída: o smoke passa no `e2eRelease`, no celular, com o QR real.**
+
+- Build type `e2eRelease`: `initWith(release)`, id `com.gdisys.cameras.e2e`, `versionNameSuffix
+  -e2e`, chave de debug e `proguard-e2e.pro` somado às regras do release. Com `-PrealEnvironment`,
+  `testBuildType = "e2eRelease"`. `-PrealEnvironment=debug` testa o `debug`, para separar falha do
+  R8 de falha do túnel.
+- **Desvio:** o smoke saiu de `src/androidTest/` para `src/androidTestReal/`. Uma execução com
+  `-PrealEnvironment` compila só esse diretório: os testes herméticos usam a `HiltTestActivity`, que
+  só existe no `debug`, e o R8 do app minificado teria de manter tudo que eles chamam. As outras
+  execuções compilam o diretório também (excluído pela anotação), para ele não apodrecer.
+- `proguard-e2e.pro` mantém só o que o smoke chama: o parser do QR, os use cases, repositórios e
+  `DataStoreManager`s de credenciais e streams, as propriedades de DataStore de nível de arquivo e o
+  `StreamPlaybackState`/`StreamPlaybackStateKey`.
+- `pushRealQrPayload` e `removeRealQrPayload` envolvem também o `connectedE2eReleaseAndroidTest`.
+- README do smoke e `architecture.md` (§2, §9.2, §10, §10.1) atualizados.
+- **Incerteza:** o comportamento do test APK diante do app minificado (se o AGP aplica o mapping do
+  app ao test APK, e o que o R8 removeu de bibliotecas que o teste usa, como corrotinas e Compose
+  UI Test) só aparece na compilação e no celular. A compilação já pega classe ausente.
+
+**Primeira compilação da C.3:** o AGP minifica o test APK do `e2eRelease` com o mapping do app
+(`minifyE2eReleaseAndroidTestWithR8`), o que responde a primeira metade da incerteza. Nenhuma classe
+do app faltou. O único erro foi `javax.lang.model.element.Modifier`, citado pelas anotações do Error
+Prone das bibliotecas de teste e só existente em tempo de compilação: `proguard-e2e-test.pro`
+(`testProguardFile` do `e2eRelease`) tem o `-dontwarn`. Os unitários, a cobertura e o
+`assembleDebugAndroidTest` (com o smoke no conjunto padrão) passaram.
+
+**Segunda compilação da C.3:** com o `-dontwarn`, o `assembleE2eReleaseAndroidTest
+-PrealEnvironment` passou. Falta a execução no celular com o QR real, que mostra o que o R8 removeu
+de bibliotecas e só falha em tempo de execução.
+
+**Primeira execução no celular:** `NoClassDefFoundError: androidx.tracing.Trace`. O AGP tira do
+test APK as bibliotecas que o app também usa, e o teste chama a cópia do app, já encolhida pelo R8.
+O AndroidX Test usa `androidx.tracing`: `proguard-e2e.pro` agora mantém `androidx.tracing.**`.
+
+**Segunda execução no celular:** `NoClassDefFoundError: kotlin.LazyKt`, o mesmo caso com a
+biblioteca padrão do Kotlin. **Desvio da regra "só o que o smoke chama":** `kotlin.**` e
+`kotlinx.coroutines.**` são mantidos inteiros, para não descobrir uma classe por execução. A
+quebra do R8 que o smoke procura está nas classes do app, não nessas bibliotecas. O Compose
+continua encolhido: se faltar algo dele, entra só o que faltar.
+
+**Terceira execução no celular:** `NoClassDefFoundError: androidx.compose.ui.platform.InfiniteAnimationPolicy`.
+Em vez de mais uma rodada por classe, o `TraceReferences --check` do R8 (build-tools 37) comparou o
+test APK com o app. Ele marca como ausentes também as classes que o dex do app define, então a
+saída foi filtrada pelo `dexdump` do app: sobraram 78 classes, quase todas do Compose `runtime` e
+`ui` (o `Composer` foi fundido pelo R8), mais `androidx.lifecycle`, `androidx.core` e
+`androidx.concurrent.futures`; o resto (`java.beans`, `javax.inject`, anotações, Hilt de teste) vem
+de código das bibliotecas de teste que o smoke não executa. **Desvio:** essas cinco bibliotecas
+passam a ser mantidas inteiras. Foundation e Material 3, onde estão os widgets do app, seguem
+encolhidos. A checagem por classe não pega método ausente, que só aparece no celular.
+
+
+**Quarta execução no celular:** sem erro de classe. O smoke subiu o túnel, mas nenhum stream tocou
+em 90 s ("the WHEP negotiation failed"). Falta separar o R8 do ambiente com `-PrealEnvironment=debug`.
+**`-PrealEnvironment=debug`:** a mesma falha, no mesmo passo. O `e2eRelease` se comporta como o
+`debug`, então a falha é do ambiente (peer de teste, Pi ou rede), não do R8.
+**Causa:** o caminho do stream. Com `CAMERAS_E2E_STREAM_PATH=8889/cam_10`, o smoke passou no `debug`.
+
+**Execução final:** `connectedE2eReleaseAndroidTest -PrealEnvironment` com `8889/cam_10` passou no
+SM-S721B (Android 17): túnel, WHEP e primeiro quadro no app minificado.
