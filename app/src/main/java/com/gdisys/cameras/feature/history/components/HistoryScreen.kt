@@ -51,6 +51,7 @@ import com.gdisys.cameras.feature.history.HistoryUiState
 import com.gdisys.cameras.feature.history.MonthItem
 import com.gdisys.cameras.ui.theme.CamerasTheme
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -62,10 +63,30 @@ fun HistoryScreen(
   onBack: () -> Unit,
   onRetry: () -> Unit,
   onMonthClicked: (YearMonth) -> Unit,
-  onRetryMonth: (YearMonth) -> Unit
+  onRetryMonth: (YearMonth) -> Unit,
+  onDayClicked: (LocalDate) -> Unit,
+  onRetryDay: () -> Unit,
+  onPickerDismissed: () -> Unit,
+  onSlotSelected: (LocalTime) -> Unit,
+  onChoiceDismissed: () -> Unit
 ) {
+  val locale = LocalConfiguration.current.locales[0]
+
+  uiState.picker?.let { picker ->
+    TimePickerSheet(
+      picker = picker,
+      locale = locale,
+      onSlotSelected = onSlotSelected,
+      onRetry = onRetryDay,
+      onDismiss = onPickerDismissed
+    )
+  }
+
   Scaffold(
     modifier = Modifier.fillMaxSize(),
+    bottomBar = {
+      uiState.choice?.let { RecordingChoiceBar(choice = it, locale = locale, onDismiss = onChoiceDismissed) }
+    },
     topBar = {
       TopAppBar(
         title = { Text(stringResource(R.string.history_screen_title, uiState.camera)) },
@@ -108,8 +129,10 @@ fun HistoryScreen(
 
       is HistoryContent.Months -> MonthList(
         months = content.months,
+        locale = locale,
         onMonthClicked = onMonthClicked,
         onRetryMonth = onRetryMonth,
+        onDayClicked = onDayClicked,
         modifier = modifier.testTag(HistoryTestTags.MONTH_LIST)
       )
     }
@@ -135,15 +158,16 @@ private fun CenteredMessage(
 @Composable
 private fun MonthList(
   months: List<MonthItem>,
+  locale: Locale,
   onMonthClicked: (YearMonth) -> Unit,
   onRetryMonth: (YearMonth) -> Unit,
+  onDayClicked: (LocalDate) -> Unit,
   modifier: Modifier = Modifier
 ) {
-  val locale = LocalConfiguration.current.locales[0]
   LazyColumn(modifier = modifier) {
     items(months, key = { it.month.toString() }) { item ->
       MonthHeader(item = item, locale = locale, onClick = { onMonthClicked(item.month) })
-      MonthDays(item = item, locale = locale, onRetry = { onRetryMonth(item.month) })
+      MonthDays(item = item, locale = locale, onRetry = { onRetryMonth(item.month) }, onDayClicked = onDayClicked)
       HorizontalDivider()
     }
   }
@@ -178,7 +202,7 @@ private fun MonthHeader(item: MonthItem, locale: Locale, onClick: () -> Unit) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun MonthDays(item: MonthItem, locale: Locale, onRetry: () -> Unit) {
+private fun MonthDays(item: MonthItem, locale: Locale, onRetry: () -> Unit, onDayClicked: (LocalDate) -> Unit) {
   val month = item.month
   val padding = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp)
   when (val days = item.days) {
@@ -222,16 +246,17 @@ private fun MonthDays(item: MonthItem, locale: Locale, onRetry: () -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
       ) {
-        days.days.forEach { day -> DayItem(day = day, locale = locale) }
+        days.days.forEach { day -> DayItem(day = day, locale = locale, onClick = { onDayClicked(day) }) }
       }
     }
   }
 }
 
-/** A day with recordings. Choosing the time of day comes with the time picker. */
+/** A day with recordings, which opens its time picker. */
 @Composable
-private fun DayItem(day: LocalDate, locale: Locale) {
+private fun DayItem(day: LocalDate, locale: Locale, onClick: () -> Unit) {
   Surface(
+    onClick = onClick,
     shape = MaterialTheme.shapes.medium,
     color = MaterialTheme.colorScheme.secondaryContainer,
     modifier = Modifier.testTag(HistoryTestTags.day(day))
@@ -274,7 +299,12 @@ private fun HistoryScreenPreview() {
       onBack = {},
       onRetry = {},
       onMonthClicked = {},
-      onRetryMonth = {}
+      onRetryMonth = {},
+      onDayClicked = {},
+      onRetryDay = {},
+      onPickerDismissed = {},
+      onSlotSelected = {},
+      onChoiceDismissed = {}
     )
   }
 }

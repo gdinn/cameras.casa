@@ -1,6 +1,7 @@
 package com.gdisys.cameras.feature.history.components
 
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.YearMonth
 
 /** Semantic tags shared by the History screen and its instrumented tests. */
@@ -11,6 +12,15 @@ object HistoryTestTags {
   const val RETRY_BUTTON = "history_retry_button"
   const val EMPTY = "history_empty"
   const val MONTH_LIST = "history_month_list"
+  const val PICKER = "history_picker"
+  const val PICKER_LOADING = "history_picker_loading"
+  const val PICKER_ERROR = "history_picker_error"
+  const val PICKER_RETRY_BUTTON = "history_picker_retry"
+  const val PICKER_EMPTY = "history_picker_empty"
+  const val SLOT_GRID = "history_slot_grid"
+  const val CHOICE = "history_choice"
+  const val CHOICE_NEAREST_NOTICE = "history_choice_nearest_notice"
+  const val CHOICE_DISMISS_BUTTON = "history_choice_dismiss"
 
   /** The header of [month], which expands and collapses it. */
   fun month(month: YearMonth) = "history_month:$month"
@@ -24,4 +34,7 @@ object HistoryTestTags {
   fun monthRetryButton(month: YearMonth) = "history_month_retry:$month"
 
   fun day(day: LocalDate) = "history_day:$day"
+
+  /** A slot of the time picker, by its start (`15:00`). */
+  fun slot(slot: LocalTime) = "history_slot:$slot"
 }

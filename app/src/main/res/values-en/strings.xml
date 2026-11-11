@@ -104,4 +104,9 @@
     <string name="history_error_authentication_failed">The recordings server refused this device\'s login</string>
     <string name="history_error_unreachable">The recordings server did not answer</string>
     <string name="history_error_failed">Could not read the recordings</string>
+    <string name="history_picker_empty">No finished recording on this day</string>
+    <string name="history_picker_slot_recorded">Has a recording</string>
+    <string name="history_choice_title">Recording of %1$s, %2$s</string>
+    <string name="history_choice_nearest">The nearest recording starts at %1$s</string>
+    <string name="history_choice_dismiss">Close</string>
 </resources>

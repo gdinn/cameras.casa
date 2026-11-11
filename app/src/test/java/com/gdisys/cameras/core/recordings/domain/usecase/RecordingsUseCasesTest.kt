@@ -2,6 +2,7 @@ package com.gdisys.cameras.core.recordings.domain.usecase
 
 import com.gdisys.cameras.core.recordings.domain.RecordingsException
 import com.gdisys.cameras.core.recordings.domain.RecordingsRepository
+import com.gdisys.cameras.core.recordings.domain.model.Recording
 import io.mockk.coEvery
 import io.mockk.mockk
 import kotlinx.coroutines.CancellationException
@@ -12,6 +13,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.IOException
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.YearMonth
 
 class RecordingsUseCasesTest {
@@ -19,6 +21,7 @@ class RecordingsUseCasesTest {
   private val repository = mockk<RecordingsRepository>()
   private val months = GetRecordingMonthsUseCase(repository)
   private val days = GetRecordingDaysUseCase(repository)
+  private val recordings = GetRecordingsOfDayUseCase(repository)
 
   @Test
   fun `months come newest first`() = runTest {
@@ -36,13 +39,27 @@ class RecordingsUseCasesTest {
   }
 
   @Test
+  fun `the recordings of a day keep their order`() = runTest {
+    val day = LocalDate.of(2026, 11, 10)
+    val list = listOf(
+      Recording("cam_10", LocalDateTime.of(2026, 11, 10, 0, 0), "cam_10_2026-11-10_00-00-00.mp4"),
+      Recording("cam_10", LocalDateTime.of(2026, 11, 10, 15, 0), "cam_10_2026-11-10_15-00-00.mp4")
+    )
+    coEvery { repository.recordings("cam_10", day) } returns list
+
+    assertEquals(list, recordings("cam_10", day).getOrThrow())
+  }
+
+  @Test
   fun `a failure becomes a failed result`() = runTest {
     val failure = RecordingsException.Unreachable(IOException("no route"))
     coEvery { repository.months(any()) } throws failure
     coEvery { repository.days(any(), any()) } throws failure
+    coEvery { repository.recordings(any(), any()) } throws failure
 
     assertSame(failure, months("cam_10").exceptionOrNull())
     assertSame(failure, days("cam_10", YearMonth.of(2026, 11)).exceptionOrNull())
+    assertSame(failure, recordings("cam_10", LocalDate.of(2026, 11, 10)).exceptionOrNull())
   }
 
   @Test

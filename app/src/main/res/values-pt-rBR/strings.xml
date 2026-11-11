@@ -104,4 +104,9 @@
     <string name="history_error_authentication_failed">O servidor de gravações recusou o login deste aparelho</string>
     <string name="history_error_unreachable">O servidor de gravações não respondeu</string>
     <string name="history_error_failed">Falha ao ler as gravações</string>
+    <string name="history_picker_empty">Nenhuma gravação concluída neste dia</string>
+    <string name="history_picker_slot_recorded">Tem gravação</string>
+    <string name="history_choice_title">Gravação de %1$s, %2$s</string>
+    <string name="history_choice_nearest">A gravação mais próxima começa às %1$s</string>
+    <string name="history_choice_dismiss">Fechar</string>
 </resources>

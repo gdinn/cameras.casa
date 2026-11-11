@@ -25,6 +25,11 @@ fun HistoryRoute(
     onBack = onNavigateBack,
     onRetry = viewModel::onRetry,
     onMonthClicked = viewModel::onMonthClicked,
-    onRetryMonth = viewModel::onRetryMonth
+    onRetryMonth = viewModel::onRetryMonth,
+    onDayClicked = viewModel::onDayClicked,
+    onRetryDay = viewModel::onRetryDay,
+    onPickerDismissed = viewModel::onPickerDismissed,
+    onSlotSelected = viewModel::onSlotSelected,
+    onChoiceDismissed = viewModel::onChoiceDismissed
   )
 }

@@ -497,9 +497,9 @@ chain. The real share against the Pi is checked from Step 6, when History has a 
 - Expandable months, newest first.
 
 **Outcome (2026-11-11).** Done. `jacocoTestCoverageVerification` passed (unit tests, Konsist,
-90% gate). `HistoryScreenTest` and `HomeScreenTest` passed on an SM-S721B (19 tests). The manual
-check against the real share, with the admin peer (focused view → History → expand a month), is
-still to be done; Step 11's smoke covers it otherwise.
+90% gate). `HistoryScreenTest` and `HomeScreenTest` passed on an SM-S721B (19 tests). The user then
+checked it on the device with an admin peer against the real share (focused view → History →
+expand a month): it worked.
 
 **What was built** (`docs/architecture.md` §4, §5.5, §5.6, §6.9)
 
@@ -538,7 +538,34 @@ still to be done; Step 11's smoke covers it otherwise.
   forwards-only, backwards-only, tie → later, empty day, ignored seconds, in-progress file excluded.
 - Message when the chosen file does not start at the slot.
 
-**Outcome.** _pending_
+**Outcome (2026-11-11).** Done. `jacocoTestCoverageVerification` passed (unit tests, Konsist,
+90% gate, no compiler warnings). `HistoryScreenTest` passed on an SM-S721B (12 tests).
+
+**What was built** (`docs/architecture.md` §5.6)
+
+- `feature/history/logic/TimeSlots.kt`: `DAY_SLOTS` (96), `recordedSlots`, `nearestRecording` and
+  `RecordingChoice`, covered by `TimeSlotsTest`. The cases are exact match, forwards only,
+  backwards only, the closer side, a tie going to the later file, two files of the same minute,
+  ignored seconds, both ends of the day, and an empty day. The file being written never reaches the
+  picker: the repository already hides it (Step 5).
+- `GetRecordingsOfDayUseCase`.
+- `HistoryViewModel`:
+  - `onDayClicked` opens a `DayPicker` (`Loading` → `Ready` / `Failed`);
+  - the picker can be retried and dismissed;
+  - `onSlotSelected` closes it and sets `choice`.
+- UI:
+  - `TimePickerSheet`: a bottom sheet, 4 slots per row, opened on the row of the first recording;
+  - recorded slots are tonal and carry the state description "Has a recording";
+  - `RecordingChoiceBar` shows the choice and the "nearest recording starts at" notice.
+
+**Deviations and decisions**
+
+1. **Every slot can be chosen,** not only the highlighted ones. That is what makes the nearest
+   rule useful: a slot without a recording leads to the closest one.
+2. **The choice ends in a bar until Step 8.** The player will open instead and show the notice.
+   The bar is a stand-in, but its strings ("nearest recording starts at") stay.
+3. **Times are formatted with the locale's short style:** 15:10 in pt-BR, 3:10 PM in en-US.
+
 
 ### Step 8 — Player
 

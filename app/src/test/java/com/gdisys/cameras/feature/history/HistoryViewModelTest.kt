@@ -4,12 +4,15 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModelStore
 import com.gdisys.cameras.MainDispatcherRule
 import com.gdisys.cameras.core.recordings.domain.RecordingsException
+import com.gdisys.cameras.core.recordings.domain.model.Recording
 import com.gdisys.cameras.core.recordings.domain.usecase.GetRecordingDaysUseCase
 import com.gdisys.cameras.core.recordings.domain.usecase.GetRecordingMonthsUseCase
+import com.gdisys.cameras.core.recordings.domain.usecase.GetRecordingsOfDayUseCase
 import com.gdisys.cameras.core.vpn.domain.TunnelCoordinator
 import com.gdisys.cameras.core.vpn.domain.TunnelHolder
 import com.gdisys.cameras.core.vpn.domain.VpnTunnelState
 import com.gdisys.cameras.core.vpn.domain.usecase.ObserveVpnStateUseCase
+import com.gdisys.cameras.feature.history.logic.RecordingChoice
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -25,12 +28,17 @@ import org.junit.Rule
 import org.junit.Test
 import java.io.IOException
 import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.LocalTime
 import java.time.YearMonth
 
 private const val CAM = "cam_10"
 private val NOV: YearMonth = YearMonth.of(2026, 11)
 private val OCT: YearMonth = YearMonth.of(2026, 10)
 private val NOV_DAYS = listOf(LocalDate.of(2026, 11, 8), LocalDate.of(2026, 11, 10))
+private val DAY: LocalDate = LocalDate.of(2026, 11, 10)
+private val AT_1500 = Recording(CAM, LocalDateTime.of(2026, 11, 10, 15, 0), "cam_10_2026-11-10_15-00-00.mp4")
+private val AT_1610 = Recording(CAM, LocalDateTime.of(2026, 11, 10, 16, 10), "cam_10_2026-11-10_16-10-00.mp4")
 
 class HistoryViewModelTest {
 
@@ -41,6 +49,7 @@ class HistoryViewModelTest {
   private val observeVpnStateUseCase = mockk<ObserveVpnStateUseCase>()
   private val getRecordingMonthsUseCase = mockk<GetRecordingMonthsUseCase>()
   private val getRecordingDaysUseCase = mockk<GetRecordingDaysUseCase>()
+  private val getRecordingsOfDayUseCase = mockk<GetRecordingsOfDayUseCase>()
   private val tunnelCoordinator = FakeTunnelCoordinator()
 
   private lateinit var viewModel: HistoryViewModel
@@ -50,6 +59,7 @@ class HistoryViewModelTest {
     every { observeVpnStateUseCase() } returns vpnState
     coEvery { getRecordingMonthsUseCase(CAM) } returns Result.success(listOf(NOV, OCT))
     coEvery { getRecordingDaysUseCase(CAM, NOV) } returns Result.success(NOV_DAYS)
+    coEvery { getRecordingsOfDayUseCase(CAM, DAY) } returns Result.success(listOf(AT_1500, AT_1610))
     viewModel = newViewModel()
   }
 
@@ -58,6 +68,7 @@ class HistoryViewModelTest {
     observeVpnStateUseCase,
     getRecordingMonthsUseCase,
     getRecordingDaysUseCase,
+    getRecordingsOfDayUseCase,
     tunnelCoordinator
   )
 
@@ -104,6 +115,7 @@ class HistoryViewModelTest {
         observeVpnStateUseCase,
         getRecordingMonthsUseCase,
         getRecordingDaysUseCase,
+        getRecordingsOfDayUseCase,
         tunnelCoordinator
       )
     }
@@ -300,6 +312,121 @@ class HistoryViewModelTest {
 
     assertEquals(HistoryContent.Loading, content)
     coVerify(exactly = 0) { getRecordingDaysUseCase(any(), any()) }
+  }
+
+  // time picker
+
+  private val picker get() = viewModel.uiState.value.picker
+
+  @Test
+  fun `tapping a day opens its picker with the day's recordings`() {
+    open()
+
+    viewModel.onDayClicked(DAY)
+
+    assertEquals(DayPicker.Ready(DAY, listOf(AT_1500, AT_1610)), picker)
+  }
+
+  @Test
+  fun `the picker shows its loading state until the recordings arrive`() {
+    val pending = CompletableDeferred<Result<List<Recording>>>()
+    coEvery { getRecordingsOfDayUseCase(CAM, DAY) } coAnswers { pending.await() }
+    open()
+
+    viewModel.onDayClicked(DAY)
+    assertEquals(DayPicker.Loading(DAY), picker)
+
+    pending.complete(Result.success(listOf(AT_1500)))
+    assertEquals(DayPicker.Ready(DAY, listOf(AT_1500)), picker)
+  }
+
+  @Test
+  fun `a failed day can be retried`() {
+    coEvery { getRecordingsOfDayUseCase(CAM, DAY) } returns Result.failure(RecordingsException.Unreachable(IOException()))
+    open()
+    viewModel.onDayClicked(DAY)
+    assertEquals(DayPicker.Failed(DAY, HistoryError.UNREACHABLE), picker)
+
+    coEvery { getRecordingsOfDayUseCase(CAM, DAY) } returns Result.success(listOf(AT_1500))
+    viewModel.onRetryDay()
+
+    assertEquals(DayPicker.Ready(DAY, listOf(AT_1500)), picker)
+  }
+
+  @Test
+  fun `retrying a day that did not fail does nothing`() {
+    open()
+    viewModel.onRetryDay()
+    viewModel.onDayClicked(DAY)
+
+    viewModel.onRetryDay()
+
+    coVerify(exactly = 1) { getRecordingsOfDayUseCase(CAM, DAY) }
+  }
+
+  @Test
+  fun `dismissing the picker closes it, and a late answer does not reopen it`() {
+    val pending = CompletableDeferred<Result<List<Recording>>>()
+    coEvery { getRecordingsOfDayUseCase(CAM, DAY) } coAnswers { pending.await() }
+    open()
+    viewModel.onDayClicked(DAY)
+
+    viewModel.onPickerDismissed()
+    pending.complete(Result.success(listOf(AT_1500)))
+
+    assertEquals(null, picker)
+  }
+
+  @Test
+  fun `tapping another day replaces the picker`() {
+    val other = LocalDate.of(2026, 11, 8)
+    coEvery { getRecordingsOfDayUseCase(CAM, other) } returns Result.success(emptyList())
+    open()
+
+    viewModel.onDayClicked(DAY)
+    viewModel.onDayClicked(other)
+
+    assertEquals(DayPicker.Ready(other, emptyList()), picker)
+  }
+
+  @Test
+  fun `a slot picks the nearest recording and closes the picker`() {
+    open()
+    viewModel.onDayClicked(DAY)
+
+    viewModel.onSlotSelected(LocalTime.of(16, 0))
+
+    assertEquals(null, picker)
+    assertEquals(RecordingChoice(AT_1610, LocalTime.of(16, 0)), viewModel.uiState.value.choice)
+  }
+
+  @Test
+  fun `a slot does nothing while the picker is not ready or the day is empty`() {
+    val pending = CompletableDeferred<Result<List<Recording>>>()
+    coEvery { getRecordingsOfDayUseCase(CAM, DAY) } coAnswers { pending.await() }
+    open()
+
+    viewModel.onSlotSelected(LocalTime.of(15, 0))
+    viewModel.onDayClicked(DAY)
+    viewModel.onSlotSelected(LocalTime.of(15, 0))
+    assertEquals(DayPicker.Loading(DAY), picker)
+
+    pending.complete(Result.success(emptyList()))
+    viewModel.onSlotSelected(LocalTime.of(15, 0))
+
+    assertEquals(DayPicker.Ready(DAY, emptyList()), picker)
+    assertEquals(null, viewModel.uiState.value.choice)
+  }
+
+  @Test
+  fun `the choice can be dismissed`() {
+    open()
+    viewModel.onDayClicked(DAY)
+    viewModel.onSlotSelected(LocalTime.of(15, 0))
+
+    viewModel.onChoiceDismissed()
+
+    assertEquals(null, viewModel.uiState.value.choice)
   }
 
   private class FakeTunnelCoordinator : TunnelCoordinator {

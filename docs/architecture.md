@@ -553,15 +553,17 @@ Another screen may hold the tunnel by then, and that one reports it.
 ### 5.6 `feature/history` — an admin's recordings of one camera
 
 **What it does.** Lists the months with recordings of one camera, newest first. Expanding a month
-lists its days with a finished file, in calendar order. Reached from the history button of Home's
-focused view, for admins only.
+lists its days with a finished file, in calendar order. Tapping a day opens its time picker, and a
+time picks the nearest recording of that day. Reached from the history button of Home's focused
+view, for admins only.
 
 | Role | Type |
 |---|---|
-| View | `HistoryRoute.kt` + `components/HistoryScreen.kt`, `components/HistoryTestTags.kt` |
+| View | `HistoryRoute.kt` + `components/`: `HistoryScreen`, `TimePickerSheet`, `RecordingChoiceBar`, `HistoryTestTags` |
 | ViewModel | `HistoryViewModel.kt` |
-| State | `HistoryUiState.kt` — `camera` + `HistoryContent`: `Loading` \| `Failed(HistoryError)` \| `Empty` \| `Months(List<MonthItem>)`. Each `MonthItem` has a `DaysState`: `Collapsed` \| `Loading` \| `Loaded(days)` \| `Failed(HistoryError)` |
-| Model | `GetRecordingMonthsUseCase`, `GetRecordingDaysUseCase`, `ObserveVpnStateUseCase` + `TunnelCoordinator` |
+| State | `HistoryUiState.kt` — `camera` + `HistoryContent`: `Loading` \| `Failed(HistoryError)` \| `Empty` \| `Months(List<MonthItem>)`. Each `MonthItem` has a `DaysState`: `Collapsed` \| `Loading` \| `Loaded(days)` \| `Failed(HistoryError)`. Over it, `picker: DayPicker?` (`Loading` \| `Ready(recordings)` \| `Failed`) and `choice: RecordingChoice?` |
+| Logic | `logic/TimeSlots.kt` — `DAY_SLOTS`, `recordedSlots`, `nearestRecording`, `RecordingChoice` |
+| Model | `GetRecordingMonthsUseCase`, `GetRecordingDaysUseCase`, `GetRecordingsOfDayUseCase`, `ObserveVpnStateUseCase` + `TunnelCoordinator` |
 
 **The tunnel.** Like Home, History requests the tunnel on resume and releases it on pause and in
 `onCleared`. Coming from the focused view, Home releases and History requests within the
@@ -591,8 +593,23 @@ The whole list fails with a retry button. One month's days fail in place, with t
 Retrying the list also asks for the tunnel again, which makes the coordinator retry a failed
 connect.
 
+**Time picker and nearest recording.** `TimePickerSheet` is a bottom sheet with the day's 96
+slots of 15 minutes, four per row, opened on the row of the first recording.
+
+- **Highlighted slots** are those where a recording starts (`recordedSlots`). A file that starts at
+  15:10 highlights 15:00.
+- **Any slot can be chosen.** `nearestRecording` picks the recording whose start (minutes, seconds
+  ignored) is closest to the slot, looking forwards and backwards, within that day only.
+- **A tie goes to the later file:** the user asked for a time and gets what came after it.
+- **`RecordingChoice`** keeps the requested slot. When the recording starts elsewhere,
+  `RecordingChoiceBar` says "The nearest recording starts at 15:10".
+- **For now the choice ends in that bar.** The player takes it over in the next step.
+
+The picker lists the day's recordings each time it opens. Dismissing it cancels a listing still
+running.
+
 **Accessibility.** Each month header is a button whose state description says "Expanded" or
-"Collapsed".
+"Collapsed". A slot with a recording says "Has a recording", so the highlight is not color only.
 
 ---
 
@@ -872,8 +889,8 @@ connection. Without the retry, the first listing after every return to the scree
 | `Unreachable` | Network failures and lost sessions |
 | `Failed` | Anything else |
 
-**Use cases** (`domain/usecase`): `GetRecordingMonthsUseCase` (newest first) and
-`GetRecordingDaysUseCase` wrap the repository in a `Result` through `recordingsResult`, which,
+**Use cases** (`domain/usecase`): `GetRecordingMonthsUseCase` (newest first),
+`GetRecordingDaysUseCase` and `GetRecordingsOfDayUseCase` wrap the repository in a `Result` through `recordingsResult`, which,
 unlike `runCatching`, lets a cancellation through. A screen that leaves during a listing therefore
 sees no error.
 
@@ -1128,14 +1145,14 @@ runtime.
 
 ## 10. Testing and quality gates
 
-**60 test files** under `app/src/test/`, mirroring the production package structure. Coverage is
+**61 test files** under `app/src/test/`, mirroring the production package structure. Coverage is
 concentrated where the project decided it belongs: ViewModels, use cases, repository
 implementations, pure logic and serialization.
 
 | Area | Representative tests |
 |---|---|
 | ViewModels (all 6) | `HomeViewModelTest`, `ConfigViewModelTest`, `StreamURLsViewModelTest`, `InitViewModelTest`, `QrCodeViewModelTest`, `HistoryViewModelTest` |
-| Pure logic | `StreamPagingTest`, `PagedDragStateTest`, `FixedGridLayoutTest`, `GridPreferencesValidationTest`, `StreamUrlValidationTest` |
+| Pure logic | `TimeSlotsTest`, `StreamPagingTest`, `PagedDragStateTest`, `FixedGridLayoutTest`, `GridPreferencesValidationTest`, `StreamUrlValidationTest` |
 | Storage | `EncryptedPreferencesSerializerTest`, `StreamPreferencesSerializationTest`, `DataStoreManagerTest`, repository and all 8 use-case tests |
 | VPN | `VpnRepositoryImplTest`, `VpnConfigTest`, `VpnLifecycleControllerImplTest`, `VpnTeardownTest`, 4 use-case tests |
 | WebRTC | `WhepConnectionManagerTest`, `WhepRemoteDataSourceImplTest` (MockWebServer) |
@@ -1193,7 +1210,7 @@ service test, one dispatcher test and the default example), with packages mirror
 | `IdlingDispatcherTest` (2) | `IdlingDispatcher` is busy while its work runs and reports the transition to idle; the Compose test rule waits for main → `TestDispatchers.default` → `TestDispatchers.io` → main with no `waitUntil` |
 | `WebRtcVideoPlayerTest` (4) | The real player over a recording `WebRtcConnection`: `CONNECTING` with a spinner before any frame; real I420 frames fed into the sink turn it `PLAYING`; a stream in `LocalFailedStreams` is `FAILED` and shows `StreamErrorOverlay`; "Try again" disconnects and connects the same renderer again |
 | `HomeScreenTest` (14) | The real `HomeScreen` with fake callbacks: the move accessibility actions reorder one place and are absent at the ends; "Reconfigure" is an action in dynamic mode only; one real drag per grid mode reorders on drop; overscrolling the dynamic grid reveals "Reconfigure"; the fixed grid always shows it; the page buttons move between pages; "Reconfigure" never covers the page buttons; a focused stream replaces the grid; the focused view shows the history button only with a camera, and it opens that camera's history |
-| `HistoryScreenTest` (5) | The History screen with hand-written states: loading and back; a failure's message and retry; empty; a month in each state (expanded with days, failed, loading, no days, collapsed, with the state description); month clicks and a month's retry are reported |
+| `HistoryScreenTest` (12) | The History screen with hand-written states: loading and back; a failure's message and retry; empty; a month in each state (expanded with days, failed, loading, no days, collapsed, with the state description); month clicks and a month's retry are reported; a day reports its click; the time picker marks the recorded slots, reports any chosen slot, and shows its loading, empty and failed states; a choice away from the slot shows the nearest-recording notice, one at the slot does not |
 | `RealEnvironmentSmokeTest` (1, manual) | Real QR → real tunnel → a `PLAYING` card, on the production app minified as release (`e2eRelease`) and a physical phone. Excluded from the 110; run with `-PrealEnvironment` |
 | `TestLocaleTest` (1) | What `setThemedContent` renders and what `string()` resolves agree, and follow the `testLocale` argument when it is given |
 | `QrCodeImageDecodingTest` (1) | Level C: every PNG of `qr-code-gen/examples/` decodes, on the device's ML Kit, to exactly the JSON next to it, so the scanner's decoder is covered without the camera and a PNG left behind by a JSON change fails. A failure names the fixtures only |

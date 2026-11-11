@@ -8,10 +8,12 @@ import com.gdisys.cameras.core.ToastEventViewModel
 import com.gdisys.cameras.core.recordings.domain.RecordingsException
 import com.gdisys.cameras.core.recordings.domain.usecase.GetRecordingDaysUseCase
 import com.gdisys.cameras.core.recordings.domain.usecase.GetRecordingMonthsUseCase
+import com.gdisys.cameras.core.recordings.domain.usecase.GetRecordingsOfDayUseCase
 import com.gdisys.cameras.core.vpn.domain.TunnelCoordinator
 import com.gdisys.cameras.core.vpn.domain.TunnelHolder
 import com.gdisys.cameras.core.vpn.domain.VpnTunnelState
 import com.gdisys.cameras.core.vpn.domain.usecase.ObserveVpnStateUseCase
+import com.gdisys.cameras.feature.history.logic.nearestRecording
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,6 +21,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.time.LocalDate
+import java.time.LocalTime
 import java.time.YearMonth
 import javax.inject.Inject
 
@@ -38,6 +42,9 @@ internal val HISTORY_TUNNEL_HOLDER = TunnelHolder.Screen("history")
  * hand-over happens within the coordinator's grace period, so the tunnel stays up. The months are
  * listed once the tunnel is up, and only once: coming back from the background keeps the list. A
  * month's days are listed when it is expanded, every time, since a new file may have finished.
+ *
+ * Tapping a day opens its time picker, which lists the day's recordings. Choosing a time picks the
+ * nearest recording of that day (see [nearestRecording]).
  */
 @HiltViewModel
 class HistoryViewModel @Inject constructor(
@@ -45,6 +52,7 @@ class HistoryViewModel @Inject constructor(
   observeVpnStateUseCase: ObserveVpnStateUseCase,
   private val getRecordingMonthsUseCase: GetRecordingMonthsUseCase,
   private val getRecordingDaysUseCase: GetRecordingDaysUseCase,
+  private val getRecordingsOfDayUseCase: GetRecordingsOfDayUseCase,
   private val tunnelCoordinator: TunnelCoordinator
 ) : ToastEventViewModel() {
 
@@ -59,6 +67,7 @@ class HistoryViewModel @Inject constructor(
   private var tunnelUp = false
   private var monthsJob: Job? = null
   private val daysJobs = mutableMapOf<YearMonth, Job>()
+  private var pickerJob: Job? = null
 
   init {
     viewModelScope.launch {
@@ -105,6 +114,44 @@ class HistoryViewModel @Inject constructor(
   fun onRetryMonth(month: YearMonth) {
     val item = months()?.firstOrNull { it.month == month } ?: return
     if (item.days is DaysState.Failed) loadDays(month)
+  }
+
+  /** Opens the time picker of [day] and lists its recordings. */
+  fun onDayClicked(day: LocalDate) {
+    pickerJob?.cancel()
+    _uiState.update { it.copy(picker = DayPicker.Loading(day)) }
+    pickerJob = viewModelScope.launch {
+      val picker = getRecordingsOfDayUseCase(camera, day).fold(
+        onSuccess = { recordings -> DayPicker.Ready(day, recordings) },
+        onFailure = { e ->
+          Log.d(DEBUG_TAG, "Listing the recordings of $camera $day failed: $e")
+          DayPicker.Failed(day, e.toHistoryError())
+        }
+      )
+      _uiState.update { it.copy(picker = picker) }
+    }
+  }
+
+  /** Lists the day's recordings again after they failed. */
+  fun onRetryDay() {
+    val picker = _uiState.value.picker as? DayPicker.Failed ?: return
+    onDayClicked(picker.day)
+  }
+
+  fun onPickerDismissed() {
+    pickerJob?.cancel()
+    _uiState.update { it.copy(picker = null) }
+  }
+
+  /** Picks the recording of the open day nearest to [slot] and closes the picker. */
+  fun onSlotSelected(slot: LocalTime) {
+    val picker = _uiState.value.picker as? DayPicker.Ready ?: return
+    val choice = nearestRecording(picker.recordings, slot) ?: return
+    _uiState.update { it.copy(picker = null, choice = choice) }
+  }
+
+  fun onChoiceDismissed() {
+    _uiState.update { it.copy(choice = null) }
   }
 
   override fun onCleared() {

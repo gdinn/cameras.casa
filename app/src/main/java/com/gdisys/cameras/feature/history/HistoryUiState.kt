@@ -2,14 +2,34 @@ package com.gdisys.cameras.feature.history
 
 import androidx.annotation.StringRes
 import com.gdisys.cameras.R
+import com.gdisys.cameras.core.recordings.domain.model.Recording
+import com.gdisys.cameras.feature.history.logic.RecordingChoice
 import java.time.LocalDate
 import java.time.YearMonth
 
-/** @property camera the camera (`cam_xx`) whose recordings are listed */
+/**
+ * @property camera the camera (`cam_xx`) whose recordings are listed
+ * @property picker the time picker of the day the user tapped, over the list
+ * @property choice the recording picked for a time, until the player takes it over
+ */
 data class HistoryUiState(
   val camera: String,
-  val content: HistoryContent = HistoryContent.Loading
+  val content: HistoryContent = HistoryContent.Loading,
+  val picker: DayPicker? = null,
+  val choice: RecordingChoice? = null
 )
+
+/** The time picker of [day]: its recordings are listed when it opens. */
+sealed interface DayPicker {
+  val day: LocalDate
+
+  data class Loading(override val day: LocalDate) : DayPicker
+
+  /** [recordings] in chronological order; empty when the day's files are gone since the listing. */
+  data class Ready(override val day: LocalDate, val recordings: List<Recording>) : DayPicker
+
+  data class Failed(override val day: LocalDate, val error: HistoryError) : DayPicker
+}
 
 sealed interface HistoryContent {
   /** Waiting for the tunnel, then for the list of months. */
