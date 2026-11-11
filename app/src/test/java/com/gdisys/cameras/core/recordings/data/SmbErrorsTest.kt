@@ -89,4 +89,19 @@ class SmbErrorsTest {
     assertFalse(status(NtStatus.STATUS_ACCESS_DENIED).isNotFound())
     assertFalse(TransportException("broken pipe").isNotFound())
   }
+
+  @Test
+  fun `a read failure carries the domain failure`() {
+    val error = SMBRuntimeException(TransportException("broken pipe")).toReadException()
+
+    assertTrue(error.reason is RecordingsException.Unreachable)
+    assertSame(error.reason, error.cause)
+  }
+
+  @Test
+  fun `a read failure is not wrapped twice`() {
+    val error = RecordingReadException(RecordingsException.NotAdmin())
+
+    assertSame(error, error.toReadException())
+  }
 }

@@ -18,9 +18,6 @@ object HistoryTestTags {
   const val PICKER_RETRY_BUTTON = "history_picker_retry"
   const val PICKER_EMPTY = "history_picker_empty"
   const val SLOT_GRID = "history_slot_grid"
-  const val CHOICE = "history_choice"
-  const val CHOICE_NEAREST_NOTICE = "history_choice_nearest_notice"
-  const val CHOICE_DISMISS_BUTTON = "history_choice_dismiss"
 
   /** The header of [month], which expands and collapses it. */
   fun month(month: YearMonth) = "history_month:$month"

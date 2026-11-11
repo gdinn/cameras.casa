@@ -16,6 +16,14 @@ sealed interface NavigationRoute {
   @Serializable
   data class History(val camera: String)
 
+  /**
+   * Plays [fileName] of [camera]. [nearestNotice] says the file does not start at the time the user
+   * chose. `RecordingPlayerViewModel` reads the three from its `SavedStateHandle` under the
+   * `PLAYER_*_ARG` names, which must stay these properties' names.
+   */
+  @Serializable
+  data class RecordingPlayer(val camera: String, val fileName: String, val nearestNotice: Boolean)
+
   @Serializable
   data object Loading
 

@@ -254,8 +254,9 @@ screen must not be promoted into the shared domain.
 
 ## 4. Navigation and route inventory
 
-`app/navigation/NavigationRoute.kt` declares six type-safe destinations inside a `sealed interface`:
-`@Serializable` objects, and one data class, `History(camera)`, the only route with an argument. `NavigationRoot.kt` maps each to a route composable and owns all
+`app/navigation/NavigationRoute.kt` declares seven type-safe destinations inside a `sealed interface`:
+`@Serializable` objects, and two data classes with arguments, `History(camera)` and
+`RecordingPlayer(camera, fileName, nearestNotice)`. `NavigationRoot.kt` maps each to a route composable and owns all
 inter-screen wiring, including passing the QR-code result back through
 `previousBackStackEntry.savedStateHandle`.
 
@@ -276,22 +277,25 @@ in release builds. Its theme and `configChanges` must match `MainActivity`'s; bo
 | `StreamURLs` | `StreamURLsRoute` | `feature/streamurls/StreamURLsRoute.kt` | `StreamURLsViewModel` |
 | `Home` | `HomeRoute` | `feature/cameras/HomeRoute.kt` | `HomeViewModel` |
 | `History(camera)` | `HistoryRoute` | `feature/history/HistoryRoute.kt` | `HistoryViewModel` |
+| `RecordingPlayer(camera, fileName, nearestNotice)` | `RecordingPlayerRoute` | `feature/history/player/RecordingPlayerRoute.kt` | `RecordingPlayerViewModel` |
 
 **Navigation shape.** The flow is gated, not linear. `InitRoute` decides between `Config` and
 `Home` based on stored credentials. `ConfigRoute` refuses to leave for `Home` until three
 requirements are met (credentials, VPN permission, at least one stream URL) and consumes the system
 back press with a toast otherwise. `navigateToHome()` pops back to an existing `Home` entry when
 there is one, instead of stacking duplicates. `History` is reached only from Home's focused view, by
-admins, and goes back to it with a plain `popBackStack`.
+admins, and goes back to it with a plain `popBackStack`. `RecordingPlayer` is reached from
+`History`'s time picker, and goes back to it the same way.
 
 **Route arguments.** Type-safe navigation stores a route's properties in the destination's
 `SavedStateHandle` under their names. `HistoryViewModel` reads `camera` there through
-`HISTORY_CAMERA_ARG`, so the feature does not import `app.navigation`. The name is the contract,
+`HISTORY_CAMERA_ARG`, and `RecordingPlayerViewModel` its three through `PLAYER_*_ARG`, so the
+feature does not import `app.navigation`. The name is the contract,
 noted on both sides.
 
 ### 4.1 Conventions shared by every route
 
-All six routes follow the same contract, which makes them easy to read once you know the pattern:
+All seven routes follow the same contract, which makes them easy to read once you know the pattern:
 
 - The route composable is the **only** place that touches navigation lambdas, `BackHandler`,
   lifecycle effects and Activity-result launchers. Screens below it are pure and previewable.
@@ -559,9 +563,9 @@ view, for admins only.
 
 | Role | Type |
 |---|---|
-| View | `HistoryRoute.kt` + `components/`: `HistoryScreen`, `TimePickerSheet`, `RecordingChoiceBar`, `HistoryTestTags` |
+| View | `HistoryRoute.kt` + `components/`: `HistoryScreen`, `TimePickerSheet`, `HistoryTestTags` |
 | ViewModel | `HistoryViewModel.kt` |
-| State | `HistoryUiState.kt` — `camera` + `HistoryContent`: `Loading` \| `Failed(HistoryError)` \| `Empty` \| `Months(List<MonthItem>)`. Each `MonthItem` has a `DaysState`: `Collapsed` \| `Loading` \| `Loaded(days)` \| `Failed(HistoryError)`. Over it, `picker: DayPicker?` (`Loading` \| `Ready(recordings)` \| `Failed`) and `choice: RecordingChoice?` |
+| State | `HistoryUiState.kt` — `camera` + `HistoryContent`: `Loading` \| `Failed(HistoryError)` \| `Empty` \| `Months(List<MonthItem>)`. Each `MonthItem` has a `DaysState`: `Collapsed` \| `Loading` \| `Loaded(days)` \| `Failed(HistoryError)`. Over it, `picker: DayPicker?` (`Loading` \| `Ready(recordings)` \| `Failed`) |
 | Logic | `logic/TimeSlots.kt` — `DAY_SLOTS`, `recordedSlots`, `nearestRecording`, `RecordingChoice` |
 | Model | `GetRecordingMonthsUseCase`, `GetRecordingDaysUseCase`, `GetRecordingsOfDayUseCase`, `ObserveVpnStateUseCase` + `TunnelCoordinator` |
 
@@ -601,12 +605,46 @@ slots of 15 minutes, four per row, opened on the row of the first recording.
 - **Any slot can be chosen.** `nearestRecording` picks the recording whose start (minutes, seconds
   ignored) is closest to the slot, looking forwards and backwards, within that day only.
 - **A tie goes to the later file:** the user asked for a time and gets what came after it.
-- **`RecordingChoice`** keeps the requested slot. When the recording starts elsewhere,
-  `RecordingChoiceBar` says "The nearest recording starts at 15:10".
-- **For now the choice ends in that bar.** The player takes it over in the next step.
+- **`RecordingChoice`** keeps the requested slot. When the recording starts elsewhere, the player
+  says "The nearest recording starts at 15:10".
+- **The choice opens the player** (`HistoryNavigateUiEvent.ToPlayer`), which shows the notice.
 
 The picker lists the day's recordings each time it opens. Dismissing it cancels a listing still
 running.
+
+**The player** (`feature/history/player/`, its own route in the same feature: it shares the
+feature's errors and the recordings model, and a feature may not import another).
+
+| Role | Type |
+|---|---|
+| View | `RecordingPlayerRoute.kt` + `components/RecordingPlayerScreen.kt`, `RecordingPlayerTestTags.kt` |
+| ViewModel | `RecordingPlayerViewModel.kt` |
+| State | `RecordingPlayerUiState(recording, nearestNotice, status, looking)`. `PlayerStatus`: `Loading` \| `Playing` \| `Ended` \| `Failed(HistoryError)` |
+| Model | `GetNeighborRecordingUseCase`, `ObserveVpnStateUseCase`, `TunnelCoordinator`, `RecordingPlayer` (one per ViewModel) |
+
+How it behaves:
+
+- **Tunnel:** held while resumed, like the other screens. The player starts once the screen is
+  resumed and the tunnel is up.
+- **Pause:** `onPaused` stops the `RecordingPlayer`, which frees ExoPlayer and its SMB connection,
+  and keeps the position. `onResumed` plays again from there. Background playback is not a goal,
+  and a held decoder and socket would be.
+- **Previous/next:** `GetNeighborRecordingUseCase` looks up the neighbor across days, months and
+  years.
+  - While it looks, both buttons are disabled and the pressed one spins.
+  - At either end a toast says there is no earlier or later recording, and playback goes on.
+  - A failed lookup is a toast too.
+- **End of a file:** advances to the next one by itself. After the newest finished file, the status
+  is `Ended` ("This is the newest finished recording").
+- **Failure:** a read failure (`RecordingsException` in the player error's cause chain) or a tunnel
+  failure stops the player and shows the `HistoryError` with "Try again". The retry resumes at the
+  position where it failed.
+- **The nearest-recording notice** shows for the first file only; moving to another clears it.
+- **Recreation:** the current file name is written back to the `SavedStateHandle`, so a recreated
+  screen shows the file the user moved to.
+
+The screen takes the video as a slot, `video: @Composable (Modifier) -> Unit`. The route passes
+`viewModel.player.Video`, and the screen tests a placeholder.
 
 **Accessibility.** Each month header is a button whose state description says "Expanded" or
 "Collapsed". A slot with a recording says "Has a recording", so the highlight is not color only.
@@ -890,18 +928,39 @@ connection. Without the retry, the first listing after every return to the scree
 | `Failed` | Anything else |
 
 **Use cases** (`domain/usecase`): `GetRecordingMonthsUseCase` (newest first),
-`GetRecordingDaysUseCase` and `GetRecordingsOfDayUseCase` wrap the repository in a `Result` through `recordingsResult`, which,
+`GetRecordingDaysUseCase`, `GetRecordingsOfDayUseCase` and `GetNeighborRecordingUseCase` wrap the repository in a `Result` through `recordingsResult`, which,
 unlike `runCatching`, lets a cancellation through. A screen that leaves during a listing therefore
 sees no error.
 
 `RecordingFileName.cameraOfStreamUrl` links a stream to its folder on the share: the last path
 segment of the stream URL, with or without `/whep`, when it is `cam_` plus digits.
 
+**Playback.** `RecordingPlayer` (at the package root, like `core/webrtc`'s contracts, because it
+owns a Compose dependency: `Video(modifier)`) plays one recording and reports a `PlaybackStatus`:
+`Idle` \| `Loading` \| `Ready` \| `Ended` \| `Failed(cause)`. `RecordingPlayerModule` binds it, unscoped, in
+`ViewModelComponent`: one per screen.
+
+| Type | Role |
+|---|---|
+| `ExoRecordingPlayer` | ExoPlayer with a `ProgressiveMediaSource` over `SmbDataSource`, drawn by media3-ui's `PlayerView`. Every `play` builds a new player and a new `SmbFileSession`, and `stop` frees both, closing the session off the main thread. It buffers more than the default (15–60 s), since a home upload can dip |
+| `SmbDataSource` | A media3 `DataSource` over a `RecordingFileSource`, for URIs `smb-recording:///<path on the share>`. Each `open` opens the file at the requested position; a seek is a new `open`, which `+faststart` makes cheap. The file is never downloaded first |
+| `ReadAheadReader` | Serves the player's small reads from 1 MB reads of the file. Each read of the file is a round trip through the tunnel: 64 KB reads gave 12 Mbit/s and 1 MB reads 33 Mbit/s on the real link, against ~1.3 Mbit/s of video |
+| `RecordingFileSource` / `RemoteFile` | Blocking, random-access reads, for the player's loader thread. Failures are a `RecordingReadException`: an `IOException`, as media3 expects, carrying the `RecordingsException` |
+| `SmbFileSession` | `RecordingFileSource` over its own smbj client. The connection is kept for the next `open`, retried once when found dead, and closed with the session |
+| `SmbConnector` / `SmbShareHandle` | Connects, logs in and opens the share, for both the listing and the player |
+
+**One SMB client per user.** smbj hands out a client's existing connection to the same host, so
+the listing (`SmbjRecordingsShare`) and each player session create their own client. Otherwise
+whichever closed first would cut the other's connection.
+
 **Tests.** `SmbjRecordingsShare` is excluded from coverage: every line of it talks to a server.
-What it relies on is unit-tested:
+The same goes for `SmbConnector`, `SmbFileSession` and `ExoRecordingPlayer`, and for
+`SmbDataSource`, which is tested on a device (`SmbDataSourceTest`) because `DataSpec` carries an
+`android.net.Uri`. What they rely on is unit-tested:
 
 - `RecordingsRepositoryImplTest`, over a fake share and a fixed clock;
 - `LeasedResourceTest`, with virtual time;
+- `ReadAheadReaderTest`;
 - `SmbErrorsTest`;
 - `ConnectTimeoutSocketFactoryTest`, against a loopback server;
 - `RecordingFileNameTest`, `RecordingSlotsTest` and `RecordingPathsTest`.
@@ -1067,7 +1126,8 @@ Declared in `gradle/libs.versions.toml` and consumed via the version catalog.
 | `com.google.mlkit:barcode-scanning` | 17.3.0 | On-device QR decoding |
 | `sh.calvin.reorderable:reorderable` | 3.1.0 | Drag-and-drop reordering in `LazyVerticalGrid` (dynamic mode only) |
 | `com.hierynomus:smbj` | 0.15.0 | SMB3 client for the recordings share (§6.9). Pulls in BouncyCastle and mbassador, which need the keep rules in `proguard-rules.pro` |
-| `androidx.media3:media3-exoplayer` | 1.11.1 | Playback of the recordings (history player, in progress) |
+| `androidx.media3:media3-exoplayer` | 1.11.1 | Playback of the recordings, straight from the share (`ExoRecordingPlayer`) |
+| `androidx.media3:media3-ui` | 1.11.1 | `PlayerView`: the recording player's video and its play/pause and seek controls |
 
 > `sh.calvin.reorderable` backs `ReorderableStreamGrid` in **dynamic** mode. Fixed/paged mode does
 > **not** use it — `PagedStreamGrid` + `PagedDragState` implement dragging by hand, because the
@@ -1111,6 +1171,9 @@ should not "fix", the second is a real gap that is only partly closed.
 
 ### 9.1 `core/webrtc` contracts sit at the package root — deliberate
 
+`core/recordings` does the same with `RecordingPlayer`, for the same reason: it draws the video
+(`@Composable Video`). Its other contracts stay in `core/recordings/domain`, under the domain rules.
+
 `StreamConnectionRepository` and `WhepClient` live directly in `core/webrtc`, not under
 `core/webrtc/domain`. `VideoSink` is a WebRTC SDK type and the sink *is* the renderer the UI
 creates, so wrapping it in a project type would only unwrap it again in the same frame; the contract
@@ -1145,18 +1208,18 @@ runtime.
 
 ## 10. Testing and quality gates
 
-**61 test files** under `app/src/test/`, mirroring the production package structure. Coverage is
+**64 test files** under `app/src/test/`, mirroring the production package structure. Coverage is
 concentrated where the project decided it belongs: ViewModels, use cases, repository
 implementations, pure logic and serialization.
 
 | Area | Representative tests |
 |---|---|
-| ViewModels (all 6) | `HomeViewModelTest`, `ConfigViewModelTest`, `StreamURLsViewModelTest`, `InitViewModelTest`, `QrCodeViewModelTest`, `HistoryViewModelTest` |
+| ViewModels (all 7) | `HomeViewModelTest`, `ConfigViewModelTest`, `StreamURLsViewModelTest`, `InitViewModelTest`, `QrCodeViewModelTest`, `HistoryViewModelTest`, `RecordingPlayerViewModelTest` (+ `RecordingPlayerViewModelDispatchTest`, with a queuing dispatcher) |
 | Pure logic | `TimeSlotsTest`, `StreamPagingTest`, `PagedDragStateTest`, `FixedGridLayoutTest`, `GridPreferencesValidationTest`, `StreamUrlValidationTest` |
 | Storage | `EncryptedPreferencesSerializerTest`, `StreamPreferencesSerializationTest`, `DataStoreManagerTest`, repository and all 8 use-case tests |
 | VPN | `VpnRepositoryImplTest`, `VpnConfigTest`, `VpnLifecycleControllerImplTest`, `VpnTeardownTest`, 4 use-case tests |
 | WebRTC | `WhepConnectionManagerTest`, `WhepRemoteDataSourceImplTest` (MockWebServer) |
-| Recordings | `RecordingsUseCasesTest`, `RecordingsRepositoryImplTest`, `LeasedResourceTest`, `SmbErrorsTest`, `ConnectTimeoutSocketFactoryTest`, `RecordingFileNameTest`, `RecordingSlotsTest`, `RecordingPathsTest` |
+| Recordings | `RecordingsUseCasesTest`, `RecordingsRepositoryImplTest`, `LeasedResourceTest`, `ReadAheadReaderTest`, `SmbErrorsTest`, `ConnectTimeoutSocketFactoryTest`, `RecordingFileNameTest`, `RecordingSlotsTest`, `RecordingPathsTest` |
 | Architecture | `LayerDependencyTest` (Konsist) |
 | Config drift | `StreamHostTest` (Kotlin constant vs. XML), `JacocoExclusionsTest` (coverage patterns vs. compiled classes) |
 
@@ -1210,7 +1273,9 @@ service test, one dispatcher test and the default example), with packages mirror
 | `IdlingDispatcherTest` (2) | `IdlingDispatcher` is busy while its work runs and reports the transition to idle; the Compose test rule waits for main → `TestDispatchers.default` → `TestDispatchers.io` → main with no `waitUntil` |
 | `WebRtcVideoPlayerTest` (4) | The real player over a recording `WebRtcConnection`: `CONNECTING` with a spinner before any frame; real I420 frames fed into the sink turn it `PLAYING`; a stream in `LocalFailedStreams` is `FAILED` and shows `StreamErrorOverlay`; "Try again" disconnects and connects the same renderer again |
 | `HomeScreenTest` (14) | The real `HomeScreen` with fake callbacks: the move accessibility actions reorder one place and are absent at the ends; "Reconfigure" is an action in dynamic mode only; one real drag per grid mode reorders on drop; overscrolling the dynamic grid reveals "Reconfigure"; the fixed grid always shows it; the page buttons move between pages; "Reconfigure" never covers the page buttons; a focused stream replaces the grid; the focused view shows the history button only with a camera, and it opens that camera's history |
-| `HistoryScreenTest` (12) | The History screen with hand-written states: loading and back; a failure's message and retry; empty; a month in each state (expanded with days, failed, loading, no days, collapsed, with the state description); month clicks and a month's retry are reported; a day reports its click; the time picker marks the recorded slots, reports any chosen slot, and shows its loading, empty and failed states; a choice away from the slot shows the nearest-recording notice, one at the slot does not |
+| `HistoryScreenTest` (10) | The History screen with hand-written states: loading and back; a failure's message and retry; empty; a month in each state (expanded with days, failed, loading, no days, collapsed, with the state description); month clicks and a month's retry are reported; a day reports its click; the time picker marks the recorded slots, reports any chosen slot, and shows its loading, empty and failed states |
+| `RecordingPlayerScreenTest` (5) | The player screen with a placeholder video: playing shows the video and the buttons and back report; the nearest-recording notice; both buttons disabled while a neighbor is looked up; a failure's message and retry; the ended state |
+| `SmbDataSourceTest` (7) | The media3 data source over a fake file source: the URI is the path on the share; a whole file comes out in 1 MB reads; a seek opens at its position; a bounded spec stops at its length; a position past the end is refused; a read failure reaches the player as an `IOException` carrying the domain failure; close closes the file |
 | `RealEnvironmentSmokeTest` (1, manual) | Real QR → real tunnel → a `PLAYING` card, on the production app minified as release (`e2eRelease`) and a physical phone. Excluded from the 110; run with `-PrealEnvironment` |
 | `TestLocaleTest` (1) | What `setThemedContent` renders and what `string()` resolves agree, and follow the `testLocale` argument when it is given |
 | `QrCodeImageDecodingTest` (1) | Level C: every PNG of `qr-code-gen/examples/` decodes, on the device's ML Kit, to exactly the JSON next to it, so the scanner's decoder is covered without the camera and a PNG left behind by a JSON change fails. A failure names the fixtures only |

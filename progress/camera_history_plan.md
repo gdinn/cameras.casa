@@ -573,7 +573,45 @@ expand a month): it worked.
 - Player screen: previous/next, auto-advance, crossing midnight, end of the list, read errors.
 - Released on pause and recreated on resume, with the position kept.
 
-**Outcome.** _pending_
+**Outcome (2026-11-11).** Done, pending the manual check on the device. `jacocoTestCoverageVerification`
+passed after the fix in deviation 6 (unit tests, Konsist, 90% gate). `RecordingPlayerScreenTest`,
+`SmbDataSourceTest` and `HistoryScreenTest` passed on an SM-S721B (22 tests). Real playback against
+the Pi (play, seek, previous/next, background and back) is the user's manual check.
+
+**What was built** (`docs/architecture.md` §4, §5.6, §6.9, §8.2, §9.1)
+
+- `core/recordings`:
+  - `SmbConnector` / `SmbShareHandle`, now shared by the listing and the player;
+  - `RecordingFileSource` / `RemoteFile`, `RecordingReadException`, `SmbFileSession`;
+  - `ReadAheadReader` (1 MB), `SmbDataSource` (media3);
+  - the `RecordingPlayer` contract (package root) and `ExoRecordingPlayer`, bound per ViewModel;
+  - `GetNeighborRecordingUseCase`.
+- `feature/history/player`: route, `RecordingPlayerViewModel`, screen with previous/next.
+- History: choosing a time navigates to `RecordingPlayer(camera, fileName, nearestNotice)`. The
+  stand-in choice bar is gone.
+- New dependency: `media3-ui` (`PlayerView`).
+
+**Deviations and decisions**
+
+1. **One SMB client per user.** smbj reuses a client's connection to the same host, so the listing
+   and the player sharing a client would cut each other's connection when either closes. Found while
+   writing the session, not in a test.
+2. **The player keeps its connection across opens.** ExoPlayer reopens the file on every seek; a
+   new login each time would add ~120 ms.
+3. **Neighbor lookup failures are toasts**, and playback goes on. At the end of a file a failed
+   lookup ends on the `Ended` state rather than an error, since nothing is broken in what is
+   playing.
+4. **No fake player for the flows yet.** The screen takes the video as a slot, which covers the
+   screen tests. The Hilt fake comes with the Step 11 flows.
+5. **Not tested here: real playback through ExoPlayer.** That needs the device against the Pi.
+6. **Bug found by the first run, fixed.** When a neighbor lookup finished, it called
+   `startIfReady()`, which refused to play because the lookup's own job was still active. The
+   neighbor was therefore never played. In production every lookup would have hit it. The unit tests
+   run unconfined, where the job runs before `launch` returns, so only the automatic advance (started
+   from inside a collector) showed it. `startIfReady` now checks the `looking` state, which is
+   cleared first. `RecordingPlayerViewModelDispatchTest` covers next and the automatic advance with
+   a queuing dispatcher, as `Dispatchers.Main` behaves.
+
 
 ### Step 9 — Downloads
 

@@ -67,8 +67,7 @@ fun HistoryScreen(
   onDayClicked: (LocalDate) -> Unit,
   onRetryDay: () -> Unit,
   onPickerDismissed: () -> Unit,
-  onSlotSelected: (LocalTime) -> Unit,
-  onChoiceDismissed: () -> Unit
+  onSlotSelected: (LocalTime) -> Unit
 ) {
   val locale = LocalConfiguration.current.locales[0]
 
@@ -84,9 +83,6 @@ fun HistoryScreen(
 
   Scaffold(
     modifier = Modifier.fillMaxSize(),
-    bottomBar = {
-      uiState.choice?.let { RecordingChoiceBar(choice = it, locale = locale, onDismiss = onChoiceDismissed) }
-    },
     topBar = {
       TopAppBar(
         title = { Text(stringResource(R.string.history_screen_title, uiState.camera)) },
@@ -303,8 +299,7 @@ private fun HistoryScreenPreview() {
       onDayClicked = {},
       onRetryDay = {},
       onPickerDismissed = {},
-      onSlotSelected = {},
-      onChoiceDismissed = {}
+      onSlotSelected = {}
     )
   }
 }

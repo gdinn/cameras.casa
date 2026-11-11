@@ -17,7 +17,6 @@ import com.gdisys.cameras.feature.history.HistoryContent
 import com.gdisys.cameras.feature.history.HistoryError
 import com.gdisys.cameras.feature.history.HistoryUiState
 import com.gdisys.cameras.feature.history.MonthItem
-import com.gdisys.cameras.feature.history.logic.RecordingChoice
 import com.gdisys.cameras.testing.hasStateDescription
 import com.gdisys.cameras.testing.setThemedContent
 import com.gdisys.cameras.testing.string
@@ -54,16 +53,11 @@ class HistoryScreenTest {
   private val dayClicks = CopyOnWriteArrayList<LocalDate>()
   private val dayRetries = AtomicInteger()
   private val slots = CopyOnWriteArrayList<LocalTime>()
-  private val choiceDismissals = AtomicInteger()
 
-  private fun setScreen(
-    content: HistoryContent,
-    picker: DayPicker? = null,
-    choice: RecordingChoice? = null
-  ) {
+  private fun setScreen(content: HistoryContent, picker: DayPicker? = null) {
     composeRule.setThemedContent {
       HistoryScreen(
-        uiState = HistoryUiState(camera = "cam_10", content = content, picker = picker, choice = choice),
+        uiState = HistoryUiState(camera = "cam_10", content = content, picker = picker),
         onBack = { backs.incrementAndGet() },
         onRetry = { retries.incrementAndGet() },
         onMonthClicked = { monthClicks += it },
@@ -71,8 +65,7 @@ class HistoryScreenTest {
         onDayClicked = { dayClicks += it },
         onRetryDay = { dayRetries.incrementAndGet() },
         onPickerDismissed = {},
-        onSlotSelected = { slots += it },
-        onChoiceDismissed = { choiceDismissals.incrementAndGet() }
+        onSlotSelected = { slots += it }
       )
     }
   }
@@ -196,23 +189,5 @@ class HistoryScreenTest {
     composeRule.onNodeWithTag(HistoryTestTags.PICKER_RETRY_BUTTON).performClick()
 
     assertEquals(1, dayRetries.get())
-  }
-
-  @Test
-  fun aChoiceAwayFromTheSlotTellsWhereTheRecordingStarts() {
-    setScreen(HistoryContent.Months(listOf(MonthItem(NOV))), choice = RecordingChoice(AT_1510, LocalTime.of(15, 0)))
-
-    composeRule.onNodeWithTag(HistoryTestTags.CHOICE_NEAREST_NOTICE).assertIsDisplayed()
-    composeRule.onNodeWithTag(HistoryTestTags.CHOICE_DISMISS_BUTTON).performClick()
-
-    assertEquals(1, choiceDismissals.get())
-  }
-
-  @Test
-  fun aChoiceAtTheSlotHasNoNotice() {
-    setScreen(HistoryContent.Months(listOf(MonthItem(NOV))), choice = RecordingChoice(AT_1530, LocalTime.of(15, 30)))
-
-    composeRule.onNodeWithTag(HistoryTestTags.CHOICE).assertIsDisplayed()
-    composeRule.onNodeWithTag(HistoryTestTags.CHOICE_NEAREST_NOTICE).assertDoesNotExist()
   }
 }

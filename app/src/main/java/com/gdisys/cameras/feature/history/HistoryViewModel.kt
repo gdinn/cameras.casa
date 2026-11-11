@@ -5,7 +5,6 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.gdisys.cameras.core.DEBUG_TAG
 import com.gdisys.cameras.core.ToastEventViewModel
-import com.gdisys.cameras.core.recordings.domain.RecordingsException
 import com.gdisys.cameras.core.recordings.domain.usecase.GetRecordingDaysUseCase
 import com.gdisys.cameras.core.recordings.domain.usecase.GetRecordingMonthsUseCase
 import com.gdisys.cameras.core.recordings.domain.usecase.GetRecordingsOfDayUseCase
@@ -16,9 +15,11 @@ import com.gdisys.cameras.core.vpn.domain.usecase.ObserveVpnStateUseCase
 import com.gdisys.cameras.feature.history.logic.nearestRecording
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -44,7 +45,7 @@ internal val HISTORY_TUNNEL_HOLDER = TunnelHolder.Screen("history")
  * month's days are listed when it is expanded, every time, since a new file may have finished.
  *
  * Tapping a day opens its time picker, which lists the day's recordings. Choosing a time picks the
- * nearest recording of that day (see [nearestRecording]).
+ * nearest recording of that day (see [nearestRecording]) and opens the player on it.
  */
 @HiltViewModel
 class HistoryViewModel @Inject constructor(
@@ -62,6 +63,9 @@ class HistoryViewModel @Inject constructor(
 
   private val _uiState = MutableStateFlow(HistoryUiState(camera))
   val uiState: StateFlow<HistoryUiState> = _uiState.asStateFlow()
+
+  private val _navigateUiEvent = Channel<HistoryNavigateUiEvent>()
+  val navigateUiEvent = _navigateUiEvent.receiveAsFlow()
 
   private var resumed = false
   private var tunnelUp = false
@@ -143,15 +147,12 @@ class HistoryViewModel @Inject constructor(
     _uiState.update { it.copy(picker = null) }
   }
 
-  /** Picks the recording of the open day nearest to [slot] and closes the picker. */
+  /** Picks the recording of the open day nearest to [slot], closes the picker and opens the player. */
   fun onSlotSelected(slot: LocalTime) {
     val picker = _uiState.value.picker as? DayPicker.Ready ?: return
     val choice = nearestRecording(picker.recordings, slot) ?: return
-    _uiState.update { it.copy(picker = null, choice = choice) }
-  }
-
-  fun onChoiceDismissed() {
-    _uiState.update { it.copy(choice = null) }
+    _uiState.update { it.copy(picker = null) }
+    viewModelScope.launch { _navigateUiEvent.send(HistoryNavigateUiEvent.ToPlayer(choice)) }
   }
 
   override fun onCleared() {
@@ -207,11 +208,4 @@ class HistoryViewModel @Inject constructor(
       )
     )
   }
-}
-
-private fun Throwable.toHistoryError(): HistoryError = when (this) {
-  is RecordingsException.NotAdmin -> HistoryError.NOT_ADMIN
-  is RecordingsException.AuthenticationFailed -> HistoryError.AUTHENTICATION_FAILED
-  is RecordingsException.Unreachable -> HistoryError.UNREACHABLE
-  else -> HistoryError.FAILED
 }

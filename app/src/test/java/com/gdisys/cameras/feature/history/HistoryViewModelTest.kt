@@ -13,6 +13,7 @@ import com.gdisys.cameras.core.vpn.domain.TunnelHolder
 import com.gdisys.cameras.core.vpn.domain.VpnTunnelState
 import com.gdisys.cameras.core.vpn.domain.usecase.ObserveVpnStateUseCase
 import com.gdisys.cameras.feature.history.logic.RecordingChoice
+import app.cash.turbine.test
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -390,18 +391,20 @@ class HistoryViewModelTest {
   }
 
   @Test
-  fun `a slot picks the nearest recording and closes the picker`() {
+  fun `a slot picks the nearest recording, closes the picker and opens the player`() = runTest {
     open()
     viewModel.onDayClicked(DAY)
 
-    viewModel.onSlotSelected(LocalTime.of(16, 0))
+    viewModel.navigateUiEvent.test {
+      viewModel.onSlotSelected(LocalTime.of(16, 0))
 
+      assertEquals(HistoryNavigateUiEvent.ToPlayer(RecordingChoice(AT_1610, LocalTime.of(16, 0))), awaitItem())
+    }
     assertEquals(null, picker)
-    assertEquals(RecordingChoice(AT_1610, LocalTime.of(16, 0)), viewModel.uiState.value.choice)
   }
 
   @Test
-  fun `a slot does nothing while the picker is not ready or the day is empty`() {
+  fun `a slot does nothing while the picker is not ready or the day is empty`() = runTest {
     val pending = CompletableDeferred<Result<List<Recording>>>()
     coEvery { getRecordingsOfDayUseCase(CAM, DAY) } coAnswers { pending.await() }
     open()
@@ -415,18 +418,7 @@ class HistoryViewModelTest {
     viewModel.onSlotSelected(LocalTime.of(15, 0))
 
     assertEquals(DayPicker.Ready(DAY, emptyList()), picker)
-    assertEquals(null, viewModel.uiState.value.choice)
-  }
-
-  @Test
-  fun `the choice can be dismissed`() {
-    open()
-    viewModel.onDayClicked(DAY)
-    viewModel.onSlotSelected(LocalTime.of(15, 0))
-
-    viewModel.onChoiceDismissed()
-
-    assertEquals(null, viewModel.uiState.value.choice)
+    viewModel.navigateUiEvent.test { expectNoEvents() }
   }
 
   private class FakeTunnelCoordinator : TunnelCoordinator {

@@ -22,6 +22,7 @@ class RecordingsUseCasesTest {
   private val months = GetRecordingMonthsUseCase(repository)
   private val days = GetRecordingDaysUseCase(repository)
   private val recordings = GetRecordingsOfDayUseCase(repository)
+  private val neighbor = GetNeighborRecordingUseCase(repository)
 
   @Test
   fun `months come newest first`() = runTest {
@@ -51,15 +52,29 @@ class RecordingsUseCasesTest {
   }
 
   @Test
+  fun `the neighbor follows the direction`() = runTest {
+    val current = Recording("cam_10", LocalDateTime.of(2026, 11, 10, 15, 0), "cam_10_2026-11-10_15-00-00.mp4")
+    val before = current.copy(start = LocalDateTime.of(2026, 11, 10, 14, 45), fileName = "cam_10_2026-11-10_14-45-00.mp4")
+    coEvery { repository.previous(current) } returns before
+    coEvery { repository.next(current) } returns null
+
+    assertEquals(before, neighbor(current, RecordingDirection.PREVIOUS).getOrThrow())
+    assertEquals(null, neighbor(current, RecordingDirection.NEXT).getOrThrow())
+  }
+
+  @Test
   fun `a failure becomes a failed result`() = runTest {
     val failure = RecordingsException.Unreachable(IOException("no route"))
     coEvery { repository.months(any()) } throws failure
     coEvery { repository.days(any(), any()) } throws failure
     coEvery { repository.recordings(any(), any()) } throws failure
+    coEvery { repository.next(any()) } throws failure
 
     assertSame(failure, months("cam_10").exceptionOrNull())
     assertSame(failure, days("cam_10", YearMonth.of(2026, 11)).exceptionOrNull())
     assertSame(failure, recordings("cam_10", LocalDate.of(2026, 11, 10)).exceptionOrNull())
+    val anyRecording = Recording("cam_10", LocalDateTime.of(2026, 11, 10, 15, 0), "cam_10_2026-11-10_15-00-00.mp4")
+    assertSame(failure, neighbor(anyRecording, RecordingDirection.NEXT).exceptionOrNull())
   }
 
   @Test

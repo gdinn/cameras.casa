@@ -331,6 +331,7 @@ dependencies {
   // Recordings: Samba (SMB3) client and playback
   implementation(libs.smbj)
   implementation(libs.androidx.media3.exoplayer)
+  implementation(libs.androidx.media3.ui)
 }
 
 // JacocoExclusionsTest reads the `outOfScopeFilter` patterns straight out of this file. Without
@@ -393,6 +394,11 @@ val outOfScopeFilter = listOf(
   "com/gdisys/cameras/core/vpn/data/VpnLifecycleService*.class", // Android Service
   "com/gdisys/cameras/core/vpn/data/AppTunnel*.class", // thin wrapper over the native Tunnel
   "com/gdisys/cameras/core/recordings/data/SmbjRecordingsShare*.class", // talks to the Samba server
+  "com/gdisys/cameras/core/recordings/data/SmbConnector*.class", // likewise
+  "com/gdisys/cameras/core/recordings/data/SmbShareHandle*.class", // likewise
+  "com/gdisys/cameras/core/recordings/data/SmbFileSession*.class", // likewise
+  "com/gdisys/cameras/core/recordings/data/SmbDataSource*.class", // android.net.Uri; tested on a device
+  "com/gdisys/cameras/core/recordings/data/ExoRecordingPlayer*.class", // ExoPlayer
   "com/gdisys/cameras/core/webrtc/data/WhepClientImpl*.class", // native WebRTC stack
   "com/gdisys/cameras/core/webrtc/data/extensions/PeerConnectionKt*.class", // likewise
   "com/gdisys/cameras/feature/cameras/HomeRouteKt*.class",
@@ -401,6 +407,8 @@ val outOfScopeFilter = listOf(
   "com/gdisys/cameras/feature/config/components/**",
   "com/gdisys/cameras/feature/history/HistoryRouteKt*.class",
   "com/gdisys/cameras/feature/history/components/**",
+  "com/gdisys/cameras/feature/history/player/RecordingPlayerRouteKt*.class",
+  "com/gdisys/cameras/feature/history/player/components/**",
   "com/gdisys/cameras/feature/init/InitRouteKt*.class",
   "com/gdisys/cameras/feature/init/components/**",
   "com/gdisys/cameras/feature/qrcode/QrCodeRouteKt*.class",

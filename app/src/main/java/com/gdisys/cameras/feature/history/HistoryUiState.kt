@@ -2,6 +2,7 @@ package com.gdisys.cameras.feature.history
 
 import androidx.annotation.StringRes
 import com.gdisys.cameras.R
+import com.gdisys.cameras.core.recordings.domain.RecordingsException
 import com.gdisys.cameras.core.recordings.domain.model.Recording
 import com.gdisys.cameras.feature.history.logic.RecordingChoice
 import java.time.LocalDate
@@ -10,13 +11,11 @@ import java.time.YearMonth
 /**
  * @property camera the camera (`cam_xx`) whose recordings are listed
  * @property picker the time picker of the day the user tapped, over the list
- * @property choice the recording picked for a time, until the player takes it over
  */
 data class HistoryUiState(
   val camera: String,
   val content: HistoryContent = HistoryContent.Loading,
-  val picker: DayPicker? = null,
-  val choice: RecordingChoice? = null
+  val picker: DayPicker? = null
 )
 
 /** The time picker of [day]: its recordings are listed when it opens. */
@@ -68,4 +67,17 @@ enum class HistoryError(@get:StringRes val resId: Int) {
   AUTHENTICATION_FAILED(R.string.history_error_authentication_failed),
   UNREACHABLE(R.string.history_error_unreachable),
   FAILED(R.string.history_error_failed)
+}
+
+/** The message for a failure of the share; anything else is [HistoryError.FAILED]. */
+internal fun Throwable.toHistoryError(): HistoryError = when (this) {
+  is RecordingsException.NotAdmin -> HistoryError.NOT_ADMIN
+  is RecordingsException.AuthenticationFailed -> HistoryError.AUTHENTICATION_FAILED
+  is RecordingsException.Unreachable -> HistoryError.UNREACHABLE
+  else -> HistoryError.FAILED
+}
+
+sealed interface HistoryNavigateUiEvent {
+  /** Plays the recording picked for a time. */
+  data class ToPlayer(val choice: RecordingChoice) : HistoryNavigateUiEvent
 }

@@ -106,7 +106,12 @@
     <string name="history_error_failed">Could not read the recordings</string>
     <string name="history_picker_empty">No finished recording on this day</string>
     <string name="history_picker_slot_recorded">Has a recording</string>
-    <string name="history_choice_title">Recording of %1$s, %2$s</string>
-    <string name="history_choice_nearest">The nearest recording starts at %1$s</string>
-    <string name="history_choice_dismiss">Close</string>
+    <string name="player_screen_title">%1$s, %2$s</string>
+    <string name="player_nearest_notice">The nearest recording starts at %1$s</string>
+    <string name="player_previous">Previous</string>
+    <string name="player_next">Next</string>
+    <string name="player_ended">This is the newest finished recording</string>
+    <string name="player_no_earlier_recording">No earlier recording</string>
+    <string name="player_no_later_recording">No later recording</string>
+    <string name="player_neighbor_lookup_failed">Could not look up the neighboring recording</string>
 </resources>

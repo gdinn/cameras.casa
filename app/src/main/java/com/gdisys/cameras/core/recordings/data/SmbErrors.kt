@@ -51,3 +51,7 @@ internal fun Throwable.toRecordingsException(): RecordingsException = when {
   isConnectionLost() -> RecordingsException.Unreachable(this)
   else -> RecordingsException.Failed(this)
 }
+
+/** [toRecordingsException], as the `IOException` the player's data source has to throw. */
+internal fun Throwable.toReadException(): RecordingReadException =
+  this as? RecordingReadException ?: RecordingReadException(toRecordingsException())

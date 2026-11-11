@@ -106,7 +106,12 @@
     <string name="history_error_failed">Falha ao ler as gravações</string>
     <string name="history_picker_empty">Nenhuma gravação concluída neste dia</string>
     <string name="history_picker_slot_recorded">Tem gravação</string>
-    <string name="history_choice_title">Gravação de %1$s, %2$s</string>
-    <string name="history_choice_nearest">A gravação mais próxima começa às %1$s</string>
-    <string name="history_choice_dismiss">Fechar</string>
+    <string name="player_screen_title">%1$s, %2$s</string>
+    <string name="player_nearest_notice">A gravação mais próxima começa às %1$s</string>
+    <string name="player_previous">Anterior</string>
+    <string name="player_next">Próxima</string>
+    <string name="player_ended">Esta é a gravação concluída mais recente</string>
+    <string name="player_no_earlier_recording">Não há gravação anterior</string>
+    <string name="player_no_later_recording">Não há gravação posterior</string>
+    <string name="player_neighbor_lookup_failed">Falha ao buscar a gravação vizinha</string>
 </resources>
