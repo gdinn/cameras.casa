@@ -376,7 +376,65 @@ The app's form rejects a `/` in the stream name and appends `/whep` itself. Both
 - Unit tests: ordering, last state wins, grace period, `holdIfUp` refused while down.
 - Adjust `VpnLifecycleFlowTest`/`VpnFailureFlowTest` to the grace period.
 
-**Outcome.** _pending_
+**Outcome (2026-11-11).** Done. `jacocoTestCoverageVerification` passed (351 unit tests, Konsist,
+90% gate). The VPN instrumented flows passed on an SM-S721B (13 tests: `VpnLifecycleFlowTest`,
+`VpnFailureFlowTest`, `ReconfigureFlowTest`, `OnboardingFlowTest`, `ReturningUserFlowTest`,
+`VpnLifecycleServiceTest`). The first run failed one unit test: its quick release and request was
+followed by `finishConnect` before the new demand reached the wish. It now calls `runCurrent()` in
+between, which is the scenario the test names.
+
+**What was built**
+
+- **`@ApplicationScope`** (`core/coroutines`) with its own `ApplicationScopeModule`:
+  `SupervisorJob` + `Main.immediate`.
+- **`TunnelCoordinator`** in `core/vpn/domain`: `request`, `release`, `holdIfUp`, `clear`,
+  `connectFailures`, and the `TunnelHolder.Screen` holder. `TunnelHolder.Download` comes in Step 9.
+- **`TunnelCoordinatorImpl`** in `core/vpn/data`. The grace period is `@TunnelReleaseGrace`:
+  1.5 s in `VpnModule`, longer than navigation-compose's default 700 ms fade.
+- **`HomeViewModel`:**
+  - drops the connect, disconnect and config use cases;
+  - requests/releases `HOME_TUNNEL_HOLDER` and releases it in `onCleared`;
+  - reports `connectFailures` only while resumed.
+- **`VpnLifecycleService.onTaskRemoved`** calls `clear()` before the teardown.
+
+**Deviations from the plan**
+
+1. **Retry after a failure.** Not in the plan, but needed: with the grace period, a user coming
+   back from Config within 1.5 s would find the tunnel still "wanted" and never retried. A wish now
+   carries an attempt number, and the first request after a failed connect bumps it.
+2. **No more empty disconnects.** The old Home called `disconnect` even when nothing was up (a
+   pause before any resume, an empty Home). The coordinator only takes down what it brought up.
+   The unit tests that pinned those no-op disconnects were replaced. No instrumented test depended
+   on them.
+3. **No instrumented test needed adjusting.** `TestVpnModule` binds the production coordinator over
+   the fake tunnel with a zero grace period, because a `delay` is invisible to Espresso's idling.
+   With it the flows keep their exact counts. The grace period is covered by
+   `TunnelCoordinatorImplTest` with virtual time.
+
+**Behavior changes in production, both intended**
+
+- Leaving Home drops the tunnel 1.5 s later instead of at once.
+- A Home → Config → Home round trip under 1.5 s keeps the tunnel instead of cycling it. A QR rescan
+  takes much longer than that, so new credentials still get a fresh connect.
+
+**Tests**
+
+- `TunnelCoordinatorImplTest`, 17 cases:
+  - the first request connects;
+  - nothing is torn down before the first connect;
+  - the grace boundary, the hand-over, and a second holder that keeps the tunnel up;
+  - a release during a connect, and a quick release and request during a connect;
+  - failures: a failed connect, a failed config read, the retry within the grace period, and the
+    disconnect after a failure;
+  - `holdIfUp`: down, coming up, gone down, kept after the screen leaves, within the grace period;
+  - `clear`, and a request after `clear`.
+- `HomeViewModelTest`: the tunnel cases now check Home's contract against a fake coordinator:
+  - request and release, with and without URLs;
+  - a failure while resumed, and while paused;
+  - `onCleared`.
+
+**Docs:** `docs/architecture.md` §1, §5.5, §6.2 (coordinator section), §6.6 (`ApplicationScope`)
+and §7.2.
 
 ### Step 5 — `core/recordings`
 

@@ -48,8 +48,10 @@ The end-to-end setup (only the Android client lives in this repository):
 
 Three product decisions shape most of the code:
 
-1. **The tunnel is foreground-only.** It is raised on `Lifecycle.Event.ON_RESUME` of the Home route,
-   when there is at least one stream URL, and dropped on `ON_PAUSE`, with `VpnLifecycleService` as the safety net for task removal. The
+1. **The tunnel is foreground-only.** A screen that needs it asks `TunnelCoordinator` on
+   `Lifecycle.Event.ON_RESUME` (Home: when there is at least one stream URL) and gives it back on
+   `ON_PAUSE`. The tunnel drops 1.5 s after the last holder leaves, so moving between two screens
+   that need it does not cycle it. `VpnLifecycleService` is the safety net for task removal. The
    tunnel is an IPv6 split tunnel that only carries the Pi and the router, so this is not about
    other apps' traffic: it limits how long the device stays connected to the home network and the
    battery cost of the 25-second persistent keepalive.
@@ -460,7 +462,7 @@ configuration.
 | ViewModel | `HomeViewModel.kt` |
 | State | `HomeUiState.kt` — `Loading` \| `Empty` \| `Ready(streams, focusedStream, grid, orientation, failedStreams)` |
 | Logic | `logic/StreamPaging.kt`, `logic/FixedGridLayout.kt` |
-| Model | 6 use cases + `StreamConnectionRepository` |
+| Model | 3 use cases + `TunnelCoordinator` + `StreamConnectionRepository` |
 
 **State composition.** `HomeUiState` is a single `combine` of five sources — persisted preferences,
 orientation, focused stream, failed streams and VPN tunnel state — collected into a `MutableStateFlow`. The
@@ -474,17 +476,14 @@ waiting for a tunnel with nothing to connect to would show a permanent spinner.
 
 **The lifecycle is pushed down as intent.** `HomeRoute` only reports `onResumed()` / `onPaused()`,
 which set a `MutableStateFlow<Boolean?>`. It is combined with "there is a stream URL" into a
-`StateFlow<Boolean?>` meaning "the tunnel should be up". The empty Home therefore never raises a
-tunnel that would carry nothing, and the tunnel follows the URL list. Being a `StateFlow`, it
-conflates and skips repeated values. A single collector applies it with `ConnectVpnUseCase` /
-`DisconnectVpnUseCase`:
+`StateFlow<Boolean?>` meaning "Home needs the tunnel". The empty Home therefore never raises a
+tunnel that would carry nothing, and the tunnel follows the URL list. Home turns that into
+`request` / `release` of `HOME_TUNNEL_HOLDER` on the `TunnelCoordinator` (§6.2), and releases it in
+`onCleared()`. Ordering, conflation and the grace period are the coordinator's.
 
-- calls never overlap, and the last lifecycle state always wins. A quick Home → Config → Home drops
-  the intermediate pause instead of racing a disconnect against the connect;
-- not `collectLatest`, which would cancel a native `setState` halfway. The use case calls run in
-  `NonCancellable`, so an operation that started always finishes;
-- if the ViewModel is cleared with a connect as the last operation (the pause arrived while it ran),
-  the collector's `finally` disconnects. Home is the only owner of the tunnel.
+**A connect failure is Home's to report only while it is resumed.** It collects
+`TunnelCoordinator.connectFailures` and, when resumed, toasts and emits `HomeNavigateUiEvent.ToConfig`.
+Another screen may hold the tunnel by then, and that one reports it.
 
 **Two rendering modes**, both in `HomeScreen.kt`:
 
@@ -612,8 +611,9 @@ transform underneath is what makes a partial write possible when one is needed.
 | Piece | Responsibility |
 |---|---|
 | `VpnRepository` / `VpnRepositoryImpl` | Wraps `GoBackend`; exposes `StateFlow<VpnTunnelState>`. The consent `Intent` belongs to `core/permission` (§6.4) |
+| `TunnelCoordinator` / `TunnelCoordinatorImpl` | The single owner of the tunnel. Screens (and, later, downloads) register as `TunnelHolder`s; see below |
 | `VpnLifecycleController` / `Impl` | Starts and stops `VpnLifecycleService` |
-| `VpnLifecycleService` | `START_STICKY` service whose only job is to drop the tunnel on `onTaskRemoved` / `onDestroy`, through `VpnTeardown` |
+| `VpnLifecycleService` | `START_STICKY` service whose only job is to drop the tunnel on `onTaskRemoved` / `onDestroy`, through `VpnTeardown`. On `onTaskRemoved` it first calls `TunnelCoordinator.clear()`, so no holder left registered brings the tunnel back |
 | `VpnTeardown` | The service's logic, kept out of it to be JVM-testable: disconnects at most once per service instance (`onTaskRemoved` stops the service, which then reaches `onDestroy`), retries after a failure, and logs instead of throwing, since the service scope has no exception handler |
 | `VpnConfig` | Domain model, plus `isValid()` |
 | Use cases (3) | `ConnectVpnUseCase`, `DisconnectVpnUseCase`, `ObserveVpnStateUseCase` |
@@ -624,6 +624,37 @@ unit-tested on the JVM without instantiating the native `GoBackend`.
 
 `ConnectVpnUseCase` validates the config, calls `connect`, and only then starts the lifecycle
 service — so the watchdog exists exactly as long as the tunnel does.
+
+**`TunnelCoordinator`: who keeps the tunnel up.** Whoever needs the tunnel registers as a
+`TunnelHolder`. The tunnel goes up with the first holder and down once the last one is gone.
+
+- **Grace period.** The tunnel drops `TUNNEL_RELEASE_GRACE_MS` (1.5 s, `VpnModule`) after the last
+  holder leaves. It is longer than navigation-compose's 700 ms fade, during which the screen being
+  left is already paused and the next one not yet resumed, so a hand-over between two screens does
+  not cycle the tunnel. A request within the grace period cancels the pending disconnect.
+- **One collector.** `TunnelCoordinatorImpl` turns the holders into a *wish* ("up", or "down" once
+  the grace period passed), kept in a `StateFlow` that conflates and skips a wish equal to the last
+  one applied. A single collector in the `@ApplicationScope` applies it with `GetVpnConfigUseCase`
+  / `ConnectVpnUseCase` / `DisconnectVpnUseCase`:
+  - calls never overlap, and the last demand wins. A release and a request while a connect runs
+    leave nothing to do; a release during a connect is applied once the connect returns;
+  - not `collectLatest`, which would cancel a native `setState` halfway. The calls run in
+    `NonCancellable`, so an operation that started always finishes;
+  - only what the coordinator brought up is taken down: before the first connect, "down" does
+    nothing.
+- **Failures.** A failed connect (including a missing config) is published on `connectFailures`,
+  and the coordinator does not retry on its own. The next `request` retries, even from a holder
+  that never left: a wish carries an attempt number for that. Without it, a user coming back from
+  Config within the grace period would find the tunnel still "wanted" and never retried.
+- **`holdIfUp`.** It adds a holder only while the tunnel is up (wish "up" and state `CONNECTED`, the
+  grace period included), and never raises it. It is meant for work that must not open the tunnel
+  by itself, such as a download.
+- **`clear()`.** It drops every holder and takes the tunnel down with no grace period. The task
+  removal path uses it.
+
+Instrumented tests use the production coordinator over the fake tunnel with a zero grace period
+(`TestVpnModule`), because a `delay` is invisible to Espresso's idling. `TunnelCoordinatorImplTest`
+covers the grace period with virtual time.
 
 ### 6.3 `core/webrtc` — WHEP streaming
 
@@ -695,6 +726,11 @@ uses off the main thread, and `DispatchersModule` binds them to `Dispatchers.IO`
 serializers take an `ioDispatcher` parameter instead, defaulting to `Dispatchers.IO`, because the
 production stores are `by dataStore` delegates built outside Hilt.
 
+`ApplicationScope` qualifies a process-wide `CoroutineScope` (`SupervisorJob` +
+`Dispatchers.Main.immediate`, `ApplicationScopeModule`) for work that outlives every screen: today,
+the tunnel coordinator's collector. It has a module of its own because instrumented tests replace
+`DispatchersModule`, and the scope must stay on the main thread they already sync with.
+
 The qualifiers sit at the package root, without `domain`/`data`, because the use cases in `domain`
 import them. `Dispatchers.Main` stays hardcoded: the instrumented tests already sync with the main
 looper, and the unit tests replace it with `MainDispatcherRule`. `WhepConnectionManager` runs on
@@ -761,11 +797,12 @@ A concrete round trip — reordering a camera on Home:
 The sequence diagram above covers the full lifecycle in three phases:
 
 **1. Tunnel up.** `ON_RESUME` → `HomeViewModel.onResumed()` (only with at least one stream URL) →
-`GetVpnConfigUseCase` (reads and maps
+`TunnelCoordinator.request(HOME_TUNNEL_HOLDER)` → `GetVpnConfigUseCase` (reads and maps
 `UserPreferences` to `VpnConfig` via `toVpnConfigOrNull()`) → `ConnectVpnUseCase` →
 `backend.setState(tunnel, UP, config)` and `VpnLifecycleController.start()`. Tunnel state flows back
 through `ObserveVpnStateUseCase`, and `HomeUiState` stays `Loading` until `CONNECTED`. Any failure
-toasts and emits `HomeNavigateUiEvent.ToConfig`.
+arrives on `TunnelCoordinator.connectFailures`, and a resumed Home toasts and emits
+`HomeNavigateUiEvent.ToConfig`.
 
 **2. Streams up.** For each visible cell, `WebRtcVideoPlayer`'s `DisposableEffect` creates a
 `SurfaceViewRenderer` (which *is* the `VideoSink`) and calls `connectStream(url, sink)`.
@@ -783,8 +820,9 @@ swapping WHEP for RTSP/HLS a change that stops at that boundary.
 
 **3. Tear down.** Leaving a cell or changing page disposes the player, which disconnects the stream
 *before* releasing the renderer (order matters: the stream must stop writing to the sink first).
-`ON_PAUSE` (`onPaused()`) drops the tunnel and stops the lifecycle service, applied after any
-connect still running (§5.5). `onCleared()` calls `closeAll()`.
+`ON_PAUSE` (`onPaused()`) releases Home's holder. With no other holder, the coordinator drops the
+tunnel and stops the lifecycle service after the grace period, and after any connect still running
+(§6.2). `onCleared()` calls `closeAll()`.
 
 ---
 

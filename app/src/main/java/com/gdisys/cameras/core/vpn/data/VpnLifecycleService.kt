@@ -4,6 +4,7 @@ import android.app.Service
 import android.content.Intent
 import android.os.IBinder
 import com.gdisys.cameras.core.coroutines.IoDispatcher
+import com.gdisys.cameras.core.vpn.domain.TunnelCoordinator
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -16,6 +17,9 @@ class VpnLifecycleService : Service() {
 
   @Inject
   lateinit var vpnTeardown: VpnTeardown
+
+  @Inject
+  lateinit var tunnelCoordinator: TunnelCoordinator
 
   @Inject
   @IoDispatcher
@@ -33,7 +37,9 @@ class VpnLifecycleService : Service() {
   override fun onTaskRemoved(rootIntent: Intent?) {
     super.onTaskRemoved(rootIntent)
 
-    // The app was swiped away from the recents list.
+    // The app was swiped away from the recents list. The holders go first, so nothing left
+    // registered can bring the tunnel back up; the teardown then drops it right away.
+    tunnelCoordinator.clear()
     serviceScope.launch {
       vpnTeardown()
       stopSelf()

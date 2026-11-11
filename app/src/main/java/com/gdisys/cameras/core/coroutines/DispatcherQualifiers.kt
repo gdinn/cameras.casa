@@ -18,3 +18,12 @@ annotation class IoDispatcher
 @Qualifier
 @Retention(AnnotationRetention.BINARY)
 annotation class DefaultDispatcher
+
+/**
+ * A process-wide scope for work that outlives every screen, such as the tunnel coordinator. It runs
+ * on `Dispatchers.Main.immediate`, like `viewModelScope`, and a `SupervisorJob` keeps one failed
+ * child from cancelling the others. Blocking work still moves to the injected dispatchers.
+ */
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class ApplicationScope
