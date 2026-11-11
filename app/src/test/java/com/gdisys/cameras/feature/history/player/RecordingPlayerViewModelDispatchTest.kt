@@ -4,6 +4,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.SavedStateHandle
 import com.gdisys.cameras.MainDispatcherRule
+import com.gdisys.cameras.core.downloads.domain.usecase.DownloadRecordingUseCase
+import com.gdisys.cameras.core.downloads.domain.usecase.ObserveRecordingDownloadUseCase
 import com.gdisys.cameras.core.recordings.PlaybackStatus
 import com.gdisys.cameras.core.recordings.RecordingPlayer
 import com.gdisys.cameras.core.recordings.domain.model.Recording
@@ -19,6 +21,7 @@ import io.mockk.mockk
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -64,6 +67,7 @@ class RecordingPlayerViewModelDispatchTest {
     override fun request(holder: TunnelHolder) = Unit
     override fun release(holder: TunnelHolder) = Unit
     override fun holdIfUp(holder: TunnelHolder) = false
+    override fun holds(holder: TunnelHolder) = false
     override fun clear() = Unit
   }
 
@@ -72,10 +76,14 @@ class RecordingPlayerViewModelDispatchTest {
     every { observeVpnStateUseCase() } returns MutableStateFlow(VpnTunnelState.CONNECTED)
     val getNeighbor = mockk<GetNeighborRecordingUseCase>()
     coEvery { getNeighbor(current, RecordingDirection.NEXT) } returns Result.success(next)
+    val observeDownload = mockk<ObserveRecordingDownloadUseCase>()
+    every { observeDownload(any()) } returns flowOf(null)
     return RecordingPlayerViewModel(
       SavedStateHandle(mapOf(PLAYER_CAMERA_ARG to "cam_10", PLAYER_FILE_NAME_ARG to current.fileName)),
       observeVpnStateUseCase,
       getNeighbor,
+      mockk<DownloadRecordingUseCase>(),
+      observeDownload,
       tunnelCoordinator,
       player
     )

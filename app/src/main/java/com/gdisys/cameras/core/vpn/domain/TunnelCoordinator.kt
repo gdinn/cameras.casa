@@ -32,6 +32,12 @@ interface TunnelCoordinator {
    */
   fun holdIfUp(holder: TunnelHolder): Boolean
 
+  /**
+   * Whether [holder] is registered. Holders live in memory, so a download worker that finds its
+   * holder gone is running in a new process: the one that took the holder died.
+   */
+  fun holds(holder: TunnelHolder): Boolean
+
   /** Drops every holder and takes the tunnel down at once, with no grace period (app closed). */
   fun clear()
 }
@@ -40,4 +46,7 @@ interface TunnelCoordinator {
 sealed interface TunnelHolder {
   /** A screen on display, by a name unique among screens. */
   data class Screen(val name: String) : TunnelHolder
+
+  /** A download, by its work id. */
+  data class Download(val workId: String) : TunnelHolder
 }

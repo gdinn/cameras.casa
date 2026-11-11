@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.Button
@@ -32,10 +34,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.gdisys.cameras.R
+import com.gdisys.cameras.core.downloads.domain.model.DownloadStatus
 import com.gdisys.cameras.core.recordings.domain.model.Recording
 import com.gdisys.cameras.core.recordings.domain.usecase.RecordingDirection
 import com.gdisys.cameras.feature.history.HistoryError
@@ -62,7 +67,8 @@ fun RecordingPlayerScreen(
   onBack: () -> Unit,
   onPrevious: () -> Unit,
   onNext: () -> Unit,
-  onRetry: () -> Unit
+  onRetry: () -> Unit,
+  onDownload: () -> Unit
 ) {
   val locale = LocalConfiguration.current.locales[0]
   val start = uiState.recording.start
@@ -86,7 +92,8 @@ fun RecordingPlayerScreen(
               contentDescription = stringResource(R.string.history_screen_navigate_back)
             )
           }
-        }
+        },
+        actions = { DownloadButton(download = uiState.download, onClick = onDownload) }
       )
     }
   ) { innerPadding ->
@@ -145,6 +152,41 @@ fun RecordingPlayerScreen(
             .testTag(RecordingPlayerTestTags.NEXT_BUTTON)
         )
       }
+    }
+  }
+}
+
+/**
+ * Downloads the recording on screen, and shows where its download stands: a ring with the progress
+ * while it runs, a check once saved. It stays enabled: a second request while it runs is ignored
+ * (and told), one after it finished saves another copy.
+ */
+@Composable
+private fun DownloadButton(download: DownloadStatus?, onClick: () -> Unit) {
+  val description = stringResource(
+    when (download) {
+      is DownloadStatus.Running -> R.string.player_download_running
+      is DownloadStatus.Succeeded -> R.string.player_download_done
+      else -> R.string.player_download
+    }
+  )
+  IconButton(
+    onClick = onClick,
+    modifier = Modifier
+      .testTag(RecordingPlayerTestTags.DOWNLOAD_BUTTON)
+      .semantics { stateDescription = description }
+  ) {
+    when (download) {
+      is DownloadStatus.Running -> {
+        val progress = download.progress
+        if (progress == null) {
+          CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+        } else {
+          CircularProgressIndicator(progress = { progress }, modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+        }
+      }
+      is DownloadStatus.Succeeded -> Icon(Icons.Filled.DownloadDone, contentDescription = stringResource(R.string.player_download))
+      else -> Icon(Icons.Filled.Download, contentDescription = stringResource(R.string.player_download))
     }
   }
 }
@@ -225,7 +267,8 @@ private fun RecordingPlayerScreenPreview() {
       onBack = {},
       onPrevious = {},
       onNext = {},
-      onRetry = {}
+      onRetry = {},
+      onDownload = {}
     )
   }
 }

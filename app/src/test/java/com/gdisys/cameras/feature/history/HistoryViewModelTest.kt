@@ -438,6 +438,8 @@ class HistoryViewModelTest {
 
     override fun holdIfUp(holder: TunnelHolder) = throw UnsupportedOperationException()
 
+    override fun holds(holder: TunnelHolder) = throw UnsupportedOperationException()
+
     override fun clear() = throw UnsupportedOperationException()
   }
 }

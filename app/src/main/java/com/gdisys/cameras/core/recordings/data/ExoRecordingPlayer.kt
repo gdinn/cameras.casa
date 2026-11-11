@@ -22,17 +22,13 @@ import com.gdisys.cameras.core.recordings.PlaybackStatus
 import com.gdisys.cameras.core.recordings.RecordingPlayer
 import com.gdisys.cameras.core.recordings.domain.RecordingsException
 import com.gdisys.cameras.core.recordings.domain.model.Recording
-import com.gdisys.cameras.core.storage.domain.UserPreferencesRepository
-import com.gdisys.cameras.core.storage.domain.model.isValid
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import javax.inject.Inject
 
 /**
@@ -46,7 +42,7 @@ private const val REBUFFER_MS = 3_000
 
 /**
  * [RecordingPlayer] over ExoPlayer and [SmbDataSource]. Every [play] builds a new ExoPlayer and a
- * new [SmbFileSession], so [stop] frees both: the screen stops the player when it pauses and plays
+ * new file session ([RecordingFileSources]), so [stop] frees both: the screen stops the player when it pauses and plays
  * again when it resumes.
  *
  * Not unit-tested (excluded from coverage): ExoPlayer needs a device. The pieces with logic of their
@@ -55,7 +51,7 @@ private const val REBUFFER_MS = 3_000
 @OptIn(UnstableApi::class)
 class ExoRecordingPlayer @Inject constructor(
   @param:ApplicationContext private val context: Context,
-  private val userPreferencesRepository: UserPreferencesRepository,
+  private val fileSources: RecordingFileSources,
   @param:ApplicationScope private val scope: CoroutineScope,
   @param:IoDispatcher private val io: CoroutineDispatcher
 ) : RecordingPlayer {
@@ -65,7 +61,7 @@ class ExoRecordingPlayer @Inject constructor(
 
   /** Compose state, so [Video] attaches each new player. */
   private var player by mutableStateOf<ExoPlayer?>(null)
-  private var session: SmbFileSession? = null
+  private var session: RecordingFileSource? = null
 
   override val positionMillis: Long get() = player?.currentPosition ?: 0
 
@@ -86,9 +82,7 @@ class ExoRecordingPlayer @Inject constructor(
 
   override fun play(recording: Recording, positionMillis: Long) {
     stop()
-    val files = SmbFileSession {
-      runBlocking { userPreferencesRepository.userPreferences.first().smbCredentials?.takeIf { it.isValid() } }
-    }
+    val files = fileSources.create()
     session = files
     _status.value = PlaybackStatus.Loading
     player = ExoPlayer.Builder(context)

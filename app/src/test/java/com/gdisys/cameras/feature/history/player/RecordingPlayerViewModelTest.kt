@@ -7,6 +7,10 @@ import androidx.lifecycle.ViewModelStore
 import app.cash.turbine.test
 import com.gdisys.cameras.MainDispatcherRule
 import com.gdisys.cameras.core.components.ToastUiEvent
+import com.gdisys.cameras.core.downloads.domain.model.DownloadRequestResult
+import com.gdisys.cameras.core.downloads.domain.model.DownloadStatus
+import com.gdisys.cameras.core.downloads.domain.usecase.DownloadRecordingUseCase
+import com.gdisys.cameras.core.downloads.domain.usecase.ObserveRecordingDownloadUseCase
 import com.gdisys.cameras.core.recordings.PlaybackStatus
 import com.gdisys.cameras.core.recordings.RecordingPlayer
 import com.gdisys.cameras.core.recordings.domain.RecordingsException
@@ -56,6 +60,9 @@ class RecordingPlayerViewModelTest {
   private val vpnState = MutableStateFlow(VpnTunnelState.DISCONNECTED)
   private val observeVpnStateUseCase = mockk<ObserveVpnStateUseCase>()
   private val getNeighborRecordingUseCase = mockk<GetNeighborRecordingUseCase>()
+  private val downloadRecordingUseCase = mockk<DownloadRecordingUseCase>()
+  private val observeRecordingDownloadUseCase = mockk<ObserveRecordingDownloadUseCase>()
+  private val downloads = mutableMapOf<Recording, MutableStateFlow<DownloadStatus?>>()
   private val tunnelCoordinator = FakeTunnelCoordinator()
   private val player = FakeRecordingPlayer()
   private val savedStateHandle = SavedStateHandle(
@@ -73,6 +80,8 @@ class RecordingPlayerViewModelTest {
     every { observeVpnStateUseCase() } returns vpnState
     coEvery { getNeighborRecordingUseCase(AT_1510, RecordingDirection.PREVIOUS) } returns Result.success(AT_1500)
     coEvery { getNeighborRecordingUseCase(AT_1510, RecordingDirection.NEXT) } returns Result.success(AT_1515)
+    every { observeRecordingDownloadUseCase(any()) } answers { downloads.getOrPut(firstArg()) { MutableStateFlow(null) } }
+    coEvery { downloadRecordingUseCase(any()) } returns DownloadRequestResult.STARTED
     viewModel = newViewModel()
   }
 
@@ -80,6 +89,8 @@ class RecordingPlayerViewModelTest {
     handle,
     observeVpnStateUseCase,
     getNeighborRecordingUseCase,
+    downloadRecordingUseCase,
+    observeRecordingDownloadUseCase,
     tunnelCoordinator,
     player
   )
@@ -414,6 +425,76 @@ class RecordingPlayerViewModelTest {
     assertTrue(state.status !is PlayerStatus.Failed)
   }
 
+  // downloads
+
+  @Test
+  fun `the download state follows the recording on screen`() {
+    open()
+    downloads.getValue(AT_1510).value = DownloadStatus.Running(0.4f)
+    assertEquals(DownloadStatus.Running(0.4f), state.download)
+
+    viewModel.onNext()
+    assertEquals(null, state.download)
+
+    downloads.getValue(AT_1515).value = DownloadStatus.Succeeded("a.mp4")
+    assertEquals(DownloadStatus.Succeeded("a.mp4"), state.download)
+  }
+
+  @Test
+  fun `a download request downloads the recording on screen and says how it went`() = runTest {
+    open()
+    val toasts = mapOf(
+      DownloadRequestResult.STARTED to RecordingPlayerToastMessage.DOWNLOAD_STARTED,
+      DownloadRequestResult.ALREADY_RUNNING to RecordingPlayerToastMessage.DOWNLOAD_ALREADY_RUNNING,
+      DownloadRequestResult.TUNNEL_DOWN to RecordingPlayerToastMessage.DOWNLOAD_TUNNEL_DOWN
+    )
+
+    viewModel.uiEvent.test {
+      toasts.forEach { (result, toast) ->
+        coEvery { downloadRecordingUseCase(AT_1510) } returns result
+        viewModel.onDownload(storageGranted = true)
+        assertEquals(ToastUiEvent.Show(toast.resId), awaitItem())
+      }
+    }
+    coVerify(exactly = 3) { downloadRecordingUseCase(AT_1510) }
+  }
+
+  @Test
+  fun `without the storage permission nothing is downloaded`() = runTest {
+    viewModel.uiEvent.test {
+      viewModel.onDownload(storageGranted = false)
+      assertEquals(ToastUiEvent.Show(RecordingPlayerToastMessage.DOWNLOAD_STORAGE_DENIED.resId), awaitItem())
+    }
+    coVerify(exactly = 0) { downloadRecordingUseCase(any()) }
+  }
+
+  @Test
+  fun `a download answered while paused waits for the screen and the tunnel`() {
+    // A permission dialog paused the screen, and the tunnel went down meanwhile.
+    open()
+    viewModel.onPaused()
+    vpnState.value = VpnTunnelState.DISCONNECTED
+
+    viewModel.onDownload(storageGranted = true)
+    coVerify(exactly = 0) { downloadRecordingUseCase(any()) }
+
+    viewModel.onResumed()
+    coVerify(exactly = 0) { downloadRecordingUseCase(any()) }
+
+    vpnState.value = VpnTunnelState.CONNECTED
+    coVerify(exactly = 1) { downloadRecordingUseCase(AT_1510) }
+  }
+
+  @Test
+  fun `a waiting download is made once`() {
+    viewModel.onDownload(storageGranted = true)
+    open()
+    vpnState.value = VpnTunnelState.DISCONNECTED
+    vpnState.value = VpnTunnelState.CONNECTED
+
+    coVerify(exactly = 1) { downloadRecordingUseCase(AT_1510) }
+  }
+
   private class FakeRecordingPlayer : RecordingPlayer {
     val calls = mutableListOf<String>()
     override val status = MutableStateFlow<PlaybackStatus>(PlaybackStatus.Idle)
@@ -451,6 +532,8 @@ class RecordingPlayerViewModelTest {
     }
 
     override fun holdIfUp(holder: TunnelHolder) = throw UnsupportedOperationException()
+
+    override fun holds(holder: TunnelHolder) = throw UnsupportedOperationException()
 
     override fun clear() = throw UnsupportedOperationException()
   }

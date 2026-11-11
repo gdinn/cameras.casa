@@ -19,4 +19,6 @@ enum class ConfigToastMessage(@StringRes override val resId: Int) : ToastMessage
   VPN_PERMISSION_MISSING(R.string.config_route_vpn_permission_missing),
   STREAM_URLS_MISSING(R.string.config_route_stream_urls_missing),
   NAVIGATE_TO_HOME_REQUIRED(R.string.config_route_navigate_to_home_required),
+  NOTIFICATION_PERMISSION_ALREADY_GRANTED(R.string.config_route_notifications_already_granted),
+  NOTIFICATION_PERMISSION_DECLINED(R.string.config_route_notifications_declined),
 }

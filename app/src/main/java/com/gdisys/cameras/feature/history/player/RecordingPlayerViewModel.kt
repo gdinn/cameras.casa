@@ -5,6 +5,9 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.gdisys.cameras.core.DEBUG_TAG
 import com.gdisys.cameras.core.ToastEventViewModel
+import com.gdisys.cameras.core.downloads.domain.model.DownloadRequestResult
+import com.gdisys.cameras.core.downloads.domain.usecase.DownloadRecordingUseCase
+import com.gdisys.cameras.core.downloads.domain.usecase.ObserveRecordingDownloadUseCase
 import com.gdisys.cameras.core.recordings.PlaybackStatus
 import com.gdisys.cameras.core.recordings.RecordingPlayer
 import com.gdisys.cameras.core.recordings.domain.RecordingFileName
@@ -20,7 +23,11 @@ import com.gdisys.cameras.feature.history.toHistoryError
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -48,14 +55,20 @@ internal val PLAYER_TUNNEL_HOLDER = TunnelHolder.Screen("recording-player")
  *   status is [PlayerStatus.Ended].
  * - **Failure:** a read or tunnel failure stops the player and keeps the position for the retry.
  *
+ * - **Download:** the current recording can be downloaded; its download's state follows the
+ *   recording on screen.
+ *
  * The current file name is written back to the `SavedStateHandle`, so a recreated screen shows the
  * file the user moved to.
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class RecordingPlayerViewModel @Inject constructor(
   private val savedStateHandle: SavedStateHandle,
   observeVpnStateUseCase: ObserveVpnStateUseCase,
   private val getNeighborRecordingUseCase: GetNeighborRecordingUseCase,
+  private val downloadRecordingUseCase: DownloadRecordingUseCase,
+  observeRecordingDownloadUseCase: ObserveRecordingDownloadUseCase,
   private val tunnelCoordinator: TunnelCoordinator,
   val player: RecordingPlayer
 ) : ToastEventViewModel() {
@@ -75,15 +88,30 @@ class RecordingPlayerViewModel @Inject constructor(
   private var started = false
   private var resumePosition = 0L
 
+  /**
+   * A download asked while the screen was paused or the tunnel down. A permission dialog pauses
+   * the screen, and the paused player gives the tunnel back, so the answer can arrive before both
+   * are back.
+   */
+  private var pendingDownload = false
+
   init {
     viewModelScope.launch {
       observeVpnStateUseCase().collect { state ->
         tunnelUp = state == VpnTunnelState.CONNECTED
         startIfReady()
+        downloadIfPending()
       }
     }
 
     viewModelScope.launch { player.status.collect(::onPlaybackStatus) }
+
+    viewModelScope.launch {
+      _uiState.map { it.recording }
+        .distinctUntilChanged()
+        .flatMapLatest { observeRecordingDownloadUseCase(it) }
+        .collect { download -> _uiState.update { it.copy(download = download) } }
+    }
 
     viewModelScope.launch {
       tunnelCoordinator.connectFailures.collect { e ->
@@ -98,6 +126,7 @@ class RecordingPlayerViewModel @Inject constructor(
     resumed = true
     tunnelCoordinator.request(PLAYER_TUNNEL_HOLDER)
     startIfReady()
+    downloadIfPending()
   }
 
   fun onPaused() {
@@ -112,6 +141,34 @@ class RecordingPlayerViewModel @Inject constructor(
   fun onPrevious() = move(RecordingDirection.PREVIOUS, automatic = false)
 
   fun onNext() = move(RecordingDirection.NEXT, automatic = false)
+
+  /**
+   * Downloads the recording on screen. [storageGranted] is the route's answer to the storage
+   * permission, which only Android 8–9 ask for.
+   */
+  fun onDownload(storageGranted: Boolean) {
+    if (!storageGranted) {
+      showToast(RecordingPlayerToastMessage.DOWNLOAD_STORAGE_DENIED)
+      return
+    }
+    pendingDownload = true
+    downloadIfPending()
+  }
+
+  private fun downloadIfPending() {
+    if (!pendingDownload || !resumed || !tunnelUp) return
+    pendingDownload = false
+    val recording = _uiState.value.recording
+    viewModelScope.launch {
+      showToast(
+        when (downloadRecordingUseCase(recording)) {
+          DownloadRequestResult.STARTED -> RecordingPlayerToastMessage.DOWNLOAD_STARTED
+          DownloadRequestResult.ALREADY_RUNNING -> RecordingPlayerToastMessage.DOWNLOAD_ALREADY_RUNNING
+          DownloadRequestResult.TUNNEL_DOWN -> RecordingPlayerToastMessage.DOWNLOAD_TUNNEL_DOWN
+        }
+      )
+    }
+  }
 
   /** Plays again from where it stopped. Asking for the tunnel again retries a failed connect. */
   fun onRetry() {

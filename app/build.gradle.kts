@@ -332,6 +332,11 @@ dependencies {
   implementation(libs.smbj)
   implementation(libs.androidx.media3.exoplayer)
   implementation(libs.androidx.media3.ui)
+
+  // Recording downloads: long-running foreground work, with workers injected by Hilt
+  implementation(libs.androidx.work.runtime.ktx)
+  implementation(libs.androidx.hilt.work)
+  ksp(libs.androidx.hilt.compiler)
 }
 
 // JacocoExclusionsTest reads the `outOfScopeFilter` patterns straight out of this file. Without
@@ -399,6 +404,9 @@ val outOfScopeFilter = listOf(
   "com/gdisys/cameras/core/recordings/data/SmbFileSession*.class", // likewise
   "com/gdisys/cameras/core/recordings/data/SmbDataSource*.class", // android.net.Uri; tested on a device
   "com/gdisys/cameras/core/recordings/data/ExoRecordingPlayer*.class", // ExoPlayer
+  "com/gdisys/cameras/core/downloads/data/RecordingDownloadWorker*.class", // WorkManager + MediaStore + server
+  "com/gdisys/cameras/core/downloads/data/DeviceDownloadOutputs*.class", // MediaStore, file system
+  "com/gdisys/cameras/core/downloads/data/DownloadNotifications*.class", // notifications
   "com/gdisys/cameras/core/webrtc/data/WhepClientImpl*.class", // native WebRTC stack
   "com/gdisys/cameras/core/webrtc/data/extensions/PeerConnectionKt*.class", // likewise
   "com/gdisys/cameras/feature/cameras/HomeRouteKt*.class",

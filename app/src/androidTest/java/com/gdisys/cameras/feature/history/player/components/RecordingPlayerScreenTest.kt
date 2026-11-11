@@ -1,6 +1,8 @@
 package com.gdisys.cameras.feature.history.player.components
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -10,11 +12,13 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.gdisys.cameras.R
+import com.gdisys.cameras.core.downloads.domain.model.DownloadStatus
 import com.gdisys.cameras.core.recordings.domain.model.Recording
 import com.gdisys.cameras.core.recordings.domain.usecase.RecordingDirection
 import com.gdisys.cameras.feature.history.HistoryError
 import com.gdisys.cameras.feature.history.player.PlayerStatus
 import com.gdisys.cameras.feature.history.player.RecordingPlayerUiState
+import com.gdisys.cameras.testing.hasStateDescription
 import com.gdisys.cameras.testing.setThemedContent
 import com.gdisys.cameras.testing.string
 import org.junit.Assert.assertEquals
@@ -37,6 +41,7 @@ class RecordingPlayerScreenTest {
   private val previous = AtomicInteger()
   private val next = AtomicInteger()
   private val retries = AtomicInteger()
+  private val downloads = AtomicInteger()
 
   private fun setScreen(state: RecordingPlayerUiState) {
     composeRule.setThemedContent {
@@ -46,7 +51,8 @@ class RecordingPlayerScreenTest {
         onBack = { backs.incrementAndGet() },
         onPrevious = { previous.incrementAndGet() },
         onNext = { next.incrementAndGet() },
-        onRetry = { retries.incrementAndGet() }
+        onRetry = { retries.incrementAndGet() },
+        onDownload = { downloads.incrementAndGet() }
       )
     }
   }
@@ -97,5 +103,30 @@ class RecordingPlayerScreenTest {
     setScreen(RecordingPlayerUiState(AT_1510, nearestNotice = false, status = PlayerStatus.Ended))
 
     composeRule.onNodeWithTag(RecordingPlayerTestTags.ENDED).assertIsDisplayed()
+  }
+
+  @Test
+  fun theDownloadButtonShowsTheStateAndReportsClicks() {
+    val download = mutableStateOf<DownloadStatus?>(null)
+    composeRule.setThemedContent {
+      RecordingPlayerScreen(
+        uiState = RecordingPlayerUiState(AT_1510, nearestNotice = false, download = download.value),
+        video = { modifier -> Box(modifier) },
+        onBack = {},
+        onPrevious = {},
+        onNext = {},
+        onRetry = {},
+        onDownload = { downloads.incrementAndGet() }
+      )
+    }
+    val button = composeRule.onNodeWithTag(RecordingPlayerTestTags.DOWNLOAD_BUTTON)
+
+    button.assert(hasStateDescription(R.string.player_download)).performClick()
+    download.value = DownloadStatus.Running(0.3f)
+    button.assert(hasStateDescription(R.string.player_download_running))
+    download.value = DownloadStatus.Succeeded("a.mp4")
+    button.assert(hasStateDescription(R.string.player_download_done)).performClick()
+
+    assertEquals(2, downloads.get())
   }
 }

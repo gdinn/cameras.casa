@@ -625,7 +625,59 @@ deviation 6 (unit tests, Konsist, 90% gate). `RecordingPlayerScreenTest`, `SmbDa
 - Tunnel holder taken at enqueue and released at the terminal state.
 - Download button on the player, plus the state of the current file (downloading / progress).
 
-**Outcome.** _pending_
+**Outcome (2026-11-11).** `jacocoTestCoverageVerification` passed. The manual check passed with
+the admin peer:
+- download with notification progress;
+- `_1` on a repeated download;
+- downloads going on in the background and with the screen locked, with the tunnel dropping at the
+  end;
+- cancel from the notification with no partial file left.
+
+One problem came up, fixed in deviation 7. After the fix, `ConfigScreenTest` and
+`RecordingPlayerScreenTest` passed on the SM-S721B (18 tests), and the user confirmed on the
+device: the step declined once is not asked again, and a download starts with no dialog.
+
+**What was built** (`docs/architecture.md` §1, §6.2, §5.6, §6.10, §8.2)
+
+- `TunnelHolder.Download(workId)` and `TunnelCoordinator.holds`.
+- `core/downloads`:
+  - domain: `DownloadRepository`, `DownloadStatus`, `DownloadRequestResult`, two use cases;
+  - data: `WorkManagerDownloadRepository`, `RecordingDownloadWorker`, `copyRecording`,
+    `freeFileName`, `DeviceDownloadOutputs`, `DownloadNotifications`, `DownloadWork.kt`.
+- `core/recordings/data/RecordingFileSources`: the player and the worker create their file
+  sessions through it.
+- WorkManager on demand: `CamerasApp` is the `Configuration.Provider`, and the manifest removes the
+  default initializer.
+- Manifest permissions and the `dataSync` type on `SystemForegroundService`.
+- Player: a download button with the state of the current recording, toasts, and the permissions
+  asked on tap.
+- Dependencies: `work-runtime-ktx` 2.10.1, `hilt-work` + `hilt-compiler` 1.3.0.
+
+**Deviations and decisions**
+
+1. **The records store moves to Step 10.** Nothing in this step needs it: duplicates and progress
+   come from WorkManager. It only serves the interrupted downloads, which are Step 10.
+2. **The `_n` suffix is chosen at creation, not at the end.** Downloads of the same recording never
+   run together (one unique work), so no two pending files compete for a name. The plan's "resolved
+   at the end" had no case to cover.
+3. **The worker fails without its holder,** as planned. The report of interrupted downloads (the
+   Home dialog) is Step 10.
+4. **A finished recording can be downloaded again** and gets a suffix. Only a running one is
+   refused.
+5. **Notifications use system icons** (`stat_sys_download`, `stat_sys_download_done`). The app has
+   no monochrome icon of its own yet.
+6. **`core/downloads/data` reads through `core/recordings/data`** (`RecordingFileSources`). This is
+   the only cross-area `data` dependency, documented in §6.10.
+7. **Notifications move to Config, asked once (user's request after the manual check).** On the
+   device, the notification dialog paused the player. The player gave the tunnel back, the tunnel
+   dropped, and the download came back `TUNNEL_DOWN`. Now:
+   - Config has an optional notifications step, for admins on Android 13+;
+   - the answer is recorded (`StreamPreferences.notificationPermissionRequested`) and never asked
+     again;
+   - the player only asks for storage (Android 8–9), and holds a download answered while paused
+     until the screen and the tunnel are back. Without that, the storage dialog would hit the same
+     drop.
+
 
 ### Step 10 — Interruptions
 

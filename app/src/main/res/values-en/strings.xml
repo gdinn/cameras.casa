@@ -114,4 +114,20 @@
     <string name="player_no_earlier_recording">No earlier recording</string>
     <string name="player_no_later_recording">No later recording</string>
     <string name="player_neighbor_lookup_failed">Could not look up the neighboring recording</string>
+    <string name="player_download">Download</string>
+    <string name="player_download_running">Downloading</string>
+    <string name="player_download_done">Downloaded</string>
+    <string name="player_download_started">Download started</string>
+    <string name="player_download_already_running">This recording is already downloading</string>
+    <string name="player_download_tunnel_down">The VPN is not connected: try again in a moment</string>
+    <string name="player_download_storage_denied">Saving to Downloads needs the storage permission</string>
+    <string name="download_notification_channel">Recording downloads</string>
+    <string name="download_notification_downloading">Downloading recording</string>
+    <string name="download_notification_finished">Recording saved to Downloads/Cameras</string>
+    <string name="download_notification_failed">Recording download failed</string>
+    <string name="download_notification_cancel">Cancel</string>
+    <string name="config_screen_notifications_title">Notifications</string>
+    <string name="config_screen_notifications_subtitle">Optional: shows the progress of recording downloads</string>
+    <string name="config_route_notifications_already_granted">Notifications already allowed</string>
+    <string name="config_route_notifications_declined">Notifications declined. Downloads run without them; they can be allowed in the system settings</string>
 </resources>

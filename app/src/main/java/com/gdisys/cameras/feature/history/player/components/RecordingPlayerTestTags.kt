@@ -11,4 +11,5 @@ object RecordingPlayerTestTags {
   const val NEAREST_NOTICE = "player_nearest_notice"
   const val PREVIOUS_BUTTON = "player_previous_button"
   const val NEXT_BUTTON = "player_next_button"
+  const val DOWNLOAD_BUTTON = "player_download_button"
 }

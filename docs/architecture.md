@@ -48,9 +48,10 @@ The end-to-end setup (only the Android client lives in this repository):
 
 Three product decisions shape most of the code:
 
-1. **The tunnel is foreground-only.** A screen that needs it asks `TunnelCoordinator` on
-   `Lifecycle.Event.ON_RESUME` (Home: when there is at least one stream URL) and gives it back on
-   `ON_PAUSE`. The tunnel drops 1.5 s after the last holder leaves, so moving between two screens
+1. **The tunnel is foreground-only, except for downloads.** A screen that needs it asks
+   `TunnelCoordinator` on `Lifecycle.Event.ON_RESUME` (Home: when there is at least one stream URL)
+   and gives it back on `ON_PAUSE`. A recording download keeps a tunnel that is already up while it
+   runs, even in the background (§6.10); it never raises one. The tunnel drops 1.5 s after the last holder leaves, so moving between two screens
    that need it does not cycle it. `VpnLifecycleService` is the safety net for task removal. The
    tunnel is an IPv6 split tunnel that only carries the Pi and the router, so this is not about
    other apps' traffic: it limits how long the device stays connected to the home network and the
@@ -204,7 +205,7 @@ top-level package groups live under `com.gdisys.cameras`:
 |---|---|
 | `app/*` | Composition root and navigation: `MainActivity`, `CamerasApp`, `app.navigation` |
 | `feature/*` | One package per screen. Route + ViewModel + UiState + `components/` + optional `logic/` |
-| `core/*` | Everything shared: `storage`, `vpn`, `webrtc`, `recordings`, `permission`, `network`, `coroutines`, `components`, plus the presentation base classes at the package root |
+| `core/*` | Everything shared: `storage`, `vpn`, `webrtc`, `recordings`, `downloads`, `permission`, `network`, `coroutines`, `components`, plus the presentation base classes at the package root |
 | `ui/*` | `ui.theme` only — `CamerasTheme`, color and typography |
 
 ### 3.1 The layering rule
@@ -341,14 +342,15 @@ nobody collects.
 
 **What it does.** Presents the four setup steps as buttons with a shared `ConfigButtonState`
 (`Loading` / `Ready` / `Done` / `Error`): grant camera permission, scan the QR code, grant VPN
-permission, configure stream URLs. It then gates navigation to `Home`.
+permission, configure stream URLs. It then gates navigation to `Home`. Admins on Android 13+
+also see a fifth, optional step: notifications.
 
 | Role | Type |
 |---|---|
 | View | `ConfigRoute.kt`, `components/ConfigScreen.kt`, `components/ConfigurationStepButton.kt` |
 | ViewModel | `ConfigViewModel.kt` |
-| State | `ConfigUiState.kt` — four button states + `canNavigateBackToHome`; derives `missingRequirement`, `canNavigateToHome`, `isQrCodeButtonEnabled` |
-| Model | 7 use cases across `storage`, `permission` and `vpn` domains |
+| State | `ConfigUiState.kt` — four button states + `canNavigateBackToHome` + `notificationPermissionButtonState` (`null` when the step is not shown); derives `missingRequirement`, `canNavigateToHome`, `isQrCodeButtonEnabled` |
+| Model | 10 use cases across `storage`, `permission` and `vpn` domains |
 
 Points of interest:
 
@@ -371,6 +373,16 @@ Points of interest:
 - **QR result arrives via navigation, not a shared ViewModel.** `QrCodeRoute` writes the raw JSON
   into `previousBackStackEntry.savedStateHandle[QR_CODE_RESULT_KEY]`; `ConfigRoute` observes it,
   hands it to `onQrCodeScanned`, then clears it through `onQrCodeResultConsumed`.
+- **Notifications are asked here, once.** The step exists for admins (only they download, §6.10)
+  on Android 13+ (`GetNotificationPermissionUseCase`: `NOT_REQUIRED` \| `GRANTED` \| `NOT_GRANTED`).
+  - It is optional: it is not one of the `missingRequirement`s.
+  - Whatever the answer, `MarkNotificationPermissionRequestedUseCase` records that it was asked
+    (`StreamPreferences.notificationPermissionRequested`). A declined permission then shows as
+    `Error`, and a tap only toasts that it can be allowed in the system settings.
+  - It is not asked when a download starts, as it first was. The dialog pauses the player, which
+    gives the tunnel back, and the tunnel was down by the time the answer came: the download was
+    refused.
+  - `refreshNotificationPermissionState()` also runs on `ON_RESUME`.
 - `refreshCameraPermissionState()` runs on `ON_RESUME` because the user can grant camera access
   from system settings while the screen is backgrounded.
 - **A "disabled" step is still clickable.** `ConfigButton`'s `enabled` only dims the step (the QR
@@ -619,8 +631,8 @@ feature's errors and the recordings model, and a feature may not import another)
 |---|---|
 | View | `RecordingPlayerRoute.kt` + `components/RecordingPlayerScreen.kt`, `RecordingPlayerTestTags.kt` |
 | ViewModel | `RecordingPlayerViewModel.kt` |
-| State | `RecordingPlayerUiState(recording, nearestNotice, status, looking)`. `PlayerStatus`: `Loading` \| `Playing` \| `Ended` \| `Failed(HistoryError)` |
-| Model | `GetNeighborRecordingUseCase`, `ObserveVpnStateUseCase`, `TunnelCoordinator`, `RecordingPlayer` (one per ViewModel) |
+| State | `RecordingPlayerUiState(recording, nearestNotice, status, looking, download)`. `PlayerStatus`: `Loading` \| `Playing` \| `Ended` \| `Failed(HistoryError)` |
+| Model | `GetNeighborRecordingUseCase`, `DownloadRecordingUseCase`, `ObserveRecordingDownloadUseCase`, `ObserveVpnStateUseCase`, `TunnelCoordinator`, `RecordingPlayer` (one per ViewModel) |
 
 How it behaves:
 
@@ -642,6 +654,12 @@ How it behaves:
 - **The nearest-recording notice** shows for the first file only; moving to another clears it.
 - **Recreation:** the current file name is written back to the `SavedStateHandle`, so a recreated
   screen shows the file the user moved to.
+- **Download:** a button in the top bar downloads the recording on screen (§6.10).
+  - Its icon follows that recording's download: a ring with the progress while it runs, a check
+    once saved.
+  - A toast says whether the download started, was already running, or found the tunnel down.
+  - The route asks for the storage permission first (Android 8–9). A request answered while the
+    screen was paused waits for the screen and the tunnel.
 
 The screen takes the video as a slot, `video: @Composable (Modifier) -> Unit`. The route passes
 `viewModel.player.Video`, and the screen tests a placeholder.
@@ -758,7 +776,9 @@ service — so the watchdog exists exactly as long as the tunnel does.
   Config within the grace period would find the tunnel still "wanted" and never retried.
 - **`holdIfUp`.** It adds a holder only while the tunnel is up (wish "up" and state `CONNECTED`, the
   grace period included), and never raises it. It is meant for work that must not open the tunnel
-  by itself, such as a download.
+  by itself: a download takes a `TunnelHolder.Download(workId)` this way (§6.10).
+- **`holds`.** Whether a holder is registered. Holders live in memory, so a download worker that
+  finds its holder gone knows the process that took it died.
 - **`clear()`.** It drops every holder and takes the tunnel down with no grace period. The task
   removal path uses it.
 
@@ -808,8 +828,10 @@ graph depend on the video stack it only routes to. The local stops at the route 
 Thin repositories over two platform calls — `ContextCompat.checkSelfPermission(CAMERA)` and
 `VpnService.prepare(context)` — behind `CameraPermissionRepository` / `VpnPermissionRepository` and
 three use cases (`HasCameraPermissionUseCase`, `HasVpnPermissionUseCase`,
-`RequestVpnPermissionUseCase`). The value is testability: `ConfigViewModel` can be unit-tested
-without a `Context`.
+`RequestVpnPermissionUseCase`). `NotificationPermissionRepository` and
+`GetNotificationPermissionUseCase` add the notification permission, `NOT_REQUIRED` before Android
+13. The SDK level is a constructor parameter, so the unit tests cover both sides. The value is
+testability: `ConfigViewModel` can be unit-tested without a `Context`.
 
 `VpnPermissionRepository.getVpnConsent()` is the only place in the app that calls
 `VpnService.prepare`. It maps the result to `VpnConsent`: `null` becomes `Granted`, an `Intent`
@@ -967,6 +989,85 @@ The same goes for `SmbConnector`, `SmbFileSession` and `ExoRecordingPlayer`, and
 
 On a device, `TestRecordingsModule` runs the production repository over `FakeRecordingsShare`, with
 the clock fixed at `RECORDINGS_NOW` (§10).
+
+### 6.10 `core/downloads` — recordings saved to the phone
+
+An admin downloads the recording on screen in the player. Each download is requested on its own,
+several can run at once, and they go on in the background.
+
+| Layer | Type | Role |
+|---|---|---|
+| domain | `DownloadRepository` | `download(recording)` → `DownloadRequestResult` (`STARTED` \| `ALREADY_RUNNING` \| `TUNNEL_DOWN`); `observe(recording)` → `DownloadStatus?` |
+| domain | `DownloadStatus` | `Running(progress?)` \| `Succeeded(fileName)` \| `Failed`; `null` when there is none or it was cancelled |
+| domain | use cases | `DownloadRecordingUseCase`, `ObserveRecordingDownloadUseCase` |
+| data | `WorkManagerDownloadRepository` | One unique work per recording (`downloadWorkName`, `ExistingWorkPolicy.KEEP`), tagged `recording-download` |
+| data | `RecordingDownloadWorker` | `@HiltWorker` `CoroutineWorker`, a `dataSync` foreground service while it copies |
+| data | `copyRecording` | The copy, in 4 MB reads (one round trip each), stoppable between chunks, with progress |
+| data | `freeFileName` | `name.mp4`, else `name_1.mp4`, `name_2.mp4`, ... |
+| data | `DownloadOutputs` / `DeviceDownloadOutputs` | MediaStore `Downloads` with `RELATIVE_PATH=Download/Cameras` and `IS_PENDING` on Android 10+; a `.part` file in the public Download folder, renamed and scanned, on 8–9 |
+| data | `DownloadNotifications` | The progress notification with a Cancel action (`WorkManager.createCancelPendingIntent`), and one when the download ends |
+| data | `DownloadWork.kt` | Work names, input data (camera + file name), and `WorkInfo` → `DownloadStatus` |
+| di | `DownloadsModule` | Binds the repository and the outputs; provides `WorkManager` |
+
+**The tunnel rule.**
+
+- **Starting:** `download` takes a `TunnelHolder.Download(workId)` with `holdIfUp` before it
+  enqueues. With the tunnel down it enqueues nothing and answers `TUNNEL_DOWN`. In practice the
+  request comes from the player, which holds the tunnel.
+- **Keeping:** the holder keeps the tunnel up while the work runs, in the background or with the
+  screen locked.
+- **Releasing:** a watcher in the application scope releases the holder when the work ends,
+  however it ends; the tunnel then drops if no screen holds it.
+- **The worker never raises the tunnel.** It checks its holder first. With none, this run is
+  WorkManager's re-run after the process died: it fails as `interrupted` without touching the
+  network. Step 10 of the history plan reports those.
+
+**Duplicates.** The repository looks at the recording's unique work under a mutex. While one is
+queued or running, a new request answers `ALREADY_RUNNING` and changes nothing. A finished one can
+be requested again: it saves another copy, with a suffix.
+
+**Writing.**
+
+- The free name is chosen when the file is created. Two downloads of the same recording never run
+  together, so two pending files cannot pick the same name.
+- Nothing shows until the file is complete: `IS_PENDING` on MediaStore, a hidden `.part` file
+  before Android 10.
+- A cancelled or failed download deletes what it wrote. A cancellation comes from the
+  notification's action, or from WorkManager stopping the work.
+- Known limit: MediaStore only shows an app its own files, so the name check cannot see a file left
+  by a previous install. MediaStore then renames on its own (`name (1).mp4`).
+
+**Startup.** WorkManager starts on demand. The manifest removes its default initializer, and
+`CamerasApp` implements `Configuration.Provider` with Hilt's `HiltWorkerFactory`, which injects the
+worker. The manifest also declares:
+
+- `FOREGROUND_SERVICE` and `FOREGROUND_SERVICE_DATA_SYNC`;
+- `POST_NOTIFICATIONS`;
+- `WRITE_EXTERNAL_STORAGE` with `maxSdkVersion=28`;
+- the `dataSync` type on WorkManager's `SystemForegroundService`.
+
+**Permissions.**
+
+- **Notifications (Android 13+):** asked once in Config, for admins (§5.2). Without them the
+  download still runs, unseen.
+- **Storage (Android 8–9):** asked by the player route when the user taps Download. If refused,
+  the player says so and nothing is downloaded.
+- **A request survives the dialog.** A permission dialog pauses the player, which gives the tunnel
+  back. `RecordingPlayerViewModel` therefore keeps the request pending until the screen is resumed
+  and the tunnel is up again, then downloads.
+
+**Reading.** The worker reads through `RecordingFileSources` from `core/recordings/data`, the same
+factory as the player: a session with its own SMB client per download. This is the one place where
+one area's `data` uses another's, kept because the file source is the recordings area's single way
+to read a file.
+
+**Tests.**
+
+- **Unit-tested:** `copyRecording`, `freeFileName` and `DownloadWork.kt`;
+  `WorkManagerDownloadRepository` against a mocked `WorkManager` (unique work, holder taken and
+  released, duplicate, tunnel down, status); the use cases.
+- **Excluded from coverage:** the worker, `DeviceDownloadOutputs` and `DownloadNotifications`,
+  which need WorkManager, MediaStore, notifications or the server.
 
 ---
 
@@ -1127,6 +1228,8 @@ Declared in `gradle/libs.versions.toml` and consumed via the version catalog.
 | `sh.calvin.reorderable:reorderable` | 3.1.0 | Drag-and-drop reordering in `LazyVerticalGrid` (dynamic mode only) |
 | `com.hierynomus:smbj` | 0.15.0 | SMB3 client for the recordings share (§6.9). Pulls in BouncyCastle and mbassador, which need the keep rules in `proguard-rules.pro` |
 | `androidx.media3:media3-exoplayer` | 1.11.1 | Playback of the recordings, straight from the share (`ExoRecordingPlayer`) |
+| `androidx.work:work-runtime-ktx` | 2.10.1 | Recording downloads: long-running foreground work (`RecordingDownloadWorker`) |
+| `androidx.hilt:hilt-work` + `hilt-compiler` (KSP) | 1.3.0 | `@HiltWorker` and `HiltWorkerFactory` |
 | `androidx.media3:media3-ui` | 1.11.1 | `PlayerView`: the recording player's video and its play/pause and seek controls |
 
 > `sh.calvin.reorderable` backs `ReorderableStreamGrid` in **dynamic** mode. Fixed/paged mode does
@@ -1208,7 +1311,7 @@ runtime.
 
 ## 10. Testing and quality gates
 
-**64 test files** under `app/src/test/`, mirroring the production package structure. Coverage is
+**73 test files** under `app/src/test/`, mirroring the production package structure. Coverage is
 concentrated where the project decided it belongs: ViewModels, use cases, repository
 implementations, pure logic and serialization.
 
@@ -1219,7 +1322,8 @@ implementations, pure logic and serialization.
 | Storage | `EncryptedPreferencesSerializerTest`, `StreamPreferencesSerializationTest`, `DataStoreManagerTest`, repository and all 8 use-case tests |
 | VPN | `VpnRepositoryImplTest`, `VpnConfigTest`, `VpnLifecycleControllerImplTest`, `VpnTeardownTest`, 4 use-case tests |
 | WebRTC | `WhepConnectionManagerTest`, `WhepRemoteDataSourceImplTest` (MockWebServer) |
-| Recordings | `RecordingsUseCasesTest`, `RecordingsRepositoryImplTest`, `LeasedResourceTest`, `ReadAheadReaderTest`, `SmbErrorsTest`, `ConnectTimeoutSocketFactoryTest`, `RecordingFileNameTest`, `RecordingSlotsTest`, `RecordingPathsTest` |
+| Downloads | `RecordingCopierTest`, `FileNamesTest`, `DownloadWorkTest`, `WorkManagerDownloadRepositoryTest`, `DownloadUseCasesTest` |
+| Recordings | `RecordingFileSourcesTest`, `RecordingsUseCasesTest`, `RecordingsRepositoryImplTest`, `LeasedResourceTest`, `ReadAheadReaderTest`, `SmbErrorsTest`, `ConnectTimeoutSocketFactoryTest`, `RecordingFileNameTest`, `RecordingSlotsTest`, `RecordingPathsTest` |
 | Architecture | `LayerDependencyTest` (Konsist) |
 | Config drift | `StreamHostTest` (Kotlin constant vs. XML), `JacocoExclusionsTest` (coverage patterns vs. compiled classes) |
 
@@ -1249,7 +1353,7 @@ service test, one dispatcher test and the default example), with packages mirror
 
 | Test | Covers |
 |---|---|
-| `ConfigScreenTest` (10) | Each step's state as `stateDescription`, the callback each step and the Home button fire, the Home button label ("Navigate to" vs. "Back to") |
+| `ConfigScreenTest` (12) | Each step's state as `stateDescription`, the callback each step and the Home button fire, the Home button label ("Navigate to" vs. "Back to"); the notifications step shows only when offered, with its state, and reports clicks |
 | `StreamURLsScreenTest` (18) | Loading, empty list, row order and removal, the add form, the four confirmation dialogs, the grid fields per orientation, when "Save grid" is enabled |
 | `EmptyStreamsScreenTest` (2) | The message and the "Reconfigure" shortcut |
 | `ToastDisplayerTest` (1) | Toast events reach the `ToastPresenter` provided through `LocalToastPresenter`, in order |
@@ -1274,7 +1378,7 @@ service test, one dispatcher test and the default example), with packages mirror
 | `WebRtcVideoPlayerTest` (4) | The real player over a recording `WebRtcConnection`: `CONNECTING` with a spinner before any frame; real I420 frames fed into the sink turn it `PLAYING`; a stream in `LocalFailedStreams` is `FAILED` and shows `StreamErrorOverlay`; "Try again" disconnects and connects the same renderer again |
 | `HomeScreenTest` (14) | The real `HomeScreen` with fake callbacks: the move accessibility actions reorder one place and are absent at the ends; "Reconfigure" is an action in dynamic mode only; one real drag per grid mode reorders on drop; overscrolling the dynamic grid reveals "Reconfigure"; the fixed grid always shows it; the page buttons move between pages; "Reconfigure" never covers the page buttons; a focused stream replaces the grid; the focused view shows the history button only with a camera, and it opens that camera's history |
 | `HistoryScreenTest` (10) | The History screen with hand-written states: loading and back; a failure's message and retry; empty; a month in each state (expanded with days, failed, loading, no days, collapsed, with the state description); month clicks and a month's retry are reported; a day reports its click; the time picker marks the recorded slots, reports any chosen slot, and shows its loading, empty and failed states |
-| `RecordingPlayerScreenTest` (5) | The player screen with a placeholder video: playing shows the video and the buttons and back report; the nearest-recording notice; both buttons disabled while a neighbor is looked up; a failure's message and retry; the ended state |
+| `RecordingPlayerScreenTest` (6) | The player screen with a placeholder video: playing shows the video and the buttons and back report; the nearest-recording notice; both buttons disabled while a neighbor is looked up; a failure's message and retry; the ended state; the download button's state description follows the download (none, running, done) and clicks are reported |
 | `SmbDataSourceTest` (7) | The media3 data source over a fake file source: the URI is the path on the share; a whole file comes out in 1 MB reads; a seek opens at its position; a bounded spec stops at its length; a position past the end is refused; a read failure reaches the player as an `IOException` carrying the domain failure; close closes the file |
 | `RealEnvironmentSmokeTest` (1, manual) | Real QR → real tunnel → a `PLAYING` card, on the production app minified as release (`e2eRelease`) and a physical phone. Excluded from the 110; run with `-PrealEnvironment` |
 | `TestLocaleTest` (1) | What `setThemedContent` renders and what `string()` resolves agree, and follow the `testLocale` argument when it is given |

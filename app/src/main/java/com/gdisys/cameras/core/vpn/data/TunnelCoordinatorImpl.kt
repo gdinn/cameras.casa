@@ -132,6 +132,8 @@ class TunnelCoordinatorImpl @Inject constructor(
     up
   }
 
+  override fun holds(holder: TunnelHolder): Boolean = synchronized(lock) { holder in demand.value.holders }
+
   override fun clear() = synchronized(lock) {
     demand.update { it.copy(holders = emptySet(), immediate = true) }
   }

@@ -1,6 +1,7 @@
 package com.gdisys.cameras.feature.config
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.Activity.RESULT_OK
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
@@ -36,6 +37,7 @@ fun ConfigRoute(
   // the background.
   LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
     viewModel.refreshCameraPermissionState()
+    viewModel.refreshNotificationPermissionState()
   }
 
   LaunchedEffect(canNavigateBackToHome) {
@@ -91,6 +93,16 @@ fun ConfigRoute(
     viewModel.onCameraPermissionResult(granted, shouldShowRationale)
   }
 
+  // The ViewModel only asks on Android 13+, where the permission exists.
+  @SuppressLint("InlinedApi")
+  val notificationPermission = Manifest.permission.POST_NOTIFICATIONS
+  LaunchActivityResultOnEvent(
+    events = viewModel.requestNotificationPermissionEvent.map { notificationPermission },
+    contract = ActivityResultContracts.RequestPermission()
+  ) { granted ->
+    viewModel.onNotificationPermissionResult(granted)
+  }
+
   ToastDisplayer(
     toastUiEvent = viewModel.uiEvent
   )
@@ -100,6 +112,7 @@ fun ConfigRoute(
     onShowScanner = viewModel::onShowScanner,
     acceptVpnPermission = viewModel::acceptVpnPermission,
     onRequestCameraPermission = viewModel::onRequestCameraPermission,
+    onRequestNotificationPermission = viewModel::onRequestNotificationPermission,
     onNavigateToStreamURLs = onNavigateToStreamURLs,
     onNavigateToHome = viewModel::onNavigateToHomeRequested
   )

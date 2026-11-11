@@ -352,4 +352,31 @@ class TunnelCoordinatorImplTest {
 
     assertEquals(listOf("connect", "disconnect", "connect"), tunnel.calls)
   }
+
+  @Test
+  fun `holds tells whether a holder is registered`() = runTest {
+    val coordinator = coordinator()
+    val download = TunnelHolder.Download("work-1")
+    coordinator.request(HOME)
+    runCurrent()
+
+    assertFalse(coordinator.holds(download))
+    assertTrue(coordinator.holdIfUp(download))
+    assertTrue(coordinator.holds(download))
+
+    coordinator.release(download)
+    assertFalse(coordinator.holds(download))
+    assertTrue(coordinator.holds(HOME))
+  }
+
+  @Test
+  fun `nothing is held after clear`() = runTest {
+    val coordinator = coordinator()
+    coordinator.request(HOME)
+    runCurrent()
+
+    coordinator.clear()
+
+    assertFalse(coordinator.holds(HOME))
+  }
 }
