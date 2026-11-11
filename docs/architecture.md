@@ -551,7 +551,7 @@ key does not invalidate the other:
 
 | Store | File | Model | Alias |
 |---|---|---|---|
-| User preferences | `user-preferences` | `UserPreferences` (VPN credentials) | `gdi-sys-storage` |
+| User preferences | `user-preferences` | `UserPreferences` (VPN credentials, admin's Samba login) | `gdi-sys-storage` |
 | Stream preferences | `stream-preferences` | `StreamPreferences` (URLs, orders, grids) | `gdi-sys-stream-preferences` |
 
 The file names and aliases are released values, kept as constants next to each `by dataStore`
@@ -590,9 +590,10 @@ is persisted as a hook for future migrations; nothing migrates on it yet.
 (applied on read, and only on read) drops orphans and appends missing URLs, so a divergence can
 never become a silent bug.
 
-**Use cases (8):** `GetStreamPreferencesUseCase`, `SaveStreamUrlsUseCase`,
+**Use cases (9):** `GetStreamPreferencesUseCase`, `SaveStreamUrlsUseCase`,
 `SaveGridPreferencesUseCase`, `UpdateStreamOrderUseCase`, `GetVpnConfigUseCase`,
-`GetVpnConfigStatusUseCase`, `SaveUserPreferencesUseCase`, `ParseUserPreferencesFromQrCodeUseCase`.
+`GetVpnConfigStatusUseCase`, `SaveUserPreferencesUseCase`, `ParseUserPreferencesFromQrCodeUseCase`,
+`ObserveIsAdminUseCase`.
 
 **Error-handling split.** `StreamPreferencesRepositoryImpl` logs a read failure and rethrows —
 reporting is a data concern. `GetStreamPreferencesUseCase` then decides what the app shows,
@@ -795,7 +796,7 @@ connect still running (§5.5). `onCleared()` calls `closeAll()`.
 |---|---|---|
 | **WHEP media server** (MediaMTX on a Raspberry Pi) | HTTP `POST {streamUrl}/whep`, `application/sdp`, then SRTP | `WhepRemoteDataSourceImpl`, `WhepClientImpl` |
 | **WireGuard peer** (home gateway) | WireGuard over UDP/IPv6, endpoint from `pEndpoint` | `VpnRepositoryImpl` (`GoBackend`) |
-| **QR-code provisioning payload** | JSON blob scanned from screen/paper, carrying `[Interface]`/`[Peer]` fields | `ParseUserPreferencesFromQrCodeUseCase` |
+| **QR-code provisioning payload** | JSON blob scanned from screen/paper, carrying `[Interface]`/`[Peer]` fields and, for admins, a Samba login | `ParseUserPreferencesFromQrCodeUseCase` |
 | **Android Keystore** | Hardware-backed key storage | `KeystoreCryptoEngine` |
 | **Device camera** | CameraX + ML Kit (on-device, no network) | `CameraXQrCodeScanner`, `QrCodeAnalyzer` |
 
@@ -822,6 +823,24 @@ silently disappeared. Excluding the files makes the app ask for the QR code agai
 
 Both must pass `isValid()` (all fields non-null) before the payload is accepted, and
 `toVpnConfigOrNull()` performs a second null-check pass when building the connection config.
+
+**Admins.** A third, optional object makes the user an admin:
+
+- `SmbCredentials` — `smbUser` and `smbPassword`, the Samba login for the recordings share. The
+  host (`STREAM_HOST`) and the share (`backup_cams`) are fixed, so only the login travels.
+
+`ObserveIsAdminUseCase` is the single answer to "is this an admin?": true when both fields are
+present and non-blank.
+
+- A payload without the object is a regular user, so every QR code issued before it still works.
+- A payload with the object but without both fields is rejected as a whole, like incomplete VPN
+  fields.
+- `SmbCredentials.toString()` masks the password, in line with the rule that the payload is
+  never logged.
+
+Hiding admin screens is UX only. The Pi enforces access itself: the router and ufw let only the
+admin block (`fd00:10::a:0/112`) reach port 445, and Samba checks the address again and asks for
+the login (`reports/pi_services_guide.md`, Part 13).
 
 ### 8.2 Gradle dependencies
 
@@ -981,7 +1000,7 @@ service test, one dispatcher test and the default example), with packages mirror
 | `ToastDisplayerTest` (1) | Toast events reach the `ToastPresenter` provided through `LocalToastPresenter`, in order |
 | `MainActivitySmokeTest` (1) | Scenario #0: the real `MainActivity`, with its injected `EglBase`, opens the four Config steps on a first run |
 | `FirstRunFlowTest` (2) | Scenario #1, on `FlowTest`: the first run lands on `[Loading, Config]` (read with `backStackRoutes()` after idle, with no `waitUntil`), every step is `Ready` and the button reads "Navigate to Home" |
-| `QrCodeFlowTest` (5) | Scenario #3: a valid QR turns the step `Done`, stores the credentials and the app stays on Config; each invalid fixture turns it `Error`, stores nothing and stays on Config; an invalid QR after a valid one wipes the stored credentials (current behavior, documented) |
+| `QrCodeFlowTest` (8) | Scenario #3: a valid QR turns the step `Done`, stores the credentials and the app stays on Config; an admin QR also stores the Samba login, a regular one stores none; each invalid fixture (including an admin one with an incomplete login) turns it `Error`, stores nothing and stays on Config; an invalid QR after a valid one wipes the stored credentials (current behavior, documented) |
 | `ConfigGateFlowTest` (5) | Scenario #4: with requirements missing, the Home button and the system back keep the app on `[Loading, Config]` and the activity alive; with everything complete but no Home behind, back is still consumed; a refused consent dialog (stubbed) leaves the VPN step `Ready`; a consent already granted starts the step `Done` and its click never launches the consent Intent |
 | `OnboardingFlowTest` (1) | Scenario #2: camera (granted after launch, so the click takes the request path), QR, VPN consent (dialog stubbed to accept) and the default URLs saved; Home is then the only destination, shows a card for each default URL, connected the tunnel and started its lifecycle once, and connected every URL |
 | `ReturningUserFlowTest` (3) | Scenario #5: stored credentials and URLs open `[Home]` with their cards, never passing through Config; credentials without URLs open the empty Home and never connect the tunnel; its shortcut opens Config over Home, with "Back to Home" |
@@ -1080,8 +1099,9 @@ shows and which callback each interaction fires, with no Hilt, navigation or fak
   never created. The real `EglBase` stays for the renderers.
 - The QR fixtures in `qr-code-gen/examples/` are assets of the test APK, read through
   `InstrumentationRegistry.getInstrumentation().context.assets` by the `QrFixture` enum
-  (`testing/QrFixtures.kt`): `VALID`, `INCOMPLETE`, `WRONG_TYPE` and `UNKNOWN_SHAPE`. `read()`
-  returns the JSON and `readImage()` the PNG next to it.
+  (`testing/QrFixtures.kt`): `VALID`, `INCOMPLETE`, `WRONG_TYPE`, `UNKNOWN_SHAPE`, `ADMIN` (`VALID`
+  plus a Samba login) and `ADMIN_INCOMPLETE` (a login without the password). `read()` returns the
+  JSON and `readImage()` the PNG next to it.
 - **`SystemDialogs`** (`testing/SystemDialogs.kt`) answers the windows of other processes through
   UI Automator: the VPN consent (`com.android.vpndialogs`) and the runtime permission dialog. It
   finds buttons by resource id, so the device language does not matter, and matches the permission

@@ -282,7 +282,32 @@ asn-one) and media3-exoplayer 1.11.1.
 - `ObserveIsAdminUseCase`. QR fixtures for admin/non-admin.
 - The payload is never logged; the same rule now covers the Samba password.
 
-**Outcome.** _pending_
+**Outcome (2026-11-11).** Done as planned, with the proposed rule: an incomplete or blank login
+rejects the whole QR.
+
+- **`SmbCredentials`** (`core/storage/domain/model`): `isValid()` requires both fields
+  non-blank. `toString()` masks the password.
+- **`UserPreferences.smbCredentials`:** nullable, default `null`. Old stores and QR codes decode
+  unchanged; a serializer test reads a file written without the field.
+- **`ParseUserPreferencesFromQrCodeUseCase`:** rejects an incomplete login.
+- **`ObserveIsAdminUseCase`:** `distinctUntilChanged`, so it only emits when the answer changes.
+- **Unit tests:**
+  - `SmbCredentialsTest`;
+  - `ObserveIsAdminUseCaseTest`;
+  - 5 new parser cases;
+  - 2 new serializer cases.
+- **QR fixtures:**
+  - new `5_validqr_admin` and `6_validqr_admin_incomplete`. Only their PNGs were generated (with
+    `main.py`'s `create_qrcode` through the existing venv), so the other images are untouched;
+  - `QrFixture.ADMIN` / `ADMIN_INCOMPLETE`;
+  - 3 new `QrCodeFlowTest` cases;
+  - `FlowTestSupportTest` now accepts `ADMIN` as a valid fixture.
+- **Docs:** `docs/architecture.md` §7.1 (store table, use cases), §8.1 (payload, "Admins") and §10
+  (fixtures, `QrCodeFlowTest`).
+- **Verified on the user's side** (Gradle does not start in the agent's sandbox):
+  - `jacocoTestCoverageVerification` green: unit tests, Konsist, the 90% gate;
+  - `QrCodeFlowTest`, `FlowTestSupportTest` and `QrCodeImageDecodingTest` on the SM-S721B:
+    14/14.
 
 ### Step 3 — Generator and Pi guide
 

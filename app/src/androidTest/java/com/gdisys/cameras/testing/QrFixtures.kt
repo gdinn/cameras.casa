@@ -19,7 +19,13 @@ enum class QrFixture(private val fileName: String) {
   WRONG_TYPE("3_validqr_info_dif_type.json"),
 
   /** Valid JSON with a shape the app does not know. */
-  UNKNOWN_SHAPE("4_validqr_dif_type_2.json");
+  UNKNOWN_SHAPE("4_validqr_dif_type_2.json"),
+
+  /** [VALID] plus a complete Samba login: an admin. */
+  ADMIN("5_validqr_admin.json"),
+
+  /** [VALID] plus a Samba login without the password: rejected as a whole. */
+  ADMIN_INCOMPLETE("6_validqr_admin_incomplete.json");
 
   /** The raw JSON, as the scanner would hand it over. */
   fun read(): String = open(fileName).bufferedReader().use { it.readText() }

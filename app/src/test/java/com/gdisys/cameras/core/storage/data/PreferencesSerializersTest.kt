@@ -1,5 +1,6 @@
 package com.gdisys.cameras.core.storage.data
 
+import com.gdisys.cameras.core.storage.domain.model.SmbCredentials
 import com.gdisys.cameras.core.storage.domain.model.StreamPreferences
 import com.gdisys.cameras.core.storage.domain.model.UserPreferences
 import com.gdisys.cameras.core.storage.domain.model.VpnConfigTokens
@@ -8,6 +9,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
+import java.util.Base64
 
 class PreferencesSerializersTest {
 
@@ -37,6 +39,31 @@ class PreferencesSerializersTest {
 
     assertEquals(UserPreferences(), serializer.defaultValue)
     assertEquals(preferences, serializer.readFrom(ByteArrayInputStream(output.toByteArray())))
+  }
+
+  @Test
+  fun `userPreferencesSerializer keeps the Samba login`() = runTest {
+    val serializer = userPreferencesSerializer(crypto)
+    val preferences = UserPreferences(
+      vpnConfigTokens = VpnConfigTokens(iPrk = "private-key"),
+      smbCredentials = SmbCredentials(smbUser = "admin-a-7", smbPassword = "secret")
+    )
+
+    val output = ByteArrayOutputStream()
+    serializer.writeTo(preferences, output)
+
+    assertEquals(preferences, serializer.readFrom(ByteArrayInputStream(output.toByteArray())))
+  }
+
+  @Test
+  fun `userPreferencesSerializer reads a file written before the Samba login existed`() = runTest {
+    // What every installed app has on disk today: the VPN fields only.
+    val stored = """{"vpnConfigDefaults":null,"vpnConfigTokens":{"iPrk":"private-key","iAddr":null,"pPsk":null}}"""
+    val file = Base64.getEncoder().encode(crypto.encrypt(stored.toByteArray()))
+
+    val read = userPreferencesSerializer(crypto).readFrom(ByteArrayInputStream(file))
+
+    assertEquals(UserPreferences(vpnConfigTokens = VpnConfigTokens(iPrk = "private-key")), read)
   }
 
   @Test

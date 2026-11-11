@@ -1,6 +1,7 @@
 package com.gdisys.cameras.flow
 
 import com.gdisys.cameras.app.navigation.NavigationRoute
+import com.gdisys.cameras.core.storage.domain.model.SmbCredentials
 import com.gdisys.cameras.core.storage.domain.model.UserPreferences
 import com.gdisys.cameras.feature.config.ConfigButtonState
 import com.gdisys.cameras.testing.FlowTest
@@ -10,6 +11,7 @@ import com.gdisys.cameras.testing.robot.config
 import dagger.hilt.android.testing.HiltAndroidTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 /**
@@ -31,6 +33,31 @@ class QrCodeFlowTest : FlowTest() {
     // Config on its own.
     assertEquals(listOf(NavigationRoute.Loading, NavigationRoute.Config), backStackRoutes())
   }
+
+  @Test
+  fun adminQrStoresTheSambaLogin() {
+    launchApp()
+
+    injectQr(QrFixture.ADMIN.read())
+
+    config { assertStep(ConfigStep.QR_CODE, ConfigButtonState.Done) }
+    assertEquals(
+      SmbCredentials(smbUser = "admin-a-20", smbPassword = "bogus-samba-password"),
+      storedUserPreferences().smbCredentials
+    )
+  }
+
+  @Test
+  fun regularQrStoresNoSambaLogin() {
+    launchApp()
+
+    injectQr(QrFixture.VALID.read())
+
+    assertNull(storedUserPreferences().smbCredentials)
+  }
+
+  @Test
+  fun adminQrWithIncompleteSambaLoginIsRejected() = assertRejected(QrFixture.ADMIN_INCOMPLETE)
 
   @Test
   fun qrWithMissingFieldIsRejected() = assertRejected(QrFixture.INCOMPLETE)

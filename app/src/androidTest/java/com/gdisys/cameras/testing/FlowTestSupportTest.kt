@@ -23,11 +23,12 @@ class FlowTestSupportTest : FlowTest() {
   @Inject lateinit var cameraPermissionRepository: CameraPermissionRepository
 
   @Test
-  fun onlyTheFirstFixtureHoldsValidCredentials() {
+  fun onlyTheValidAndAdminFixturesHoldValidCredentials() {
     val parse = ParseUserPreferencesFromQrCodeUseCase()
+    val accepted = setOf(QrFixture.VALID, QrFixture.ADMIN)
 
-    assertNotNull(parse(QrFixture.VALID.read()).getOrThrow())
-    QrFixture.entries.filter { it != QrFixture.VALID }.forEach { fixture ->
+    accepted.forEach { fixture -> assertNotNull("$fixture was rejected", parse(fixture.read()).getOrThrow()) }
+    QrFixture.entries.filter { it !in accepted }.forEach { fixture ->
       assertTrue("$fixture was accepted", parse(fixture.read()).getOrNull() == null)
     }
   }
