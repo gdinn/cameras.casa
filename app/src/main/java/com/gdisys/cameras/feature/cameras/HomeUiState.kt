@@ -14,12 +14,15 @@ sealed interface HomeUiState {
    * @property grid grid configuration of the current orientation
    * @property failedStreams the [streams] whose last connection attempt failed; their cards show
    *   the error and a retry button instead of a black frame
+   * @property historyCamera the camera (`cam_xx`) whose recordings the focused view offers. Only
+   *   for admins, and only when the focused stream's URL names a camera
    */
   data class Ready(
     val streams: List<String>,
     val focusedStream: String?,
     val grid: GridPreferences,
     val orientation: StreamOrientation,
-    val failedStreams: Set<String> = emptySet()
+    val failedStreams: Set<String> = emptySet(),
+    val historyCamera: String? = null
   ) : HomeUiState
 }

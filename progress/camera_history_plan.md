@@ -496,7 +496,40 @@ chain. The real share against the Pi is checked from Step 6, when History has a 
 - States: loading / list / empty / error (SMB login failed: bad credentials; host unreachable).
 - Expandable months, newest first.
 
-**Outcome.** _pending_
+**Outcome (2026-11-11).** Done. `jacocoTestCoverageVerification` passed (unit tests, Konsist,
+90% gate). `HistoryScreenTest` and `HomeScreenTest` passed on an SM-S721B (19 tests). The manual
+check against the real share, with the admin peer (focused view → History → expand a month), is
+still to be done; Step 11's smoke covers it otherwise.
+
+**What was built** (`docs/architecture.md` §4, §5.5, §5.6, §6.9)
+
+- `NavigationRoute.History(camera)`. `HistoryViewModel` reads the camera from its
+  `SavedStateHandle` (`HISTORY_CAMERA_ARG`), so the feature does not import `app.navigation`.
+- Home:
+  - `HomeUiState.Ready.historyCamera`, set for admins when the focused URL names a camera
+    (`RecordingFileName.cameraOfStreamUrl`);
+  - a history button in the focused view's top-end corner.
+- `feature/history`:
+  - `HistoryViewModel` holds the tunnel while resumed and lists the months once the tunnel is up;
+  - a month's days are listed on every expand, and a collapse cancels the listing;
+  - a list-level error with retry, and per-month errors with their own retry.
+- Use cases `GetRecordingMonthsUseCase` (newest first) and `GetRecordingDaysUseCase`, through
+  `recordingsResult`, which lets cancellations through.
+- Strings in `values`, `values-en` and `values-pt-rBR`.
+- Tests:
+  - unit: `HistoryViewModelTest`, `RecordingsUseCasesTest`, and new cases in `HomeViewModelTest`
+    and `RecordingFileNameTest`;
+  - instrumented: `HistoryScreenTest`, plus 3 cases in `HomeScreenTest`.
+
+**Deviations and decisions**
+
+1. **A VPN failure is shown in place**, not by navigating to Config as Home does. From History an
+   admin would land far from where they were; "Try again" asks the coordinator again.
+2. **Days are listed in calendar order inside a month.** Months are newest first. The month reads
+   like a calendar.
+3. **Days are not clickable yet.** The time picker is Step 7.
+4. **No flow test yet.** Home → History through navigation is covered in Step 11, as planned.
+
 
 ### Step 7 — Time picker and nearest recording
 

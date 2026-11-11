@@ -90,4 +90,18 @@
     <string name="stream_urls_route_grid_saved">Grid configuration saved</string>
     <string name="stream_urls_route_save_grid_error">Failed to save the grid configuration</string>
     <string name="stream_urls_route_grid_hides_streams">The grid is smaller than your list of streams, so it will not show all of them</string>
+    <string name="home_screen_open_history">Recordings history</string>
+    <string name="history_screen_title">History · %1$s</string>
+    <string name="history_screen_navigate_back">Back</string>
+    <string name="history_screen_loading">Loading recordings…</string>
+    <string name="history_screen_retry">Try again</string>
+    <string name="history_screen_empty">No recordings for this camera</string>
+    <string name="history_screen_month_no_days">No finished recording this month</string>
+    <string name="history_screen_month_expanded">Expanded</string>
+    <string name="history_screen_month_collapsed">Collapsed</string>
+    <string name="history_error_vpn_connection">Could not connect to the VPN</string>
+    <string name="history_error_not_admin">This device has no access to the recordings. Scan an admin QR code</string>
+    <string name="history_error_authentication_failed">The recordings server refused this device\'s login</string>
+    <string name="history_error_unreachable">The recordings server did not answer</string>
+    <string name="history_error_failed">Could not read the recordings</string>
 </resources>

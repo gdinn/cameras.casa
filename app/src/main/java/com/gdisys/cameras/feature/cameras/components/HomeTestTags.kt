@@ -9,6 +9,7 @@ object HomeTestTags {
   const val LOADING = "home_loading"
   const val STREAM_GRID = "home_stream_grid"
   const val FOCUSED_STREAM = "home_focused_stream"
+  const val HISTORY_BUTTON = "home_history_button"
   const val RECONFIGURE_BUTTON = "home_reconfigure_button"
   const val OVERSCROLL_RECONFIGURE_BUTTON = "home_overscroll_reconfigure_button"
   const val PREVIOUS_PAGE_BUTTON = "home_previous_page_button"

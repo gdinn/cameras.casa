@@ -9,6 +9,7 @@ import com.gdisys.cameras.core.storage.domain.model.GridPreferences
 import com.gdisys.cameras.core.storage.domain.model.StreamOrientation
 import com.gdisys.cameras.core.storage.domain.model.StreamPreferences
 import com.gdisys.cameras.core.storage.domain.usecase.GetStreamPreferencesUseCase
+import com.gdisys.cameras.core.storage.domain.usecase.ObserveIsAdminUseCase
 import com.gdisys.cameras.core.storage.domain.usecase.UpdateStreamOrderUseCase
 import com.gdisys.cameras.core.vpn.domain.TunnelCoordinator
 import com.gdisys.cameras.core.vpn.domain.TunnelHolder
@@ -43,6 +44,8 @@ class HomeViewModelTest {
 
   private val observeVpnStateUseCase = mockk<ObserveVpnStateUseCase>()
   private val getStreamPreferencesUseCase = mockk<GetStreamPreferencesUseCase>()
+  private val observeIsAdminUseCase = mockk<ObserveIsAdminUseCase>()
+  private val isAdmin = MutableStateFlow(false)
   private val updateStreamOrderUseCase = mockk<UpdateStreamOrderUseCase>()
   private val tunnelCoordinator = FakeTunnelCoordinator()
   private val streamConnectionRepository = mockk<StreamConnectionRepository>(relaxed = true)
@@ -74,10 +77,12 @@ class HomeViewModelTest {
   fun setUp() {
     every { observeVpnStateUseCase() } returns vpnState
     every { getStreamPreferencesUseCase() } returns streamPreferences
+    every { observeIsAdminUseCase() } returns isAdmin
     coEvery { updateStreamOrderUseCase(any(), any()) } returns Result.success(Unit)
     viewModel = HomeViewModel(
       observeVpnStateUseCase,
       getStreamPreferencesUseCase,
+      observeIsAdminUseCase,
       updateStreamOrderUseCase,
       tunnelCoordinator,
       streamConnectionRepository
@@ -187,6 +192,63 @@ class HomeViewModelTest {
       val cleared = awaitItem() as HomeUiState.Ready
       assertNull(cleared.focusedStream)
     }
+  }
+
+  @Test
+  fun `an admin's focused stream offers the history of its camera`() = runTest {
+    isAdmin.value = true
+    vpnState.value = VpnTunnelState.CONNECTED
+
+    viewModel.focusStream(defaultStreams[1])
+
+    assertEquals(
+      readyState(focusedStream = defaultStreams[1]).copy(historyCamera = "cam_161"),
+      viewModel.uiState.value
+    )
+  }
+
+  @Test
+  fun `no history is offered without a focused stream`() = runTest {
+    isAdmin.value = true
+    vpnState.value = VpnTunnelState.CONNECTED
+
+    assertEquals(readyState(), viewModel.uiState.value)
+  }
+
+  @Test
+  fun `no history is offered to a regular user`() = runTest {
+    vpnState.value = VpnTunnelState.CONNECTED
+
+    viewModel.focusStream(defaultStreams[1])
+
+    assertEquals(readyState(focusedStream = defaultStreams[1]), viewModel.uiState.value)
+  }
+
+  @Test
+  fun `no history is offered for a stream URL that names no camera`() = runTest {
+    val garage = "http://[fd00:20::cafe]:8889/garage"
+    streamPreferences.value = streamPreferences.value.copy(
+      streamUrls = listOf(garage),
+      portraitOrder = listOf(garage)
+    )
+    isAdmin.value = true
+    vpnState.value = VpnTunnelState.CONNECTED
+
+    viewModel.focusStream(garage)
+
+    assertEquals(null, (viewModel.uiState.value as HomeUiState.Ready).historyCamera)
+  }
+
+  @Test
+  fun `the history button follows the admin status`() = runTest {
+    vpnState.value = VpnTunnelState.CONNECTED
+    viewModel.focusStream(defaultStreams[0])
+
+    isAdmin.value = true
+    assertEquals("cam_160", (viewModel.uiState.value as HomeUiState.Ready).historyCamera)
+
+    isAdmin.value = false
+    assertEquals(null, (viewModel.uiState.value as HomeUiState.Ready).historyCamera)
   }
 
   @Test

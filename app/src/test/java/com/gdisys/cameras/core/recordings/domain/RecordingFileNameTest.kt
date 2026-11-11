@@ -77,4 +77,24 @@ class RecordingFileNameTest {
       assertFalse(it, RecordingFileName.isValidCamera(it))
     }
   }
+
+  @Test
+  fun `the camera of a stream URL is its last path segment`() {
+    assertEquals("cam_10", RecordingFileName.cameraOfStreamUrl("http://[fd00:20::cafe]:8889/cam_10"))
+    assertEquals("cam_160", RecordingFileName.cameraOfStreamUrl("http://[fd00:20::cafe]:8889/cam_160/"))
+    assertEquals("cam_10", RecordingFileName.cameraOfStreamUrl("http://[fd00:20::cafe]:8889/cam_10/whep"))
+    assertEquals("cam_10", RecordingFileName.cameraOfStreamUrl("http://[fd00:20::cafe]:8889/cam_10?x=1"))
+  }
+
+  @Test
+  fun `a stream URL that names no camera has none`() {
+    listOf(
+      "http://[fd00:20::cafe]:8889",
+      "http://[fd00:20::cafe]:8889/",
+      "http://[fd00:20::cafe]:8889/garage",
+      "http://[fd00:20::cafe]:8889/whep",
+      "http://[fd00:20::cafe]:8889/cam_10/../etc",
+      ""
+    ).forEach { url -> assertNull(url, RecordingFileName.cameraOfStreamUrl(url)) }
+  }
 }

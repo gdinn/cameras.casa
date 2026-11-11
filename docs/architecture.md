@@ -254,8 +254,8 @@ screen must not be promoted into the shared domain.
 
 ## 4. Navigation and route inventory
 
-`app/navigation/NavigationRoute.kt` declares five type-safe destinations as `@Serializable` objects
-inside a `sealed interface`. `NavigationRoot.kt` maps each to a route composable and owns all
+`app/navigation/NavigationRoute.kt` declares six type-safe destinations inside a `sealed interface`:
+`@Serializable` objects, and one data class, `History(camera)`, the only route with an argument. `NavigationRoot.kt` maps each to a route composable and owns all
 inter-screen wiring, including passing the QR-code result back through
 `previousBackStackEntry.savedStateHandle`.
 
@@ -275,16 +275,23 @@ in release builds. Its theme and `configChanges` must match `MainActivity`'s; bo
 | `QrCode` | `QrCodeRoute` | `feature/qrcode/QrCodeRoute.kt` | `QrCodeViewModel` |
 | `StreamURLs` | `StreamURLsRoute` | `feature/streamurls/StreamURLsRoute.kt` | `StreamURLsViewModel` |
 | `Home` | `HomeRoute` | `feature/cameras/HomeRoute.kt` | `HomeViewModel` |
+| `History(camera)` | `HistoryRoute` | `feature/history/HistoryRoute.kt` | `HistoryViewModel` |
 
 **Navigation shape.** The flow is gated, not linear. `InitRoute` decides between `Config` and
 `Home` based on stored credentials. `ConfigRoute` refuses to leave for `Home` until three
 requirements are met (credentials, VPN permission, at least one stream URL) and consumes the system
 back press with a toast otherwise. `navigateToHome()` pops back to an existing `Home` entry when
-there is one, instead of stacking duplicates.
+there is one, instead of stacking duplicates. `History` is reached only from Home's focused view, by
+admins, and goes back to it with a plain `popBackStack`.
+
+**Route arguments.** Type-safe navigation stores a route's properties in the destination's
+`SavedStateHandle` under their names. `HistoryViewModel` reads `camera` there through
+`HISTORY_CAMERA_ARG`, so the feature does not import `app.navigation`. The name is the contract,
+noted on both sides.
 
 ### 4.1 Conventions shared by every route
 
-All five routes follow the same contract, which makes them easy to read once you know the pattern:
+All six routes follow the same contract, which makes them easy to read once you know the pattern:
 
 - The route composable is the **only** place that touches navigation lambdas, `BackHandler`,
   lifecycle effects and Activity-result launchers. Screens below it are pure and previewable.
@@ -460,12 +467,12 @@ configuration.
 |---|---|
 | View | `HomeRoute.kt` + 17 files in `components/` |
 | ViewModel | `HomeViewModel.kt` |
-| State | `HomeUiState.kt` — `Loading` \| `Empty` \| `Ready(streams, focusedStream, grid, orientation, failedStreams)` |
+| State | `HomeUiState.kt` — `Loading` \| `Empty` \| `Ready(streams, focusedStream, grid, orientation, failedStreams, historyCamera)` |
 | Logic | `logic/StreamPaging.kt`, `logic/FixedGridLayout.kt` |
-| Model | 3 use cases + `TunnelCoordinator` + `StreamConnectionRepository` |
+| Model | 4 use cases + `TunnelCoordinator` + `StreamConnectionRepository` |
 
 **State composition.** `HomeUiState` is a single `combine` of five sources — persisted preferences,
-orientation, focused stream, failed streams and VPN tunnel state — collected into a `MutableStateFlow`. The
+orientation, the focus (focused stream plus admin status), failed streams and VPN tunnel state — collected into a `MutableStateFlow`. The
 precedence matters: an empty URL list yields `Empty` *before* the VPN state is considered, because
 waiting for a tunnel with nothing to connect to would show a permanent spinner.
 
@@ -535,9 +542,57 @@ Another screen may hold the tunnel by then, and that one reports it.
   renderer again, the same path as leaving and coming back. Any new attempt, and any disconnect,
   clears the failure. Only the negotiation is covered: a stream that drops after connecting reports
   nothing.
+- **The focused view offers the camera's history to admins.** `HomeViewModel` sets
+  `historyCamera` when the user is an admin (`ObserveIsAdminUseCase`) and the focused URL names a
+  camera (`RecordingFileName.cameraOfStreamUrl`: its last path segment, `cam_` plus digits). The
+  focused view then shows a history button in its top-end corner, which opens `History(camera)`.
 - **Back press is a two-stage exit.** The first press toasts "press back again"; a second press
   within a 2 s window emits `ExitApp` and the route calls `activity.finish()`.
 - `onCleared()` calls `streamConnectionRepository.closeAll()`.
+
+### 5.6 `feature/history` — an admin's recordings of one camera
+
+**What it does.** Lists the months with recordings of one camera, newest first. Expanding a month
+lists its days with a finished file, in calendar order. Reached from the history button of Home's
+focused view, for admins only.
+
+| Role | Type |
+|---|---|
+| View | `HistoryRoute.kt` + `components/HistoryScreen.kt`, `components/HistoryTestTags.kt` |
+| ViewModel | `HistoryViewModel.kt` |
+| State | `HistoryUiState.kt` — `camera` + `HistoryContent`: `Loading` \| `Failed(HistoryError)` \| `Empty` \| `Months(List<MonthItem>)`. Each `MonthItem` has a `DaysState`: `Collapsed` \| `Loading` \| `Loaded(days)` \| `Failed(HistoryError)` |
+| Model | `GetRecordingMonthsUseCase`, `GetRecordingDaysUseCase`, `ObserveVpnStateUseCase` + `TunnelCoordinator` |
+
+**The tunnel.** Like Home, History requests the tunnel on resume and releases it on pause and in
+`onCleared`. Coming from the focused view, Home releases and History requests within the
+coordinator's grace period, so the tunnel never drops on the way (§6.2). A connect failure is
+reported in place (`VPN_CONNECTION`), only while History waits for its months: there is no Config to
+send an admin to from here.
+
+**When it reads the share.**
+
+- **Months:** listed once, as soon as the tunnel is `CONNECTED`. Coming back from the background
+  keeps the list.
+- **A month's days:** listed every time the month is expanded, because a file may have finished in
+  the meantime.
+- **Collapsing:** cancels a listing still running, so a late answer cannot reopen the month.
+
+**Errors.** `HistoryError` maps `RecordingsException` to one message each:
+
+| Error | Shown when |
+|---|---|
+| `NOT_ADMIN` | No login is stored |
+| `AUTHENTICATION_FAILED` | The server refused the login |
+| `UNREACHABLE` | The server did not answer |
+| `FAILED` | Anything else |
+| `VPN_CONNECTION` | The tunnel failed while History waited for its months |
+
+The whole list fails with a retry button. One month's days fail in place, with their own retry.
+Retrying the list also asks for the tunnel again, which makes the coordinator retry a failed
+connect.
+
+**Accessibility.** Each month header is a button whose state description says "Expanded" or
+"Collapsed".
 
 ---
 
@@ -817,6 +872,14 @@ connection. Without the retry, the first listing after every return to the scree
 | `Unreachable` | Network failures and lost sessions |
 | `Failed` | Anything else |
 
+**Use cases** (`domain/usecase`): `GetRecordingMonthsUseCase` (newest first) and
+`GetRecordingDaysUseCase` wrap the repository in a `Result` through `recordingsResult`, which,
+unlike `runCatching`, lets a cancellation through. A screen that leaves during a listing therefore
+sees no error.
+
+`RecordingFileName.cameraOfStreamUrl` links a stream to its folder on the share: the last path
+segment of the stream URL, with or without `/whep`, when it is `cam_` plus digits.
+
 **Tests.** `SmbjRecordingsShare` is excluded from coverage: every line of it talks to a server.
 What it relies on is unit-tested:
 
@@ -1065,18 +1128,18 @@ runtime.
 
 ## 10. Testing and quality gates
 
-**58 test files** under `app/src/test/`, mirroring the production package structure. Coverage is
+**60 test files** under `app/src/test/`, mirroring the production package structure. Coverage is
 concentrated where the project decided it belongs: ViewModels, use cases, repository
 implementations, pure logic and serialization.
 
 | Area | Representative tests |
 |---|---|
-| ViewModels (all 5) | `HomeViewModelTest`, `ConfigViewModelTest`, `StreamURLsViewModelTest`, `InitViewModelTest`, `QrCodeViewModelTest` |
+| ViewModels (all 6) | `HomeViewModelTest`, `ConfigViewModelTest`, `StreamURLsViewModelTest`, `InitViewModelTest`, `QrCodeViewModelTest`, `HistoryViewModelTest` |
 | Pure logic | `StreamPagingTest`, `PagedDragStateTest`, `FixedGridLayoutTest`, `GridPreferencesValidationTest`, `StreamUrlValidationTest` |
 | Storage | `EncryptedPreferencesSerializerTest`, `StreamPreferencesSerializationTest`, `DataStoreManagerTest`, repository and all 8 use-case tests |
 | VPN | `VpnRepositoryImplTest`, `VpnConfigTest`, `VpnLifecycleControllerImplTest`, `VpnTeardownTest`, 4 use-case tests |
 | WebRTC | `WhepConnectionManagerTest`, `WhepRemoteDataSourceImplTest` (MockWebServer) |
-| Recordings | `RecordingsRepositoryImplTest`, `LeasedResourceTest`, `SmbErrorsTest`, `ConnectTimeoutSocketFactoryTest`, `RecordingFileNameTest`, `RecordingSlotsTest`, `RecordingPathsTest` |
+| Recordings | `RecordingsUseCasesTest`, `RecordingsRepositoryImplTest`, `LeasedResourceTest`, `SmbErrorsTest`, `ConnectTimeoutSocketFactoryTest`, `RecordingFileNameTest`, `RecordingSlotsTest`, `RecordingPathsTest` |
 | Architecture | `LayerDependencyTest` (Konsist) |
 | Config drift | `StreamHostTest` (Kotlin constant vs. XML), `JacocoExclusionsTest` (coverage patterns vs. compiled classes) |
 
@@ -1129,7 +1192,8 @@ service test, one dispatcher test and the default example), with packages mirror
 | `VpnLifecycleServiceTest` (1) | The real `VpnLifecycleService`, injected by Hilt over `FakeVpnRepository`: stopping it drops the tunnel. `onTaskRemoved` has no test API and stays a manual check |
 | `IdlingDispatcherTest` (2) | `IdlingDispatcher` is busy while its work runs and reports the transition to idle; the Compose test rule waits for main → `TestDispatchers.default` → `TestDispatchers.io` → main with no `waitUntil` |
 | `WebRtcVideoPlayerTest` (4) | The real player over a recording `WebRtcConnection`: `CONNECTING` with a spinner before any frame; real I420 frames fed into the sink turn it `PLAYING`; a stream in `LocalFailedStreams` is `FAILED` and shows `StreamErrorOverlay`; "Try again" disconnects and connects the same renderer again |
-| `HomeScreenTest` (11) | The real `HomeScreen` with fake callbacks: the move accessibility actions reorder one place and are absent at the ends; "Reconfigure" is an action in dynamic mode only; one real drag per grid mode reorders on drop; overscrolling the dynamic grid reveals "Reconfigure"; the fixed grid always shows it; the page buttons move between pages; "Reconfigure" never covers the page buttons; a focused stream replaces the grid |
+| `HomeScreenTest` (14) | The real `HomeScreen` with fake callbacks: the move accessibility actions reorder one place and are absent at the ends; "Reconfigure" is an action in dynamic mode only; one real drag per grid mode reorders on drop; overscrolling the dynamic grid reveals "Reconfigure"; the fixed grid always shows it; the page buttons move between pages; "Reconfigure" never covers the page buttons; a focused stream replaces the grid; the focused view shows the history button only with a camera, and it opens that camera's history |
+| `HistoryScreenTest` (5) | The History screen with hand-written states: loading and back; a failure's message and retry; empty; a month in each state (expanded with days, failed, loading, no days, collapsed, with the state description); month clicks and a month's retry are reported |
 | `RealEnvironmentSmokeTest` (1, manual) | Real QR → real tunnel → a `PLAYING` card, on the production app minified as release (`e2eRelease`) and a physical phone. Excluded from the 110; run with `-PrealEnvironment` |
 | `TestLocaleTest` (1) | What `setThemedContent` renders and what `string()` resolves agree, and follow the `testLocale` argument when it is given |
 | `QrCodeImageDecodingTest` (1) | Level C: every PNG of `qr-code-gen/examples/` decodes, on the device's ML Kit, to exactly the JSON next to it, so the scanner's decoder is covered without the camera and a PNG left behind by a JSON change fails. A failure names the fixtures only |

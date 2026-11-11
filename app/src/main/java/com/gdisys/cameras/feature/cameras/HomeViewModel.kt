@@ -4,10 +4,12 @@ import android.util.Log
 import androidx.lifecycle.viewModelScope
 import com.gdisys.cameras.core.DEBUG_TAG
 import com.gdisys.cameras.core.ToastEventViewModel
+import com.gdisys.cameras.core.recordings.domain.RecordingFileName
 import com.gdisys.cameras.core.storage.domain.model.StreamOrientation
 import com.gdisys.cameras.core.storage.domain.model.gridFor
 import com.gdisys.cameras.core.storage.domain.model.orderFor
 import com.gdisys.cameras.core.storage.domain.usecase.GetStreamPreferencesUseCase
+import com.gdisys.cameras.core.storage.domain.usecase.ObserveIsAdminUseCase
 import com.gdisys.cameras.core.storage.domain.usecase.UpdateStreamOrderUseCase
 import com.gdisys.cameras.core.vpn.domain.TunnelCoordinator
 import com.gdisys.cameras.core.vpn.domain.TunnelHolder
@@ -41,6 +43,7 @@ internal val HOME_TUNNEL_HOLDER = TunnelHolder.Screen("home")
 class HomeViewModel @Inject constructor(
   observeVpnStateUseCase: ObserveVpnStateUseCase,
   getStreamPreferencesUseCase: GetStreamPreferencesUseCase,
+  observeIsAdminUseCase: ObserveIsAdminUseCase,
   private val updateStreamOrderUseCase: UpdateStreamOrderUseCase,
   private val tunnelCoordinator: TunnelCoordinator,
   private val streamConnectionRepository: StreamConnectionRepository
@@ -74,15 +77,20 @@ class HomeViewModel @Inject constructor(
   ) { resumed, hasStreams -> resumed?.let { it && hasStreams } }
     .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
+  /** The focused stream, and the camera whose history it offers to an admin. */
+  private val focus = combine(_focusedStream, observeIsAdminUseCase()) { stream, isAdmin ->
+    Focus(stream, stream?.takeIf { isAdmin }?.let(RecordingFileName::cameraOfStreamUrl))
+  }
+
   init {
     viewModelScope.launch {
       combine(
         getStreamPreferencesUseCase(),
         _orientation,
-        _focusedStream,
+        focus,
         _failedStreams,
         observeVpnStateUseCase()
-      ) { preferences, orientation, focusedStream, failedStreams, vpn ->
+      ) { preferences, orientation, currentFocus, failedStreams, vpn ->
         when {
           // With no URLs there is nothing to connect to, and waiting on the VPN would show a
           // spinner that never resolves. This case therefore comes before the tunnel state.
@@ -94,10 +102,11 @@ class HomeViewModel @Inject constructor(
             val streams = preferences.orderFor(orientation)
             HomeUiState.Ready(
               streams = streams,
-              focusedStream = focusedStream,
+              focusedStream = currentFocus.stream,
               grid = preferences.gridFor(orientation),
               orientation = orientation,
-              failedStreams = failedStreams intersect streams.toSet()
+              failedStreams = failedStreams intersect streams.toSet(),
+              historyCamera = currentFocus.historyCamera
             )
           }
         }
@@ -194,6 +203,8 @@ class HomeViewModel @Inject constructor(
     super.onCleared()
   }
 }
+
+private data class Focus(val stream: String?, val historyCamera: String?)
 
 sealed interface HomeNavigateUiEvent {
   data object ToConfig : HomeNavigateUiEvent

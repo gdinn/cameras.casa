@@ -399,6 +399,8 @@ val outOfScopeFilter = listOf(
   "com/gdisys/cameras/feature/cameras/components/**",
   "com/gdisys/cameras/feature/config/ConfigRouteKt*.class",
   "com/gdisys/cameras/feature/config/components/**",
+  "com/gdisys/cameras/feature/history/HistoryRouteKt*.class",
+  "com/gdisys/cameras/feature/history/components/**",
   "com/gdisys/cameras/feature/init/InitRouteKt*.class",
   "com/gdisys/cameras/feature/init/components/**",
   "com/gdisys/cameras/feature/qrcode/QrCodeRouteKt*.class",

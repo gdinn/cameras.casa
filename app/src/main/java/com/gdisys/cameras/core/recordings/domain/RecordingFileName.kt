@@ -21,6 +21,18 @@ object RecordingFileName {
   /** Also what keeps a camera name from walking out of its folder on the share. */
   fun isValidCamera(camera: String): Boolean = CAMERA.matches(camera)
 
+  /**
+   * The camera a stream URL shows: its last path segment (`http://[fd00:20::cafe]:8889/cam_10`, with
+   * or without a trailing `/whep`), or `null` when that is not a camera name.
+   */
+  fun cameraOfStreamUrl(streamUrl: String): String? {
+    val segments = streamUrl.substringBefore('?').substringBefore('#')
+      .split('/')
+      .filter { it.isNotEmpty() }
+    val camera = segments.lastOrNull()?.takeIf { it != "whep" } ?: segments.dropLast(1).lastOrNull()
+    return camera?.takeIf(::isValidCamera)
+  }
+
   /** The start of [fileName], or `null` when it is not a recording of [camera]. */
   fun parse(camera: String, fileName: String): LocalDateTime? {
     val match = FILE.matchEntire(fileName) ?: return null

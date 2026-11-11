@@ -90,4 +90,18 @@
     <string name="stream_urls_route_grid_saved">Configuração da grade salva</string>
     <string name="stream_urls_route_save_grid_error">Falha ao salvar a configuração da grade</string>
     <string name="stream_urls_route_grid_hides_streams">A grade é menor que a sua lista de streams, então não exibirá todos eles</string>
+    <string name="home_screen_open_history">Histórico de gravações</string>
+    <string name="history_screen_title">Histórico · %1$s</string>
+    <string name="history_screen_navigate_back">Voltar</string>
+    <string name="history_screen_loading">Carregando gravações…</string>
+    <string name="history_screen_retry">Tentar de novo</string>
+    <string name="history_screen_empty">Nenhuma gravação desta câmera</string>
+    <string name="history_screen_month_no_days">Nenhuma gravação concluída neste mês</string>
+    <string name="history_screen_month_expanded">Expandido</string>
+    <string name="history_screen_month_collapsed">Recolhido</string>
+    <string name="history_error_vpn_connection">Falha ao conectar à VPN</string>
+    <string name="history_error_not_admin">Este aparelho não tem acesso às gravações. Leia um QR code de admin</string>
+    <string name="history_error_authentication_failed">O servidor de gravações recusou o login deste aparelho</string>
+    <string name="history_error_unreachable">O servidor de gravações não respondeu</string>
+    <string name="history_error_failed">Falha ao ler as gravações</string>
 </resources>

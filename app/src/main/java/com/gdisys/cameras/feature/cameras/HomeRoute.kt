@@ -27,7 +27,8 @@ import com.gdisys.cameras.feature.cameras.components.HomeTestTags
 @Composable
 fun HomeRoute(
   viewModel: HomeViewModel = hiltViewModel(),
-  onNavigateToConfig: () -> Unit
+  onNavigateToConfig: () -> Unit,
+  onNavigateToHistory: (camera: String) -> Unit
 ) {
   val activity = LocalActivity.current
 
@@ -79,13 +80,15 @@ fun HomeRoute(
         grid = state.grid,
         orientation = state.orientation,
         failedStreams = state.failedStreams,
+        historyCamera = state.historyCamera,
         eglBase = eglBase,
         onConnectStream = viewModel::connectStream,
         onDisconnectStream = viewModel::disconnectStream,
         onFocusStream = viewModel::focusStream,
         onClearFocusedStream = viewModel::clearFocusedStream,
         onStreamsReordered = viewModel::onStreamsReordered,
-        onNavigateToConfig = onNavigateToConfig
+        onNavigateToConfig = onNavigateToConfig,
+        onOpenHistory = onNavigateToHistory
       )
     }
   }
