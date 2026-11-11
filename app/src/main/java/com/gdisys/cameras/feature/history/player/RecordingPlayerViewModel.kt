@@ -103,6 +103,9 @@ class RecordingPlayerViewModel @Inject constructor(
   fun onPaused() {
     resumed = false
     stopKeepingPosition()
+    // Back to waiting, or resuming would find "playing" and not start the stopped player again.
+    // An ended or failed recording stays as it is.
+    if (_uiState.value.status == PlayerStatus.Playing) setStatus(PlayerStatus.Loading)
     tunnelCoordinator.release(PLAYER_TUNNEL_HOLDER)
   }
 

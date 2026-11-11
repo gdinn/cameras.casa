@@ -573,10 +573,11 @@ expand a month): it worked.
 - Player screen: previous/next, auto-advance, crossing midnight, end of the list, read errors.
 - Released on pause and recreated on resume, with the position kept.
 
-**Outcome (2026-11-11).** Done, pending the manual check on the device. `jacocoTestCoverageVerification`
-passed after the fix in deviation 6 (unit tests, Konsist, 90% gate). `RecordingPlayerScreenTest`,
-`SmbDataSourceTest` and `HistoryScreenTest` passed on an SM-S721B (22 tests). Real playback against
-the Pi (play, seek, previous/next, background and back) is the user's manual check.
+**Outcome (2026-11-11).** Done. `jacocoTestCoverageVerification` passed after the fix in
+deviation 6 (unit tests, Konsist, 90% gate). `RecordingPlayerScreenTest`, `SmbDataSourceTest` and
+`HistoryScreenTest` passed on an SM-S721B (22 tests). The user's manual check against the Pi:
+- play, seek, previous/next and the automatic advance work;
+- coming back from the background did not; fixed in deviation 7 and confirmed on the device.
 
 **What was built** (`docs/architecture.md` §4, §5.6, §6.9, §8.2, §9.1)
 
@@ -611,7 +612,11 @@ the Pi (play, seek, previous/next, background and back) is the user's manual che
    from inside a collector) showed it. `startIfReady` now checks the `looking` state, which is
    cleared first. `RecordingPlayerViewModelDispatchTest` covers next and the automatic advance with
    a queuing dispatcher, as `Dispatchers.Main` behaves.
-
+7. **Bug found by the manual check, fixed.** Back from the background the video stayed black, with
+   no controls. `onPaused` stopped the player but left the status at `Playing`, and `startIfReady`
+   only starts from `Loading`, so the player was never created again. `onPaused` now sets a playing
+   recording back to `Loading`; `Ended` and `Failed` stay. The unit test missed it because its fake
+   player never reached `Ready` before the pause; two tests now cover both cases.
 
 ### Step 9 — Downloads
 

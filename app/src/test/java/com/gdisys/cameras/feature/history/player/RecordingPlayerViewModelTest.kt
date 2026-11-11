@@ -167,6 +167,34 @@ class RecordingPlayerViewModelTest {
   }
 
   @Test
+  fun `a recording that was playing plays again after the background`() {
+    open()
+    player.status.value = PlaybackStatus.Ready
+    player.positionMillis = 42_000
+
+    viewModel.onPaused()
+    assertEquals(PlayerStatus.Loading, state.status)
+    // In the background the tunnel drops; coming back brings it up again.
+    vpnState.value = VpnTunnelState.DISCONNECTED
+    viewModel.onResumed()
+    vpnState.value = VpnTunnelState.CONNECTED
+
+    assertEquals("play ${AT_1510.fileName} at 42000", player.calls.last())
+  }
+
+  @Test
+  fun `an ended or failed recording stays so across the background`() {
+    open()
+    player.status.value = PlaybackStatus.Failed(RecordingsException.Unreachable(IOException()))
+
+    viewModel.onPaused()
+    viewModel.onResumed()
+
+    assertEquals(PlayerStatus.Failed(HistoryError.UNREACHABLE), state.status)
+    assertEquals(1, player.calls.count { it.startsWith("play") })
+  }
+
+  @Test
   fun `the tunnel coming back does not start the player twice`() {
     open()
 
