@@ -445,7 +445,47 @@ and §7.2.
 - Fake repository for instrumented tests.
 - JaCoCo exclusions for the smbj-backed classes only (the guard test keeps them honest).
 
-**Outcome.** _pending_
+**Outcome (2026-11-11).** Done. `jacocoTestCoverageVerification` passed: 406 unit tests, Konsist,
+and 95.3% LINE overall, with `core/recordings` at 199 of 206 lines. `FakeRecordingsShareTest`
+passed on an SM-S721B (2 tests).
+
+The first run failed one unit test. It compared the share's exception by identity, but with
+coroutine debug mode on, an exception leaving `coroutineScope` is copied, with the original as its
+cause. The test and its instrumented counterpart now check the type and look for the cause in the
+chain. The real share against the Pi is checked from Step 6, when History has a screen.
+
+**What was built** (`docs/architecture.md` §6.9 has the full picture)
+
+- Domain:
+  - `Recording` and `RecordingFileName` (both formats, seconds dropped, `isValidCamera`);
+  - `RecordingSlots.kt`: 15-minute slots and `isRecordingFinished`;
+  - `RecordingsRepository` and `RecordingsException`.
+- Data:
+  - `RecordingsRepositoryImpl` over a `RecordingsShare` contract and an injected `Clock`;
+  - `SmbjRecordingsShare` (the only class excluded from coverage);
+  - `LeasedResource`: one connection, closed when idle, retried once when found dead;
+  - `SmbErrors.kt` and `ConnectTimeoutSocketFactory`.
+- Instrumented tests: `TestRecordingsModule` runs the real repository over `FakeRecordingsShare`,
+  with the clock fixed at 2026-11-10 15:20.
+
+**Deviations and decisions**
+
+1. **In-progress detection is time-based, not "newest file".** A file counts once its slot plus
+   one minute is over. The two rules agree, since only the newest file can still have its slot
+   open. The time rule needs no listing of a later day, and the minute covers the `+faststart`
+   rewrite and a small clock difference.
+2. **Nothing in the future is listed.** Day folders after today are dropped, so the next month's
+   folder does not show on the 30th, and neither does tomorrow's empty folder.
+3. **The test fake is a share, not a repository.** The instrumented flows exercise the real folder
+   rules, as `TestVpnModule` does with the real coordinator.
+4. **Lists are chronological.** Newest-first is the History screen's job (Step 6).
+5. **A dead idle connection is retried once.** After the tunnel drops and comes back, the cached
+   connection is dead; without the retry, the first call after returning to History would fail.
+6. **No use cases yet.** They come with their consumer in Step 6, as the project adds them.
+7. **Connect timeout.** smbj's socket factory has none, so `ConnectTimeoutSocketFactory` adds a
+   5 s one. Without it, a missing tunnel would hang for the system TCP timeout. Requests time out
+   after 15 s.
+
 
 ### Step 6 — History route: months and days
 

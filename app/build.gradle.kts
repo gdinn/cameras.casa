@@ -392,6 +392,7 @@ val outOfScopeFilter = listOf(
   "com/gdisys/cameras/core/components/ToastDisplayerKt*.class",
   "com/gdisys/cameras/core/vpn/data/VpnLifecycleService*.class", // Android Service
   "com/gdisys/cameras/core/vpn/data/AppTunnel*.class", // thin wrapper over the native Tunnel
+  "com/gdisys/cameras/core/recordings/data/SmbjRecordingsShare*.class", // talks to the Samba server
   "com/gdisys/cameras/core/webrtc/data/WhepClientImpl*.class", // native WebRTC stack
   "com/gdisys/cameras/core/webrtc/data/extensions/PeerConnectionKt*.class", // likewise
   "com/gdisys/cameras/feature/cameras/HomeRouteKt*.class",

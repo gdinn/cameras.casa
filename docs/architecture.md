@@ -171,7 +171,7 @@ still carries all four.
 The build file also defines a bespoke `jacocoTestReport` task that narrows coverage to the
 "unit-testable" surface — it excludes generated code, DI, Compose UI, bootstrap, theme, and
 anything backed by a native/hardware stack (WebRTC native, `GoBackend`, AndroidKeyStore, Android
-`Service`) — and injects a LINE-coverage banner into the HTML report, since JaCoCo's own headline
+`Service`) or by a live server (`SmbjRecordingsShare`) — and injects a LINE-coverage banner into the HTML report, since JaCoCo's own headline
 figure is instruction coverage.
 
 Those exclusions are plain strings with no link to the code, so a rename or a package move would
@@ -204,7 +204,7 @@ top-level package groups live under `com.gdisys.cameras`:
 |---|---|
 | `app/*` | Composition root and navigation: `MainActivity`, `CamerasApp`, `app.navigation` |
 | `feature/*` | One package per screen. Route + ViewModel + UiState + `components/` + optional `logic/` |
-| `core/*` | Everything shared: `storage`, `vpn`, `webrtc`, `permission`, `network`, `coroutines`, `components`, plus the presentation base classes at the package root |
+| `core/*` | Everything shared: `storage`, `vpn`, `webrtc`, `recordings`, `permission`, `network`, `coroutines`, `components`, plus the presentation base classes at the package root |
 | `ui/*` | `ui.theme` only — `CamerasTheme`, color and typography |
 
 ### 3.1 The layering rule
@@ -759,6 +759,76 @@ UI code takes colors from `MaterialTheme.colorScheme` only. The exceptions are d
 fixed across themes: the black letterbox behind video and the dark scrim/white overlays drawn on top
 of video frames (drag handle, drag preview).
 
+### 6.9 `core/recordings` — the Samba recordings share
+
+The admin's history reads the recordings the Pi's recorder keeps on the `backup_cams` share of
+`STREAM_HOST`, laid out as `cam_xx/YYYY/MM/DD/<file>.mp4`. Every read goes through the tunnel and
+uses the Samba login stored in the QR payload (§8.1, "Admins").
+
+| Layer | Type | Role |
+|---|---|---|
+| domain | `Recording` | Camera, start (`LocalDateTime` without seconds) and file name. `Recording.ORDER` sorts by start, then name, since two files can start on the same minute |
+| domain | `RecordingFileName` | Parses both name formats (`cam_10_2026-11-10_15-00-00.mp4`, which the recorder writes, and `cam_10_2026_11_10_15-00-00.mp4`) and drops the seconds. `isValidCamera` (`cam_` + digits) also keeps a camera name from walking out of its folder |
+| domain | `RecordingSlots.kt` | The 15-minute slots on the clock (`slotStart`, `slotEnd`) and `isRecordingFinished` |
+| domain | `RecordingsRepository` | Months, days with a finished file, files of a day, `next`/`previous` across days, months and years |
+| domain | `RecordingsException` | What a screen can tell apart: `NotAdmin`, `AuthenticationFailed`, `Unreachable`, `Failed` |
+| data | `RecordingsShare` / `ShareEntry` | "List this folder", the only thing the repository needs from Samba. A missing folder is empty |
+| data | `RecordingsRepositoryImpl` | The folder rules, over `RecordingsShare` and an injected `Clock` |
+| data | `SmbjRecordingsShare` | `RecordingsShare` over smbj (`BCSecurityProvider`, SMB 3.1.1) |
+| data | `LeasedResource` | One connection for the process: opened on first use, shared, closed after 30 s idle |
+| data | `SmbErrors.kt` | Maps smbj failures to `RecordingsException`, and says which ones mean the connection is dead |
+| data | `ConnectTimeoutSocketFactory` | A 5 s connect timeout, which smbj's own socket factory lacks |
+| di | `RecordingsModule` | Binds the two contracts and provides the system `Clock` |
+
+**What gets listed.**
+
+- **Only finished files.** The recorder cuts a file on every `:00/:15/:30/:45` boundary, so a file
+  that starts at 15:10 ends at 15:15. A file counts once its slot is over plus one minute
+  (`RECORDING_SETTLE_TIME`). Until then it cannot be played: the recorder moves the index to the
+  front (`+faststart`) only when it closes the file. The margin also absorbs a small clock
+  difference between the phone and the Pi.
+- **Days with a finished file.** The recorder creates tomorrow's folder ahead of time, empty, so a
+  day folder alone means nothing. Months are listed by folder, without the future. On the last day
+  of a month the next month's folder already exists, and would otherwise show up empty.
+- **The folder decides the day.** A file whose name says another day is ignored, because the path
+  derived from it would not exist.
+- **Chronological order everywhere.** A screen that wants the newest first reverses the list.
+- **Nothing is cached**, because a new file appears every 15 minutes.
+- **Times are shown as named.** The Pi and the phone share a time zone, so there is no conversion.
+
+**Cost of a listing.** One folder takes ~80 ms through the tunnel (Step 1 of the history plan). A
+month's day folders are listed in parallel, `MAX_PARALLEL_LISTINGS` (8) at a time, over the single
+connection. smbj multiplexes the requests, so a month takes ~4 round trips instead of ~30.
+`next`/`previous` list one day at a time until they find a file, which only costs more across a
+long gap.
+
+**The connection.** `LeasedResource` keys the connection on the login: a new QR closes it and opens
+another. A failure that `isConnectionLost` recognizes closes the connection. This covers a socket
+error, a timeout, and an expired or deleted session, as happens after the tunnel dropped while the
+connection sat idle. If the connection was a reused one, the call is retried once on a fresh
+connection. Without the retry, the first listing after every return to the screen would fail.
+
+**Errors and what they mean.**
+
+| Exception | Cause |
+|---|---|
+| `NotAdmin` | No complete login is stored |
+| `AuthenticationFailed` | A logon or access status from the server |
+| `Unreachable` | Network failures and lost sessions |
+| `Failed` | Anything else |
+
+**Tests.** `SmbjRecordingsShare` is excluded from coverage: every line of it talks to a server.
+What it relies on is unit-tested:
+
+- `RecordingsRepositoryImplTest`, over a fake share and a fixed clock;
+- `LeasedResourceTest`, with virtual time;
+- `SmbErrorsTest`;
+- `ConnectTimeoutSocketFactoryTest`, against a loopback server;
+- `RecordingFileNameTest`, `RecordingSlotsTest` and `RecordingPathsTest`.
+
+On a device, `TestRecordingsModule` runs the production repository over `FakeRecordingsShare`, with
+the clock fixed at `RECORDINGS_NOW` (§10).
+
 ---
 
 ## 7. Data flow
@@ -835,6 +905,7 @@ tunnel and stops the lifecycle service after the grace period, and after any con
 | **WHEP media server** (MediaMTX on a Raspberry Pi) | HTTP `POST {streamUrl}/whep`, `application/sdp`, then SRTP | `WhepRemoteDataSourceImpl`, `WhepClientImpl` |
 | **WireGuard peer** (home gateway) | WireGuard over UDP/IPv6, endpoint from `pEndpoint` | `VpnRepositoryImpl` (`GoBackend`) |
 | **QR-code provisioning payload** | JSON blob scanned from screen/paper, carrying `[Interface]`/`[Peer]` fields and, for admins, a Samba login | `ParseUserPreferencesFromQrCodeUseCase` |
+| **Recordings share** (Samba on the same Pi, `backup_cams`) | SMB 3.1.1 over TCP 445, through the tunnel | `SmbjRecordingsShare` (§6.9) |
 | **Android Keystore** | Hardware-backed key storage | `KeystoreCryptoEngine` |
 | **Device camera** | CameraX + ML Kit (on-device, no network) | `CameraXQrCodeScanner`, `QrCodeAnalyzer` |
 
@@ -915,6 +986,8 @@ Declared in `gradle/libs.versions.toml` and consumed via the version catalog.
 | `androidx.camera:camera-camera2` / `camera-lifecycle` / `camera-view` | 1.6.0 | QR scanner preview and analysis |
 | `com.google.mlkit:barcode-scanning` | 17.3.0 | On-device QR decoding |
 | `sh.calvin.reorderable:reorderable` | 3.1.0 | Drag-and-drop reordering in `LazyVerticalGrid` (dynamic mode only) |
+| `com.hierynomus:smbj` | 0.15.0 | SMB3 client for the recordings share (§6.9). Pulls in BouncyCastle and mbassador, which need the keep rules in `proguard-rules.pro` |
+| `androidx.media3:media3-exoplayer` | 1.11.1 | Playback of the recordings (history player, in progress) |
 
 > `sh.calvin.reorderable` backs `ReorderableStreamGrid` in **dynamic** mode. Fixed/paged mode does
 > **not** use it — `PagedStreamGrid` + `PagedDragState` implement dragging by hand, because the
@@ -992,7 +1065,7 @@ runtime.
 
 ## 10. Testing and quality gates
 
-**46 test files** under `app/src/test/`, mirroring the production package structure. Coverage is
+**58 test files** under `app/src/test/`, mirroring the production package structure. Coverage is
 concentrated where the project decided it belongs: ViewModels, use cases, repository
 implementations, pure logic and serialization.
 
@@ -1003,6 +1076,7 @@ implementations, pure logic and serialization.
 | Storage | `EncryptedPreferencesSerializerTest`, `StreamPreferencesSerializationTest`, `DataStoreManagerTest`, repository and all 8 use-case tests |
 | VPN | `VpnRepositoryImplTest`, `VpnConfigTest`, `VpnLifecycleControllerImplTest`, `VpnTeardownTest`, 4 use-case tests |
 | WebRTC | `WhepConnectionManagerTest`, `WhepRemoteDataSourceImplTest` (MockWebServer) |
+| Recordings | `RecordingsRepositoryImplTest`, `LeasedResourceTest`, `SmbErrorsTest`, `ConnectTimeoutSocketFactoryTest`, `RecordingFileNameTest`, `RecordingSlotsTest`, `RecordingPathsTest` |
 | Architecture | `LayerDependencyTest` (Konsist) |
 | Config drift | `StreamHostTest` (Kotlin constant vs. XML), `JacocoExclusionsTest` (coverage patterns vs. compiled classes) |
 
@@ -1064,6 +1138,7 @@ service test, one dispatcher test and the default example), with packages mirror
 | `QrCodeRouteTest` (2) | With a `FakeQrCodeScanner`, a scanned payload reaches `onCodeScanned`; a camera error toasts and navigates back |
 | `FakeVpnPermissionRepositoryTest` (3) | `TestPermissionModule` puts the fake in the graph; a stubbed consent dialog launched through the `ActivityResultRegistry` returns `RESULT_OK` and grants the consent, or `RESULT_CANCELED` and keeps it required |
 | `FakeStreamConnectionsTest` (4) | The stream fake records `connect`/`disconnect` in order; `closeAll` closes only its own instance's URLs; a failing URL stays closed and reports on the main thread; a retry after the failure is cleared connects |
+| `FakeRecordingsShareTest` (2) | `TestRecordingsModule` puts the production repository over the fake share at the fixed clock: months, days with a finished file and the files of a day come out of the fake paths, the file being written is hidden, and a `failure` reaches the caller as is |
 
 Most of them test screens in isolation: `createComposeRule` renders a `*Screen` with a hand-written
 `uiState` inside `setThemedContent` (`testing/ComposeTestSupport.kt`), and the test asserts what it
@@ -1120,6 +1195,11 @@ shows and which callback each interaction fires, with no Hilt, navigation or fak
   `FakeVpnLifecycleController` (`testing/FakeVpnRepository.kt`), so no test brings up WireGuard.
   Both are `@Singleton`: tests inject the fakes directly to drive the tunnel state and read the
   atomic call counters.
+- **`TestRecordingsModule`** replaces `RecordingsModule` with the production
+  `RecordingsRepositoryImpl` over `FakeRecordingsShare` (`testing/FakeRecordingsShare.kt`): a list
+  of paths, extra `emptyFolders`, and a `failure` that every listing throws. The clock is fixed at
+  `RECORDINGS_NOW` (2026-11-10 15:20), so the 15:15 file counts as still being written whatever the
+  date of the run. The flows therefore exercise the real folder rules.
 - **`TestPermissionModule`** replaces `PermissionModule` with the real camera repository and
   `FakeVpnPermissionRepository`. The camera permission stays real because `UiAutomation` can grant
   it without killing the process. The VPN consent is faked because its app op survives `pm clear`.
