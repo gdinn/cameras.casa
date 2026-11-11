@@ -317,7 +317,7 @@ curl -s -o /dev/null -w '%{http_code}\n' -X POST -H 'Content-Type: application/s
 
 Expected: `401` (any `4xx` means refused). `201` would mean that a peer can publish.
 
-**Test: the app.** On a phone with a **client** profile, set the stream URLs `http://[fd00:20::cafe]:8889/cam_10/whep` to `cam_13/whep` (Step 29). Every camera plays. This is also the test of UDP 8189 (WebRTC media), which Step 30 could not check. While a camera is on screen, its path shows up in the log, and about 10 s after leaving the screen it is closed again:
+**Test: the app.** On a phone with a **client** profile, add the streams `cam_10` to `cam_13` on port `8889` (Step 29; the app calls `http://[fd00:20::cafe]:8889/cam_10/whep` and so on). Every camera plays. This is also the test of UDP 8189 (WebRTC media), which Step 30 could not check. While a camera is on screen, its path shows up in the log, and about 10 s after leaving the screen it is closed again:
 
 ```bash
 # On the Pi
@@ -533,7 +533,29 @@ sudo ss -tlnp | grep smbd                    # only 445
 
 ### Step 44 — Samba users
 
-Create one account per admin. It is a Linux account with no shell, no home and no Linux password, so it cannot log in to the Pi. Its only use is Samba, and its only group with access to the recordings is `smb_viewer`:
+Each admin **peer** has its own Samba account, named after the peer (`admin-a-7`). It is a Linux account with no shell, no home and no Linux password, so it cannot log in to the Pi. Its only use is Samba, and its only group with access to the recordings is `smb_viewer`.
+
+**a) Admin peers from the generator (the normal path).** For an admin batch, `gen-peers.sh` ([infra_guide.md, Step 26](infra_guide.md#step-26--generate-keys-and-entries-interactive-script)) already chose each user and a random password, put them in the peers' QR codes (that is how the app logs in) and wrote `peers/pi-smb-users.sh`. Copy it to the Pi, run it and delete it on both sides:
+
+```bash
+# On the HOME computer, from qr-code-gen/
+scp -i ~/.ssh/cameras_pi peers/pi-smb-users.sh '<user>@[fd00:20::cafe]:~/'
+```
+
+```bash
+# On the Pi
+sudo bash ~/pi-smb-users.sh                  # "Samba user admin-a-N ready" per peer
+rm ~/pi-smb-users.sh
+```
+
+```bash
+# On the HOME computer
+rm peers/pi-smb-users.sh
+```
+
+The script refuses to run before Samba (Step 43) and the `smb_viewer` group (Step 40) exist. Running it again is harmless: it resets each password to the one in the QR code. Peers generated before this guide was followed get their users the same way, as long as their batch's `peers/` folder is still around; otherwise use b) and issue the peer a new QR code.
+
+**b) By hand** (an account that no QR code carries, e.g. for a computer only):
 
 ```bash
 # On the Pi
@@ -541,7 +563,7 @@ sudo useradd --no-create-home --shell /usr/sbin/nologin -G smb_viewer <name>
 sudo smbpasswd -a <name>                     # the Samba password, asked twice
 ```
 
-Use a long password: it is the only thing between a lost admin device and the recordings.
+Use a long password: it is the only thing between a lost admin device and the recordings. An account created this way is unknown to the app: the app only logs in with a login that came in its QR code.
 
 **Test**
 
@@ -551,7 +573,7 @@ sudo pdbedit -L                              # <name>
 id <name>                                    # ... smb_viewer
 ```
 
-**Revoking access.** Remove the Samba user and the Linux account, together with the peer (see "Revoking access" in Part 8):
+**Revoking access.** Remove the Samba user and the Linux account, together with the peer (see "Revoking access" in Part 8 of [infra_guide.md](infra_guide.md)). For a generated peer, `<name>` is the peer's name:
 
 ```bash
 # On the Pi

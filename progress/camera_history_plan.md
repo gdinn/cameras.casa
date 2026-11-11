@@ -326,7 +326,47 @@ rejects the whole QR.
 - Fix the stale admin warning in the script ("SSH, Samba and internet": admins have no internet
   through the tunnel since the split tunnel).
 
-**Outcome.** _pending_
+**Outcome (2026-11-11).** Done, with one deviation in where the Pi script runs.
+
+**Deviation: when `pi-smb-users.sh` runs.** The generator writes it in Part 8, but Samba (Step 43)
+and the `smb_viewer` group (Step 40) only exist later. So:
+
+- **Step 44** (Pi guide) is where it normally runs, as path a). Manual creation stays as path b),
+  for accounts that no QR code carries.
+- **Step 27** tells you to run it right away when the batch is generated after Part 13.
+
+**`gen-peers.sh` (infra guide, Step 26), admin batches:**
+
+- **Login:** one Samba user per peer, named after the peer, with password `openssl rand -hex 16`;
+  `smbCredentials` is added to its `vpn.json` entry.
+- **`pi-smb-users.sh`:**
+  - refuses to run without root, Samba or `smb_viewer`;
+  - creates the user or adds an existing one to the group, then sets the password with
+    `smbpasswd -s -a`;
+  - can be re-run: it resets the passwords to the QR codes' ones;
+  - holds the revocation commands as comments.
+- **Previous batch:** each run deletes the last batch's `pi-smb-users.sh`.
+- **Warning line:** fixed.
+
+**Infra guide, elsewhere:**
+
+- Step 28: the whole entry goes into the QR code. `main.py` needed no change.
+- Step 29:
+  - an admin phone sees the recordings with nothing typed;
+  - an admin computer gets its login from `vpn.json` (a `jq` command), since the `.conf` does not
+    carry it.
+- "Revoking access": for an admin, also remove the Samba user.
+
+**Tested here:**
+
+- The script was extracted from the guide and run with a fake `wg`: an admin batch (2 peers) and
+  a client batch (no `smbCredentials`, no Pi script), both exit 0.
+- The generated `pi-smb-users.sh` was run against stubbed system commands: a new user and an
+  existing one.
+
+**Found on the way.** Step 29 and the Pi guide's Step 39 told you to configure `.../cam_10/whep`.
+The app's form rejects a `/` in the stream name and appends `/whep` itself. Both now say: port
+`8889`, stream name `cam_10`.
 
 ### Step 4 — Tunnel coordinator
 

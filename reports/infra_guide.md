@@ -1272,13 +1272,22 @@ Generate keys on the HOME computer, not on the router. The router only needs eac
 
 The script asks for the profile, the number of peers and the first index, then writes the RouterOS commands, the `vpn.json` entries and one WireGuard desktop config per peer from the same data, so the router, the QR codes and the desktop configs cannot disagree. Before asking anything, it shows the RouterOS commands that list the addresses already in use in each block, so that you pick a free index.
 
+For **admin** peers it also creates one Samba login per peer, for the recordings (Part 13 of [pi_services_guide.md](pi_services_guide.md)):
+
+- the user is named after the peer (`admin-a-7`), and the password is random (`openssl rand`);
+- the login goes into the peer's `vpn.json` entry as `smbCredentials`, which is what makes the app show the recordings to that peer;
+- the script writes `pi-smb-users.sh`, which creates those users on the Pi (Step 44 of that guide).
+
+One login per peer, not per person: revoking a lost device removes its peer and its Samba user, and the admin's other devices keep working.
+
 Save as `qr-code-gen/gen-peers.sh` on the HOME computer and fill in the two values at the top:
 
 ```bash
 #!/usr/bin/env bash
 # Interactive WireGuard peer generator: RouterOS commands, vpn.json entries
 # for the QR generator (main.py) and one .conf per peer for WireGuard desktop.
-# Admins: fd00:10::a:N, clients: fd00:10::c:N.
+# Admins: fd00:10::a:N, clients: fd00:10::c:N. Admin peers also get a Samba
+# login (smbCredentials in vpn.json) and pi-smb-users.sh to create it on the Pi.
 set -euo pipefail
 
 SERVER_PUB="<router public key>"
@@ -1331,7 +1340,7 @@ done
 printf '\nAbout to generate %d %s peer(s): fd00:10::%s:%x to fd00:10::%s:%x\n' \
     "$COUNT" "$PROFILE" "$BLOCK" "$FIRST" "$BLOCK" "$LAST"
 if [ "$PROFILE" = admin ]; then
-    echo "WARNING: admin peers get SSH, Samba and internet through the tunnel."
+    echo "WARNING: admin peers get SSH to the router and the Pi, Samba (the recordings) and HLS."
 fi
 read -r -p "Proceed? [y/N] " answer
 [[ "$answer" =~ ^[yY]$ ]] || { echo "Cancelled."; exit 0; }
@@ -1341,8 +1350,9 @@ umask 077
 mkdir -p "$OUT"
 : > "$OUT/peers.rsc"
 : > "$OUT/index.txt"
-rm -f "$OUT"/*.conf
+rm -f "$OUT"/*.conf "$OUT/pi-smb-users.sh"
 entries=()
+smb_users=()
 
 for ((i = 0; i < COUNT; i++)); do
     index=$(printf '%x' $((FIRST + i)))
@@ -1351,6 +1361,15 @@ for ((i = 0; i < COUNT; i++)); do
     priv=$(wg genkey)
     pub=$(printf '%s' "$priv" | wg pubkey)
     psk=$(wg genpsk)
+
+    # Samba login for the recordings: admins only, one per peer
+    smb_user=""
+    smb_pass=""
+    if [ "$PROFILE" = admin ]; then
+        smb_user="$name"
+        smb_pass=$(openssl rand -hex 16)
+        smb_users+=("add_smb_user $smb_user $smb_pass")
+    fi
 
     printf '/interface wireguard peers add interface=wireguard-ipv6 name=%s public-key="%s" preshared-key="%s" allowed-address=%s\n' \
         "$name" "$pub" "$psk" "$addr" >> "$OUT/peers.rsc"
@@ -1375,13 +1394,53 @@ CONF
     entries+=("$(jq -n --arg dns fd00:10::1 --arg mtu 1280 --arg puk "$SERVER_PUB" \
         --arg allowed "$ALLOWED" --arg ep "$ENDPOINT" --arg ka 25 \
         --arg prk "$priv" --arg addr "$addr" --arg psk "$psk" \
+        --arg smbUser "$smb_user" --arg smbPass "$smb_pass" \
         '{vpnConfigDefaults: {iDns: $dns, iMtu: $mtu, pPuk: $puk, pAllowedips: $allowed,
                               pEndpoint: $ep, pPersistentKeepAlive: $ka},
-          vpnConfigTokens: {iPrk: $prk, iAddr: $addr, pPsk: $psk}}')")
+          vpnConfigTokens: {iPrk: $prk, iAddr: $addr, pPsk: $psk}}
+         + (if $smbUser == "" then {} else {smbCredentials: {smbUser: $smbUser, smbPassword: $smbPass}} end)')")
 done
 
 printf '%s\n' "${entries[@]}" | jq -s . > "$OUT/vpn.json"
+
+# 6. Admins: the script that creates their Samba users on the Pi (Step 44 of pi_services_guide.md)
+if [ "$PROFILE" = admin ]; then
+    {
+        cat <<'SMB'
+#!/usr/bin/env bash
+# Samba users for the admin peers of one gen-peers.sh batch. Run on the Pi once
+# Samba is installed (pi_services_guide.md, Steps 40 and 43):
+#   sudo bash pi-smb-users.sh && rm pi-smb-users.sh
+# It holds the Samba passwords: never commit it, delete it once it has run.
+# Running it again resets the passwords to the ones below (the QR codes' ones).
+set -euo pipefail
+[ "$(id -u)" -eq 0 ] || { echo "Run with sudo." >&2; exit 1; }
+command -v smbpasswd >/dev/null || { echo "Samba is not installed (Step 43)." >&2; exit 1; }
+getent group smb_viewer >/dev/null || { echo "Group smb_viewer missing (Step 40)." >&2; exit 1; }
+
+add_smb_user() {
+    local name=$1 password=$2
+    if id "$name" >/dev/null 2>&1; then
+        usermod -aG smb_viewer "$name"
+    else
+        # No shell, no home, no Linux password: the account only exists for Samba
+        useradd --no-create-home --shell /usr/sbin/nologin -G smb_viewer "$name"
+    fi
+    printf '%s\n%s\n' "$password" "$password" | smbpasswd -s -a "$name" >/dev/null
+    echo "Samba user $name ready"
+}
+
+SMB
+        printf '%s\n' "${smb_users[@]}"
+        printf '\n# Revoking one of them (together with its peer, "Revoking access" in Part 8):\n'
+        printf '#   sudo smbpasswd -x <name> && sudo userdel <name>\n'
+    } > "$OUT/pi-smb-users.sh"
+fi
+
 echo "Wrote $OUT/peers.rsc, $OUT/vpn.json, $OUT/index.txt and $COUNT .conf file(s)"
+if [ "$PROFILE" = admin ]; then
+    echo "Wrote $OUT/pi-smb-users.sh: run it on the Pi (pi_services_guide.md, Step 44)"
+fi
 ```
 
 ```bash
@@ -1390,6 +1449,8 @@ cd qr-code-gen
 chmod +x gen-peers.sh
 ./gen-peers.sh
 ```
+
+`openssl` and `jq` come with macOS and most Linux distributions; `wg` is from `wireguard-tools`.
 
 Example session:
 
@@ -1403,9 +1464,16 @@ Proceed? [y/N] y
 Wrote peers/peers.rsc, peers/vpn.json, peers/index.txt and 3 .conf file(s)
 ```
 
-Each run overwrites `peers.rsc`, `vpn.json` and `index.txt` in `peers/` and removes the `.conf` files of the previous batch. Finish Steps 27 and 28 for one batch before generating the next.
+Each run overwrites `peers.rsc`, `vpn.json` and `index.txt` in `peers/` and removes the `.conf` files and the `pi-smb-users.sh` of the previous batch. Finish Steps 27 and 28 (and, for admins, Step 44 of the Pi guide) for one batch before generating the next.
 
-The `peers/` folder (including the `.conf` files), `vpn*.json` and `qrcode*.png` hold private keys and must never be committed. Make sure `qr-code-gen/.gitignore` lists all three, and confirm with `git status` that nothing new shows up.
+An admin batch adds `smbCredentials` to each entry of `vpn.json`:
+
+```json
+{ "vpnConfigDefaults": { ... }, "vpnConfigTokens": { ... },
+  "smbCredentials": { "smbUser": "admin-a-7", "smbPassword": "<32 hex characters>" } }
+```
+
+The `peers/` folder (including the `.conf` files and `pi-smb-users.sh`, which holds the Samba passwords), `vpn*.json` and `qrcode*.png` hold secrets and must never be committed. Make sure `qr-code-gen/.gitignore` lists all three, and confirm with `git status` that nothing new shows up.
 
 ### Step 27 — Add the peers on the router
 
@@ -1419,6 +1487,8 @@ scp -i ~/.ssh/cameras_router ./peers/peers.rsc admin@192.168.89.1:~/
 /file remove peers.rsc
 /interface wireguard peers print proplist=name,allowed-address where name~"^(client|admin)-"
 ```
+
+**Admin batch, Samba already installed** (Part 13 of the Pi guide done): create the batch's Samba users now, as in [Step 44](pi_services_guide.md#step-44--samba-users). Before Part 13, Step 44 does it.
 
 **Audit:** every peer must own exactly one `/128`. A wider `allowed-address` (for example a copied `fd00:10::/64`) would let that peer use any source address, including an admin one.
 
@@ -1436,7 +1506,7 @@ scp -i ~/.ssh/cameras_router ./peers/peers.rsc admin@192.168.89.1:~/
 
 ### Step 28 — Render the QR codes
 
-`main.py` reads `vpn.json` from the current folder and writes one PNG per entry, named after the peer's address: `qrcode-fd00:10::c:5.png`, `qrcode-fd00:10::a:3.png` and so on. The file name already tells which peer it belongs to.
+`main.py` reads `vpn.json` from the current folder and writes one PNG per entry, named after the peer's address: `qrcode-fd00:10::c:5.png`, `qrcode-fd00:10::a:3.png` and so on. The file name already tells which peer it belongs to. Each entry goes into its QR code whole, so an admin's QR code also carries its Samba login.
 
 ```bash
 # On the HOME computer
@@ -1451,9 +1521,16 @@ Each PNG contains a private key. Send each one through a private channel to its 
 
 ### Step 29 — Install on the device
 
-In the app: **Config → scan QR code → grant VPN permission → configure stream URLs** (`http://[fd00:20::cafe]:8889/cam_10/whep` and so on, one per camera: `cam_10` to `cam_13`, named after the camera's address). The tunnel comes up when the Home screen opens. The streams only play once MediaMTX is running (Part 11).
+In the app: **Config → scan QR code → grant VPN permission → configure stream URLs** (port `8889` and stream name `cam_10`, which the app stores as `http://[fd00:20::cafe]:8889/cam_10` and calls with `/whep` appended; one per camera: `cam_10` to `cam_13`, named after the camera's address). The tunnel comes up when the Home screen opens. The streams only play once MediaMTX is running (Part 11).
 
-An admin computer also needs its own SSH keys for the router and the Pi (Step 10, "Other admin devices").
+An **admin** phone shows the recordings once its Samba user exists on the Pi (Step 44 of the Pi guide): in the app, open a camera and use the history button. The login came in the QR code; nothing is typed.
+
+An admin computer also needs its own SSH keys for the router and the Pi (Step 10, "Other admin devices"), and its Samba login, which the `.conf` does not carry. Read it from `vpn.json` and send it with the `.conf`, through the same private channel:
+
+```bash
+# On the HOME computer
+jq -r '.[] | select(.smbCredentials) | [.smbCredentials.smbUser, .smbCredentials.smbPassword] | @tsv' peers/vpn.json
+```
 
 For a computer (admin with Samba, for example), import `peers/<peer-name>.conf` in the WireGuard app (**Import tunnel(s) from file**; on Linux, `sudo wg-quick up ./<peer-name>.conf`). The file name becomes the tunnel name. It holds the same values as the QR code:
 
@@ -1529,6 +1606,14 @@ Also run these from inside the home (computer on HOME with the VPN up): the tunn
 ```
 
 The QR code stops working immediately. Reusing the address later is safe, because the old QR code's key no longer exists on the router. Still, prefer the next free index, so that logs and address records stay unambiguous.
+
+For an **admin** peer, also remove its Samba user, named after the peer, on the Pi:
+
+```bash
+# On the Pi
+sudo smbpasswd -x <peer-name>
+sudo userdel <peer-name>
+```
 
 ---
 
