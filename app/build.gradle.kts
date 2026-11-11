@@ -327,6 +327,10 @@ dependencies {
 
   // Drag-and-drop of items in LazyVerticalGrid (stream reordering on Home)
   implementation(libs.reorderable)
+
+  // Recordings: Samba (SMB3) client and playback
+  implementation(libs.smbj)
+  implementation(libs.androidx.media3.exoplayer)
 }
 
 // JacocoExclusionsTest reads the `outOfScopeFilter` patterns straight out of this file. Without

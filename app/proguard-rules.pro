@@ -84,3 +84,20 @@
 # builds, and `GoBackend$VpnService` is declared in AndroidManifest.xml.
 -keep class com.wireguard.** { *; }
 -dontwarn com.wireguard.**
+
+# ---------------------------------------------------------------------------
+# Samba — com.hierynomus:smbj (+ net.engio:mbassador)
+# ---------------------------------------------------------------------------
+# smbj delivers its internal events (session logoff, connection close) through mbassador, which
+# finds the listener methods by their @Handler annotation and builds its dispatchers by reflection.
+# Nothing in code calls those methods or constructors, so R8 would strip or rename them and the
+# events would be lost without any error. The library is small, so it is kept whole, along with
+# the @Handler methods of every listener.
+-keep class net.engio.mbassy.** { *; }
+-keepclassmembers class * {
+    @net.engio.mbassy.listener.Handler <methods>;
+}
+# Optional paths that Android does not provide and the app never takes: mbassador's EL filters
+# (javax.el) and smbj's Kerberos/SPNEGO login (org.ietf.jgss). The app logs in with NTLM.
+-dontwarn javax.el.**
+-dontwarn org.ietf.jgss.**
