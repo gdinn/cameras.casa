@@ -1363,7 +1363,14 @@ UI Automator) and the QR decoder (`QrCodeImageDecodingTest`) are covered
 - The recordings against a real share. The flows run on `FakeRecordingsShare`,
   `FakeRecordingPlayer` and `FakeDownloadRepository`. ExoPlayer over SMB, the download worker
   (WorkManager, MediaStore, notifications) and the interruptions (swipe, process death) are checked
-  by hand, on a release build against the Pi (the history plan's Steps 8–11).
+  by hand, on a release build against the Pi. Two things to know for those checks:
+  - **Simulating a process death during a download.** The download's foreground service protects
+    the process, so `adb shell am kill` does nothing; `adb shell am crash <package>` kills it. The
+    debug build's package is `com.gdisys.cameras.debug`, the e2e build's
+    `com.gdisys.cameras.e2e`.
+  - **One device per WireGuard peer.** Two devices on the same peer take the endpoint from each
+    other. The tunnel then carries nothing reliably, and the share reads as "unreachable" after
+    the timeouts.
 - The real world on CI. `RealEnvironmentSmokeTest` (the real QR, the real tunnel and a stream
   playing, on the minified `e2eRelease`) runs only by hand, on the phone of whoever holds the test
   peer's QR.
