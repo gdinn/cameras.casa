@@ -1,5 +1,6 @@
 package com.gdisys.cameras.core.recordings.data
 
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -26,6 +27,7 @@ class LeasedResourceTest {
   private val closed = mutableListOf<Resource>()
   private var openFailure: Exception? = null
   private var closeFailure: Exception? = null
+  private var closeGate: CompletableDeferred<Unit>? = null
 
   private fun TestScope.leased() = LeasedResource<String, Resource>(
     scope = backgroundScope,
@@ -35,6 +37,7 @@ class LeasedResourceTest {
       Resource(key, opened.size + 1).also { opened += it }
     },
     close = { resource ->
+      closeGate?.await()
       closed += resource
       closeFailure?.let { throw it }
     },
@@ -119,6 +122,7 @@ class LeasedResourceTest {
     val old = leased.use("old login") { it }
 
     val new = leased.use("new login") { it }
+    runCurrent()
 
     assertEquals("new login", new.key)
     assertEquals(listOf(old), closed)
@@ -136,6 +140,7 @@ class LeasedResourceTest {
       resource
     }
 
+    runCurrent()
     assertEquals(2, calls)
     assertEquals(2, result.id)
     assertEquals(listOf(opened.first()), closed)
@@ -153,6 +158,7 @@ class LeasedResourceTest {
       }
     }.exceptionOrNull()
 
+    runCurrent()
     assertTrue(thrown is Broken)
     assertEquals(1, calls)
     assertEquals(opened, closed)
@@ -164,6 +170,7 @@ class LeasedResourceTest {
     leased.use("login") { }
 
     val thrown = runCatching { leased.use("login") { throw Broken() } }.exceptionOrNull()
+    runCurrent()
 
     assertTrue(thrown is Broken)
     assertEquals(2, opened.size)
@@ -205,6 +212,58 @@ class LeasedResourceTest {
     advanceTimeBy(IDLE_MS + 1)
 
     assertEquals("new login", new.key)
+    assertEquals(opened, closed)
+  }
+
+  @Test
+  fun `a slow close holds no one up`() = runTest {
+    val leased = leased()
+    leased.use("old login") { }
+    closeGate = CompletableDeferred() // Closing a dead connection waits for timeouts.
+
+    val new = leased.use("new login") { it }
+    val again = leased.use("new login") { it }
+
+    assertEquals("new login", new.key)
+    assertEquals(new, again)
+    assertEquals(emptyList<Resource>(), closed)
+
+    closeGate?.complete(Unit)
+    runCurrent()
+    assertEquals(listOf(opened.first()), closed)
+  }
+
+  @Test
+  fun `invalidate drops the resource and the next use opens a new one`() = runTest {
+    val leased = leased()
+    val first = leased.use("login") { it }
+
+    leased.invalidate()
+    runCurrent()
+    val second = leased.use("login") { it }
+
+    assertEquals(listOf(first), closed)
+    assertEquals(2, second.id)
+  }
+
+  @Test
+  fun `invalidate with nothing open does nothing`() = runTest {
+    leased().invalidate()
+    runCurrent()
+
+    assertEquals(emptyList<Resource>(), closed)
+  }
+
+  @Test
+  fun `a resource dropped while in use is not closed again when its user leaves`() = runTest {
+    val leased = leased()
+    val inUse = async { leased.use("login") { delay(100); it } }
+    runCurrent()
+
+    leased.invalidate()
+    inUse.await()
+    advanceTimeBy(IDLE_MS * 2)
+
     assertEquals(opened, closed)
   }
 }

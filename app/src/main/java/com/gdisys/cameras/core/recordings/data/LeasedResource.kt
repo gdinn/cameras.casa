@@ -19,7 +19,11 @@ import kotlinx.coroutines.withContext
  * - **Broken resource:** when [isBroken] says a failure means the resource is dead (the tunnel went
  *   down while it sat idle), it is closed. If it was a reused one, the use is retried once on a
  *   fresh resource; a failure on a fresh one is the caller's.
- * - [close] failures are ignored: the resource is being dropped anyway.
+ * - **Closing never holds anyone up.** A resource is taken out under the lock and closed after it,
+ *   in [scope]: closing a dead connection can wait for timeouts, and every use needs the lock.
+ *   [close] failures are ignored, since the resource is being dropped anyway.
+ * - [invalidate] drops the current resource at once, for when its connection is known to be dead
+ *   (the tunnel went down).
  */
 internal class LeasedResource<K : Any, R : Any>(
   private val scope: CoroutineScope,
@@ -69,7 +73,7 @@ internal class LeasedResource<K : Any, R : Any>(
     }
     if (existing != null) {
       current = null
-      closeQuietly(existing.resource)
+      closeLater(existing.resource)
     }
     val entry = Entry(key, open(key))
     entry.leases = 1
@@ -83,26 +87,38 @@ internal class LeasedResource<K : Any, R : Any>(
       if (current === entry && entry.leases == 0) {
         idleClose = scope.launch {
           delay(idleMillis)
-          mutex.withLock {
-            if (current === entry && entry.leases == 0) {
-              current = null
-              closeQuietly(entry.resource)
-            }
+          val idle = mutex.withLock {
+            (current === entry && entry.leases == 0).also { if (it) current = null }
           }
+          if (idle) closeQuietly(entry.resource)
         }
       }
     }
   }
 
+  /** Drops the current resource, in use or not; the next use opens a new one. */
+  suspend fun invalidate() = withContext(NonCancellable) {
+    mutex.withLock {
+      current?.let { dropLocked(it) }
+    }
+  }
+
   private suspend fun discard(entry: Entry<K, R>) = withContext(NonCancellable) {
     mutex.withLock {
-      if (current === entry) {
-        current = null
-        idleClose?.cancel()
-        idleClose = null
-        closeQuietly(entry.resource)
-      }
+      if (current === entry) dropLocked(entry)
     }
+  }
+
+  /** Under the lock: forgets [entry] and closes it once the lock is released. */
+  private fun dropLocked(entry: Entry<K, R>) {
+    current = null
+    idleClose?.cancel()
+    idleClose = null
+    closeLater(entry.resource)
+  }
+
+  private fun closeLater(resource: R) {
+    scope.launch { closeQuietly(resource) }
   }
 
   private suspend fun closeQuietly(resource: R) {

@@ -7,7 +7,6 @@ import com.hierynomus.smbj.SMBClient
 import com.hierynomus.smbj.SmbConfig
 import com.hierynomus.smbj.auth.AuthenticationContext
 import com.hierynomus.smbj.connection.Connection
-import com.hierynomus.smbj.session.Session
 import com.hierynomus.smbj.share.DiskShare
 import java.io.Closeable
 import java.util.concurrent.TimeUnit
@@ -19,16 +18,19 @@ private val SHARE_HOST = STREAM_HOST.removeSurrounding("[", "]")
 private const val CONNECT_TIMEOUT_MS = 5_000
 private const val REQUEST_TIMEOUT_S = 15L
 
-/** An open share, with the connection and session it lives on. Closing it closes all three. */
+/**
+ * An open share, with the connection it lives on.
+ *
+ * Closing drops the connection at once (`close(true)`), without the polite tree disconnect and
+ * logoff: on a dead connection (the tunnel went down) each of those waits for the request timeout,
+ * and the server cleans up when the TCP connection goes away anyway.
+ */
 internal class SmbShareHandle(
   private val connection: Connection,
-  private val session: Session,
   val share: DiskShare
 ) : Closeable {
   override fun close() {
-    runCatching { share.close() }
-    runCatching { session.close() }
-    runCatching { connection.close() }
+    runCatching { connection.close(true) }
   }
 }
 
@@ -61,7 +63,7 @@ internal object SmbConnector {
         null
       )
       val session = connection.authenticate(login)
-      return SmbShareHandle(connection, session, session.connectShare(SHARE_NAME) as DiskShare)
+      return SmbShareHandle(connection, session.connectShare(SHARE_NAME) as DiskShare)
     } catch (e: Exception) {
       runCatching { connection.close() }
       throw e

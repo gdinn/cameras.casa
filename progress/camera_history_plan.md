@@ -731,6 +731,18 @@ Not reported yet at commit time: the process death check and Discard (see below)
   - Now the worker skips progress updates once stopped, and removes the progress notification in
     its `finally`. That runs on the copy's thread, after its last update.
   - Verified on the device: repeated cancels at different moments leave no notification behind.
+- **Bug: after the tunnel cycled, no other recording loaded, fixed.**
+  - Steps: download, background, cancel from the notification, come back. The current video played
+    (the player opens a new connection each time), but previous/next and the History listings
+    hung.
+  - Two faults in the listing connection (`LeasedResource` / `SmbShareHandle`):
+    - the connection outlived the tunnel silently, so its next use waited for the 15 s timeout;
+    - closing it ran under the lock every listing needs, and the polite tree disconnect and logoff
+      each waited for the timeout too.
+  - Now closes run outside the lock and drop the connection at once (`close(true)`), and the share
+    drops its connection as soon as the tunnel is no longer connected (`invalidate`).
+  - Verified: `jacocoTestCoverageVerification` passed. On the device, after the same steps,
+    previous/next and the History listings load at once.
 
 **What was built** (`docs/architecture.md` §5.5, §6.1, §6.2, §6.10, §10)
 

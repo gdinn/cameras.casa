@@ -944,7 +944,15 @@ connection. smbj multiplexes the requests, so a month takes ~4 round trips inste
 long gap.
 
 **The connection.** `LeasedResource` keys the connection on the login: a new QR closes it and opens
-another. A failure that `isConnectionLost` recognizes closes the connection. This covers a socket
+another.
+
+- **Closing never blocks a listing.** A connection is closed after the lock is released, in the
+  application scope.
+- **Closing is immediate.** `SmbShareHandle` drops the TCP connection with `close(true)`, skipping
+  the tree disconnect and logoff, which each wait for the request timeout on a dead connection.
+- **The tunnel leaving drops the connection.** `SmbjRecordingsShare` watches the tunnel and calls
+  `invalidate()` as soon as it is no longer connected. A connection outlives a tunnel that goes
+  down, silently, so the next listing would otherwise wait 15 s to find out. A failure that `isConnectionLost` recognizes closes the connection. This covers a socket
 error, a timeout, and an expired or deleted session, as happens after the tunnel dropped while the
 connection sat idle. If the connection was a reused one, the call is retried once on a fresh
 connection. Without the retry, the first listing after every return to the screen would fail.
