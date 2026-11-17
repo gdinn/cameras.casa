@@ -2,8 +2,10 @@ package com.gdisys.cameras.core.storage.di
 
 import android.content.Context
 import androidx.datastore.core.DataStore
+import com.gdisys.cameras.core.storage.data.downloadRecordsDataStore
 import com.gdisys.cameras.core.storage.data.streamPreferencesDataStore
 import com.gdisys.cameras.core.storage.data.userPreferencesDataStore
+import com.gdisys.cameras.core.storage.domain.model.DownloadRecords
 import com.gdisys.cameras.core.storage.domain.model.StreamPreferences
 import com.gdisys.cameras.core.storage.domain.model.UserPreferences
 import dagger.Module
@@ -31,5 +33,14 @@ object StorageModule {
         @ApplicationContext context: Context
     ): DataStore<StreamPreferences> {
         return context.streamPreferencesDataStore
+    }
+
+    @Provides
+    @Singleton
+    @DownloadRecordsStore
+    fun provideDownloadRecordsDataStore(
+        @ApplicationContext context: Context
+    ): DataStore<DownloadRecords> {
+        return context.downloadRecordsDataStore
     }
 }

@@ -1,8 +1,10 @@
 package com.gdisys.cameras.core.permission.di
 
 import com.gdisys.cameras.core.permission.data.CameraPermissionRepositoryImpl
+import com.gdisys.cameras.core.permission.data.NotificationPermissionRepositoryImpl
 import com.gdisys.cameras.core.permission.data.VpnPermissionRepositoryImpl
 import com.gdisys.cameras.core.permission.domain.CameraPermissionRepository
+import com.gdisys.cameras.core.permission.domain.NotificationPermissionRepository
 import com.gdisys.cameras.core.permission.domain.VpnPermissionRepository
 import dagger.Binds
 import dagger.Module
@@ -25,4 +27,10 @@ abstract class PermissionModule {
   abstract fun bindVpnPermissionRepository(
     vpnPermissionRepositoryImpl: VpnPermissionRepositoryImpl
   ): VpnPermissionRepository
+
+  @Binds
+  @Singleton
+  abstract fun bindNotificationPermissionRepository(
+    notificationPermissionRepositoryImpl: NotificationPermissionRepositoryImpl
+  ): NotificationPermissionRepository
 }

@@ -1,0 +1,113 @@
+package com.gdisys.cameras.core.downloads.data
+
+import android.content.Context
+import android.util.Log
+import androidx.hilt.work.HiltWorker
+import androidx.work.CoroutineWorker
+import androidx.work.WorkerParameters
+import androidx.work.workDataOf
+import com.gdisys.cameras.core.DEBUG_TAG
+import com.gdisys.cameras.core.coroutines.IoDispatcher
+import com.gdisys.cameras.core.recordings.data.RecordingFileSources
+import com.gdisys.cameras.core.recordings.data.open
+import com.gdisys.cameras.core.storage.domain.DownloadRecordsRepository
+import com.gdisys.cameras.core.vpn.domain.TunnelCoordinator
+import com.gdisys.cameras.core.vpn.domain.TunnelHolder
+import dagger.assisted.Assisted
+import dagger.assisted.AssistedInject
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
+
+/**
+ * Copies one recording from the share to `Download/Cameras`, as a `dataSync` foreground service.
+ *
+ * - **Tunnel:** the download's [TunnelHolder] was taken when it was enqueued, while the tunnel was
+ *   up. No holder means this run is WorkManager's re-run after the process died: the worker marks
+ *   the record interrupted and fails, without touching the network. It never raises the tunnel.
+ * - **Record:** it notes where the partial file is as soon as it exists, so a process death leaves
+ *   enough to delete it; success removes the record (see `DownloadRecordRules.kt`).
+ * - **Progress:** published as work progress and on the notification, once per percent.
+ * - **Cancel** (the notification's action, or the app swiped away): the copy stops within a chunk
+ *   and the partial file is deleted. The progress notification is removed here too: the copy only
+ *   sees the stop between chunks, and an update in that gap would post it again after WorkManager
+ *   removed it. A user cancel forgets the download; a swipe leaves it
+ *   reported as interrupted (`interruptAll` marked it first).
+ * - **Failure:** the partial file is deleted and a notification says so. No retry: the user asks
+ *   again.
+ *
+ * Not unit-tested (excluded from coverage): it needs WorkManager, MediaStore and a server. The
+ * copy ([copyRecording]), the names ([freeFileName]) and the work data ([toRecording]) are tested.
+ */
+@HiltWorker
+class RecordingDownloadWorker @AssistedInject constructor(
+  @Assisted context: Context,
+  @Assisted params: WorkerParameters,
+  private val tunnelCoordinator: TunnelCoordinator,
+  private val fileSources: RecordingFileSources,
+  private val outputs: DownloadOutputs,
+  private val notifications: DownloadNotifications,
+  private val records: DownloadRecordsRepository,
+  @param:IoDispatcher private val io: CoroutineDispatcher
+) : CoroutineWorker(context, params) {
+
+  override suspend fun doWork(): Result {
+    val recording = inputData.toRecording() ?: return Result.failure(workDataOf(KEY_FAILURE to FAILURE_ERROR))
+    val workId = id.toString()
+    if (!tunnelCoordinator.holds(TunnelHolder.Download(workId))) {
+      records.update { it.interrupted(workId) }
+      return Result.failure(workDataOf(KEY_FAILURE to FAILURE_INTERRUPTED))
+    }
+    setForeground(notifications.foregroundInfo(id, recording, percent = null))
+
+    return withContext(io) {
+      val files = fileSources.create()
+      var pending: PendingDownload? = null
+      try {
+        files.open(recording).use { file ->
+          val output = outputs.create(recording.fileName).also { pending = it }
+          records.update { it.withPartialFile(workId, output.reference) }
+          var lastPercent = -1
+          val complete = copyRecording(
+            file = file,
+            output = output.stream,
+            isStopped = { isStopped },
+            onProgress = { copied, total ->
+              val percent = (copied * 100 / total).toInt()
+              // Not once stopped: WorkManager has removed the notification, and this would bring it back.
+              if (percent != lastPercent && !isStopped) {
+                lastPercent = percent
+                setProgressAsync(workDataOf(KEY_PROGRESS to copied.toFloat() / total))
+                notifications.showProgress(id, recording, percent)
+              }
+            }
+          )
+          if (!complete) throw CancellationException("Download stopped")
+          val savedAs = output.publish()
+          pending = null
+          records.update { it.afterSuccess(workId) }
+          notifications.showFinished(id, recording, savedAs)
+          Result.success(workDataOf(KEY_SAVED_AS to savedAs))
+        }
+      } catch (e: CancellationException) {
+        withContext(NonCancellable) {
+          pending?.discard()
+          records.update { it.afterStop(workId) }
+        }
+        throw e
+      } catch (e: Exception) {
+        // With the throwable, so the log shows the cause chain down to smbj and the socket.
+        Log.w(DEBUG_TAG, "Downloading ${recording.fileName} failed", e)
+        pending?.discard()
+        records.update { it.afterFailure(workId) }
+        notifications.showFailed(id, recording)
+        Result.failure(workDataOf(KEY_FAILURE to FAILURE_ERROR))
+      } finally {
+        // On this thread, after the copy's last progress update: nothing can post it again.
+        notifications.cancelProgress(id)
+        files.close()
+      }
+    }
+  }
+}

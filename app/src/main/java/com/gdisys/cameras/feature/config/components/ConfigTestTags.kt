@@ -11,5 +11,6 @@ object ConfigTestTags {
   const val QR_CODE_STEP = "config_qr_code_step"
   const val VPN_PERMISSION_STEP = "config_vpn_permission_step"
   const val STREAM_URLS_STEP = "config_stream_urls_step"
+  const val NOTIFICATION_PERMISSION_STEP = "config_notification_permission_step"
   const val NAVIGATE_TO_HOME_BUTTON = "config_navigate_to_home_button"
 }

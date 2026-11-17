@@ -1,11 +1,17 @@
 package com.gdisys.cameras.feature.config
 
+/**
+ * @property notificationPermissionButtonState the optional notifications step, `null` when it is
+ *   not shown: only admins download, and only Android 13+ asks. [ConfigButtonState.Error] means the
+ *   user declined it, which is final.
+ */
 data class ConfigUiState(
   val cameraPermissionButtonState: ConfigButtonState = ConfigButtonState.Loading,
   val qrCodeButtonState: ConfigButtonState = ConfigButtonState.Loading,
   val vpnPermissionButtonState: ConfigButtonState = ConfigButtonState.Loading,
   val streamURLsButtonState: ConfigButtonState = ConfigButtonState.Loading,
-  val canNavigateBackToHome: Boolean = false
+  val canNavigateBackToHome: Boolean = false,
+  val notificationPermissionButtonState: ConfigButtonState? = null
 ) {
   val isQrCodeButtonEnabled: Boolean
     get() = cameraPermissionButtonState == ConfigButtonState.Done

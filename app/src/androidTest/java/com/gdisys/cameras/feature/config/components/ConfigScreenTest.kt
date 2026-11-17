@@ -164,6 +164,24 @@ class ConfigScreenTest {
     val calls = mutableListOf<String>()
   }
 
+  @Test
+  fun theNotificationsStepShowsOnlyWhenOffered() {
+    composeRule.setConfigScreen(ConfigUiState())
+
+    composeRule.onNodeWithTag(ConfigTestTags.NOTIFICATION_PERMISSION_STEP).assertDoesNotExist()
+  }
+
+  @Test
+  fun theNotificationsStepShowsItsStateAndReportsClicks() {
+    val events = composeRule.setConfigScreen(ConfigUiState(notificationPermissionButtonState = ConfigButtonState.Error))
+
+    composeRule.onNodeWithTag(ConfigTestTags.NOTIFICATION_PERMISSION_STEP)
+      .assert(hasStateDescription(R.string.config_step_state_error))
+      .performClick()
+
+    assertEquals(listOf("requestNotificationPermission"), events.calls)
+  }
+
   private fun ComposeContentTestRule.setConfigScreen(uiState: ConfigUiState): ConfigScreenEvents {
     val events = ConfigScreenEvents()
     setThemedContent {
@@ -173,7 +191,8 @@ class ConfigScreenTest {
         acceptVpnPermission = { events.calls += "acceptVpnPermission" },
         onRequestCameraPermission = { events.calls += "requestCameraPermission" },
         onNavigateToStreamURLs = { events.calls += "navigateToStreamURLs" },
-        onNavigateToHome = { events.calls += "navigateToHome" }
+        onNavigateToHome = { events.calls += "navigateToHome" },
+        onRequestNotificationPermission = { events.calls += "requestNotificationPermission" }
       )
     }
     return events

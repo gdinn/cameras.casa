@@ -52,6 +52,7 @@ class HomeScreenTest {
 
   private val reorders = CopyOnWriteArrayList<List<String>>()
   private val navigationsToConfig = AtomicInteger()
+  private val historyOpenings = CopyOnWriteArrayList<String>()
 
   @Test
   fun moveActionsReorderOnePlace() {
@@ -186,10 +187,34 @@ class HomeScreenTest {
     composeRule.onNodeWithTag(HomeTestTags.streamPlayer(STREAMS[0])).assertDoesNotExist()
   }
 
+  @Test
+  fun theFocusedViewOffersTheHistoryOfItsCamera() {
+    setHomeScreen(FIXED_GRID, focusedStream = STREAMS[2], historyCamera = "cam_162")
+
+    composeRule.onNodeWithTag(HomeTestTags.HISTORY_BUTTON).assertIsDisplayed().performClick()
+
+    assertEquals(listOf("cam_162"), historyOpenings)
+  }
+
+  @Test
+  fun noHistoryButtonWithoutACamera() {
+    setHomeScreen(FIXED_GRID, focusedStream = STREAMS[2])
+
+    composeRule.onNodeWithTag(HomeTestTags.HISTORY_BUTTON).assertDoesNotExist()
+  }
+
+  @Test
+  fun noHistoryButtonOnTheGrid() {
+    setHomeScreen(FIXED_GRID, historyCamera = "cam_162")
+
+    composeRule.onNodeWithTag(HomeTestTags.HISTORY_BUTTON).assertDoesNotExist()
+  }
+
   private fun setHomeScreen(
     grid: GridPreferences,
     streams: List<String> = STREAMS,
-    focusedStream: String? = null
+    focusedStream: String? = null,
+    historyCamera: String? = null
   ) {
     composeRule.setThemedContent {
       HomeScreen(
@@ -204,7 +229,9 @@ class HomeScreenTest {
         onFocusStream = {},
         onClearFocusedStream = {},
         onStreamsReordered = { reorders += it },
-        onNavigateToConfig = { navigationsToConfig.incrementAndGet() }
+        onNavigateToConfig = { navigationsToConfig.incrementAndGet() },
+        historyCamera = historyCamera,
+        onOpenHistory = { historyOpenings += it }
       )
     }
   }

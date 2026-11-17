@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.LiveTv
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material3.Button
@@ -43,7 +44,8 @@ fun ConfigScreen(
   acceptVpnPermission: () -> Unit,
   onRequestCameraPermission: () -> Unit,
   onNavigateToStreamURLs: () -> Unit,
-  onNavigateToHome: () -> Unit
+  onNavigateToHome: () -> Unit,
+  onRequestNotificationPermission: () -> Unit = {}
 ) {
   Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
     // The column is at least as tall as the viewport, so SpaceBetween keeps the Home button at the
@@ -104,6 +106,18 @@ fun ConfigScreen(
             uiState = uiState.streamURLsButtonState,
             onClicked = onNavigateToStreamURLs
           )
+
+          // Optional: it does not gate Home. Only admins (who download) on Android 13+ see it.
+          uiState.notificationPermissionButtonState?.let { state ->
+            ConfigButton(
+              modifier = Modifier.testTag(ConfigTestTags.NOTIFICATION_PERMISSION_STEP),
+              imageVector = Icons.Filled.Notifications,
+              title = stringResource(R.string.config_screen_notifications_title),
+              subTitle = stringResource(R.string.config_screen_notifications_subtitle),
+              uiState = state,
+              onClicked = onRequestNotificationPermission
+            )
+          }
         }
 
         Button(

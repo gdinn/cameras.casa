@@ -1,5 +1,6 @@
 package com.gdisys.cameras.core.storage.domain.usecase
 
+import com.gdisys.cameras.core.storage.domain.model.SmbCredentials
 import com.gdisys.cameras.core.storage.domain.model.UserPreferences
 import com.gdisys.cameras.core.storage.domain.model.VpnConfigDefaults
 import com.gdisys.cameras.core.storage.domain.model.VpnConfigTokens
@@ -131,5 +132,49 @@ class ParseUserPreferencesFromQrCodeUseCaseTest {
 
     assertTrue(result.isSuccess)
     assertEquals("private-key", result.getOrNull()?.vpnConfigTokens?.iPrk)
+  }
+
+  /** [validJson] with an `smbCredentials` object made of [fields]. */
+  private fun withSmb(fields: String) = validJson.trimEnd().removeSuffix("}") + """,
+      "smbCredentials": { $fields }
+    }"""
+
+  @Test
+  fun `a QR without smbCredentials is a regular user`() {
+    val result = useCase(validJson)
+
+    assertNull(result.getOrNull()?.smbCredentials)
+  }
+
+  @Test
+  fun `keeps complete smbCredentials`() {
+    val result = useCase(withSmb(""""smbUser": "admin-a-7", "smbPassword": "secret""""))
+
+    assertEquals(SmbCredentials(smbUser = "admin-a-7", smbPassword = "secret"), result.getOrNull()?.smbCredentials)
+    assertEquals("private-key", result.getOrNull()?.vpnConfigTokens?.iPrk)
+  }
+
+  @Test
+  fun `returns null when smbCredentials lacks the password`() {
+    val result = useCase(withSmb(""""smbUser": "admin-a-7""""))
+
+    assertTrue(result.isSuccess)
+    assertNull(result.getOrNull())
+  }
+
+  @Test
+  fun `returns null when smbCredentials has a blank user`() {
+    val result = useCase(withSmb(""""smbUser": "  ", "smbPassword": "secret""""))
+
+    assertTrue(result.isSuccess)
+    assertNull(result.getOrNull())
+  }
+
+  @Test
+  fun `returns null when smbCredentials is empty`() {
+    val result = useCase(withSmb(""))
+
+    assertTrue(result.isSuccess)
+    assertNull(result.getOrNull())
   }
 }

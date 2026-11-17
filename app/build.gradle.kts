@@ -193,13 +193,15 @@ android {
       // R8 in full mode (shrink + obfuscate + optimize). The keep rules live in
       // proguard-rules.pro, one commented block per reason: kotlinx.serialization (on-disk schema,
       // QR payload and the type-safe navigation routes), org.webrtc.** and com.wireguard.**
-      // (JNI entry points bound by name). Hilt/Dagger, AndroidX, CameraX and ML Kit are covered by
-      // their own consumer rules.
+      // (JNI entry points bound by name), and smbj's event bus (mbassador, by reflection).
+      // Hilt/Dagger, AndroidX, CameraX, ML Kit, Media3 and WorkManager are covered by their own
+      // consumer rules.
       //
       // This stack fails at *runtime* rather than at build time when a keep rule is wrong, so a
       // green `assembleRelease` is necessary but not sufficient: any change to the keep rules, to
-      // a @Serializable model or to the VPN/WebRTC dependencies must be smoke-tested on a real
-      // device — scan the QR code, bring the tunnel up, and play a stream. RealEnvironmentSmokeTest
+      // a @Serializable model or to the VPN/WebRTC/Samba/Media3/WorkManager dependencies must be
+      // smoke-tested on a real device — scan the QR code, bring the tunnel up, and play a stream;
+      // for an admin, list, play and download a recording. RealEnvironmentSmokeTest
       // automates that path on `e2eRelease`, this build type as R8 makes it (see below).
       isMinifyEnabled = true
       proguardFiles(
@@ -327,6 +329,16 @@ dependencies {
 
   // Drag-and-drop of items in LazyVerticalGrid (stream reordering on Home)
   implementation(libs.reorderable)
+
+  // Recordings: Samba (SMB3) client and playback
+  implementation(libs.smbj)
+  implementation(libs.androidx.media3.exoplayer)
+  implementation(libs.androidx.media3.ui)
+
+  // Recording downloads: long-running foreground work, with workers injected by Hilt
+  implementation(libs.androidx.work.runtime.ktx)
+  implementation(libs.androidx.hilt.work)
+  ksp(libs.androidx.hilt.compiler)
 }
 
 // JacocoExclusionsTest reads the `outOfScopeFilter` patterns straight out of this file. Without
@@ -388,12 +400,25 @@ val outOfScopeFilter = listOf(
   "com/gdisys/cameras/core/components/ToastDisplayerKt*.class",
   "com/gdisys/cameras/core/vpn/data/VpnLifecycleService*.class", // Android Service
   "com/gdisys/cameras/core/vpn/data/AppTunnel*.class", // thin wrapper over the native Tunnel
+  "com/gdisys/cameras/core/recordings/data/SmbjRecordingsShare*.class", // talks to the Samba server
+  "com/gdisys/cameras/core/recordings/data/SmbConnector*.class", // likewise
+  "com/gdisys/cameras/core/recordings/data/SmbShareHandle*.class", // likewise
+  "com/gdisys/cameras/core/recordings/data/SmbFileSession*.class", // likewise
+  "com/gdisys/cameras/core/recordings/data/SmbDataSource*.class", // android.net.Uri; tested on a device
+  "com/gdisys/cameras/core/recordings/data/ExoRecordingPlayer*.class", // ExoPlayer
+  "com/gdisys/cameras/core/downloads/data/RecordingDownloadWorker*.class", // WorkManager + MediaStore + server
+  "com/gdisys/cameras/core/downloads/data/DeviceDownloadOutputs*.class", // MediaStore, file system
+  "com/gdisys/cameras/core/downloads/data/DownloadNotifications*.class", // notifications
   "com/gdisys/cameras/core/webrtc/data/WhepClientImpl*.class", // native WebRTC stack
   "com/gdisys/cameras/core/webrtc/data/extensions/PeerConnectionKt*.class", // likewise
   "com/gdisys/cameras/feature/cameras/HomeRouteKt*.class",
   "com/gdisys/cameras/feature/cameras/components/**",
   "com/gdisys/cameras/feature/config/ConfigRouteKt*.class",
   "com/gdisys/cameras/feature/config/components/**",
+  "com/gdisys/cameras/feature/history/HistoryRouteKt*.class",
+  "com/gdisys/cameras/feature/history/components/**",
+  "com/gdisys/cameras/feature/history/player/RecordingPlayerRouteKt*.class",
+  "com/gdisys/cameras/feature/history/player/components/**",
   "com/gdisys/cameras/feature/init/InitRouteKt*.class",
   "com/gdisys/cameras/feature/init/components/**",
   "com/gdisys/cameras/feature/qrcode/QrCodeRouteKt*.class",
@@ -402,6 +427,7 @@ val outOfScopeFilter = listOf(
   "com/gdisys/cameras/feature/streamurls/components/**",
   "com/gdisys/cameras/ui/theme/**",
   "com/gdisys/cameras/core/storage/data/DataStoreKt*.class", // DI wiring, no logic of its own
+  "com/gdisys/cameras/core/storage/data/DownloadRecordsDataStoreKt*.class", // likewise
   "com/gdisys/cameras/core/storage/data/KeystoreCryptoEngine*.class" // AndroidKeyStore, hardware-backed
 )
 

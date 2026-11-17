@@ -5,7 +5,9 @@ import android.util.Log
 import androidx.lifecycle.viewModelScope
 import com.gdisys.cameras.core.DEBUG_TAG
 import com.gdisys.cameras.core.ToastEventViewModel
+import com.gdisys.cameras.core.permission.domain.NotificationPermission
 import com.gdisys.cameras.core.permission.domain.VpnConsent
+import com.gdisys.cameras.core.permission.domain.usecase.GetNotificationPermissionUseCase
 import com.gdisys.cameras.core.permission.domain.usecase.HasCameraPermissionUseCase
 import com.gdisys.cameras.core.permission.domain.usecase.HasVpnPermissionUseCase
 import com.gdisys.cameras.core.permission.domain.usecase.RequestVpnPermissionUseCase
@@ -13,6 +15,8 @@ import com.gdisys.cameras.core.storage.domain.VpnCredentialsStatus
 import com.gdisys.cameras.core.storage.domain.model.UserPreferences
 import com.gdisys.cameras.core.storage.domain.usecase.GetStreamPreferencesUseCase
 import com.gdisys.cameras.core.storage.domain.usecase.GetVpnConfigStatusUseCase
+import com.gdisys.cameras.core.storage.domain.usecase.MarkNotificationPermissionRequestedUseCase
+import com.gdisys.cameras.core.storage.domain.usecase.ObserveIsAdminUseCase
 import com.gdisys.cameras.core.storage.domain.usecase.ParseUserPreferencesFromQrCodeUseCase
 import com.gdisys.cameras.core.storage.domain.usecase.SaveUserPreferencesUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -48,7 +52,10 @@ class ConfigViewModel @Inject constructor(
   getStreamPreferencesUseCase: GetStreamPreferencesUseCase,
   hasVpnPermissionUseCase: HasVpnPermissionUseCase,
   private val hasCameraPermissionUseCase: HasCameraPermissionUseCase,
-  private val requestVpnPermissionUseCase: RequestVpnPermissionUseCase
+  private val requestVpnPermissionUseCase: RequestVpnPermissionUseCase,
+  observeIsAdminUseCase: ObserveIsAdminUseCase,
+  private val getNotificationPermissionUseCase: GetNotificationPermissionUseCase,
+  private val markNotificationPermissionRequestedUseCase: MarkNotificationPermissionRequestedUseCase
 ) : ToastEventViewModel() {
 
   private val _cameraPermissionButtonState = MutableStateFlow(
@@ -57,6 +64,7 @@ class ConfigViewModel @Inject constructor(
   private val _vpnPermissionButtonState = MutableStateFlow(
     if (hasVpnPermissionUseCase()) ConfigButtonState.Done else ConfigButtonState.Ready
   )
+  private val _notificationPermission = MutableStateFlow(getNotificationPermissionUseCase())
   private val _qrCodeError = MutableStateFlow(false)
   private val _canNavigateBackToHome = MutableStateFlow(false)
 
@@ -80,6 +88,25 @@ class ConfigViewModel @Inject constructor(
     }
     .onStart { emit(ConfigButtonState.Loading) }
 
+  /**
+   * The notifications step: for admins (only they download) on Android 13+. It is asked once and
+   * the answer stands, so a declined permission stays declined (`Error`) instead of asking again.
+   * Asking here, and not when a download starts, matters: the permission dialog pauses the screen,
+   * and the player gives the tunnel back on pause.
+   */
+  private val notificationPermissionButtonState: Flow<ConfigButtonState?> = combine(
+    observeIsAdminUseCase(),
+    _notificationPermission,
+    getStreamPreferencesUseCase().map { it.notificationPermissionRequested }
+  ) { isAdmin, permission, requested ->
+    when {
+      !isAdmin || permission == NotificationPermission.NOT_REQUIRED -> null
+      permission == NotificationPermission.GRANTED -> ConfigButtonState.Done
+      requested -> ConfigButtonState.Error
+      else -> ConfigButtonState.Ready
+    }
+  }
+
   // Eagerly, because the navigation gate reads `uiState.value` synchronously at click time: the
   // state has to be current even at a moment when nothing is collecting.
   val uiState: StateFlow<ConfigUiState> = combine(
@@ -96,6 +123,8 @@ class ConfigViewModel @Inject constructor(
       streamURLsButtonState = streamURLsButtonState,
       canNavigateBackToHome = canNavigateBackToHome
     )
+  }.combine(notificationPermissionButtonState) { state, notifications ->
+    state.copy(notificationPermissionButtonState = notifications)
   }.stateIn(
     viewModelScope,
     SharingStarted.Eagerly,
@@ -107,6 +136,9 @@ class ConfigViewModel @Inject constructor(
 
   private val _requestCameraPermissionEvent = Channel<Unit>()
   val requestCameraPermissionEvent: Flow<Unit> = _requestCameraPermissionEvent.receiveAsFlow()
+
+  private val _requestNotificationPermissionEvent = Channel<Unit>()
+  val requestNotificationPermissionEvent: Flow<Unit> = _requestNotificationPermissionEvent.receiveAsFlow()
 
   private val _navigateToScannerEvent = Channel<Unit>()
   val navigateToScannerEvent: Flow<Unit> = _navigateToScannerEvent.receiveAsFlow()
@@ -144,6 +176,31 @@ class ConfigViewModel @Inject constructor(
   fun refreshCameraPermissionState() {
     _cameraPermissionButtonState.value =
       if (hasCameraPermissionUseCase()) ConfigButtonState.Done else ConfigButtonState.Ready
+  }
+
+  fun onRequestNotificationPermission() {
+    when (uiState.value.notificationPermissionButtonState) {
+      ConfigButtonState.Done -> showToast(ConfigToastMessage.NOTIFICATION_PERMISSION_ALREADY_GRANTED)
+      ConfigButtonState.Error -> showToast(ConfigToastMessage.NOTIFICATION_PERMISSION_DECLINED)
+      ConfigButtonState.Ready -> viewModelScope.launch { _requestNotificationPermissionEvent.send(Unit) }
+      ConfigButtonState.Loading, null -> Unit
+    }
+  }
+
+  /** Whatever the answer, it was asked: it is never asked again. */
+  fun onNotificationPermissionResult(granted: Boolean) {
+    refreshNotificationPermissionState()
+    viewModelScope.launch {
+      markNotificationPermissionRequestedUseCase().onFailure { e ->
+        Log.e(DEBUG_TAG, "Failed to record the notification request", e)
+      }
+    }
+    if (!granted) showToast(ConfigToastMessage.NOTIFICATION_PERMISSION_DECLINED)
+  }
+
+  /** The permission can change in the system settings while this screen is in the background. */
+  fun refreshNotificationPermissionState() {
+    _notificationPermission.value = getNotificationPermissionUseCase()
   }
 
   fun onVpnPermissionAccepted() {

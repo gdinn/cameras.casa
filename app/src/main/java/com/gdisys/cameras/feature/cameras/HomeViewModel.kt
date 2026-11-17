@@ -4,20 +4,25 @@ import android.util.Log
 import androidx.lifecycle.viewModelScope
 import com.gdisys.cameras.core.DEBUG_TAG
 import com.gdisys.cameras.core.ToastEventViewModel
+import com.gdisys.cameras.core.downloads.domain.model.DownloadRequestResult
+import com.gdisys.cameras.core.downloads.domain.model.InterruptedDownload
+import com.gdisys.cameras.core.downloads.domain.usecase.DiscardDownloadsUseCase
+import com.gdisys.cameras.core.downloads.domain.usecase.ObserveInterruptedDownloadsUseCase
+import com.gdisys.cameras.core.downloads.domain.usecase.ResumeDownloadsUseCase
+import com.gdisys.cameras.core.recordings.domain.RecordingFileName
 import com.gdisys.cameras.core.storage.domain.model.StreamOrientation
 import com.gdisys.cameras.core.storage.domain.model.gridFor
 import com.gdisys.cameras.core.storage.domain.model.orderFor
 import com.gdisys.cameras.core.storage.domain.usecase.GetStreamPreferencesUseCase
-import com.gdisys.cameras.core.storage.domain.usecase.GetVpnConfigUseCase
+import com.gdisys.cameras.core.storage.domain.usecase.ObserveIsAdminUseCase
 import com.gdisys.cameras.core.storage.domain.usecase.UpdateStreamOrderUseCase
+import com.gdisys.cameras.core.vpn.domain.TunnelCoordinator
+import com.gdisys.cameras.core.vpn.domain.TunnelHolder
 import com.gdisys.cameras.core.vpn.domain.VpnTunnelState
-import com.gdisys.cameras.core.vpn.domain.usecase.ConnectVpnUseCase
-import com.gdisys.cameras.core.vpn.domain.usecase.DisconnectVpnUseCase
 import com.gdisys.cameras.core.vpn.domain.usecase.ObserveVpnStateUseCase
 import com.gdisys.cameras.core.webrtc.StreamConnectionRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,20 +36,24 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import org.webrtc.VideoSink
 import javax.inject.Inject
 
 private const val EXIT_CONFIRMATION_WINDOW_MS = 2000L
 
+/** Home's registration with the [TunnelCoordinator]. */
+internal val HOME_TUNNEL_HOLDER = TunnelHolder.Screen("home")
+
 @HiltViewModel
 class HomeViewModel @Inject constructor(
   observeVpnStateUseCase: ObserveVpnStateUseCase,
   getStreamPreferencesUseCase: GetStreamPreferencesUseCase,
+  observeIsAdminUseCase: ObserveIsAdminUseCase,
+  observeInterruptedDownloadsUseCase: ObserveInterruptedDownloadsUseCase,
+  private val resumeDownloadsUseCase: ResumeDownloadsUseCase,
+  private val discardDownloadsUseCase: DiscardDownloadsUseCase,
   private val updateStreamOrderUseCase: UpdateStreamOrderUseCase,
-  private val connectVpnUseCase: ConnectVpnUseCase,
-  private val disconnectVpnUseCase: DisconnectVpnUseCase,
-  private val getVpnConfigUseCase: GetVpnConfigUseCase,
+  private val tunnelCoordinator: TunnelCoordinator,
   private val streamConnectionRepository: StreamConnectionRepository
 ) : ToastEventViewModel() {
   private val _uiState: MutableStateFlow<HomeUiState> = MutableStateFlow(HomeUiState.Loading)
@@ -67,11 +76,8 @@ class HomeViewModel @Inject constructor(
   private val _resumed = MutableStateFlow<Boolean?>(null)
 
   /**
-   * Whether the tunnel should be up: Home is resumed *and* has a stream to show. Without URLs Home
-   * is the empty screen, and a tunnel would carry nothing. `null` until the first lifecycle event.
-   *
-   * A StateFlow on purpose: it conflates, so the tunnel collector only ever sees the latest wish,
-   * and it skips values equal to the last one.
+   * Whether Home needs the tunnel: it is resumed *and* has a stream to show. Without URLs Home is
+   * the empty screen, and a tunnel would carry nothing. `null` until the first lifecycle event.
    */
   private val tunnelWanted: StateFlow<Boolean?> = combine(
     _resumed,
@@ -79,15 +85,35 @@ class HomeViewModel @Inject constructor(
   ) { resumed, hasStreams -> resumed?.let { it && hasStreams } }
     .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
+  /** The focused stream, and the camera whose history it offers to an admin. */
+  private val focus = combine(_focusedStream, observeIsAdminUseCase()) { stream, isAdmin ->
+    Focus(stream, stream?.takeIf { isAdmin }?.let(RecordingFileName::cameraOfStreamUrl))
+  }
+
+  /** Downloads the user already answered for (or set aside) on this screen: not asked again. */
+  private val _handledDownloads = MutableStateFlow<Set<String>>(emptySet())
+
+  /**
+   * The downloads that did not end, to offer resuming or discarding them. Only admins download.
+   * The route shows them over a ready Home: resuming needs the tunnel up.
+   */
+  val interruptedDownloads: StateFlow<List<InterruptedDownload>> = combine(
+    observeIsAdminUseCase(),
+    observeInterruptedDownloadsUseCase(),
+    _handledDownloads
+  ) { isAdmin, downloads, handled ->
+    if (isAdmin) downloads.filterNot { it.id in handled } else emptyList()
+  }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
   init {
     viewModelScope.launch {
       combine(
         getStreamPreferencesUseCase(),
         _orientation,
-        _focusedStream,
+        focus,
         _failedStreams,
         observeVpnStateUseCase()
-      ) { preferences, orientation, focusedStream, failedStreams, vpn ->
+      ) { preferences, orientation, currentFocus, failedStreams, vpn ->
         when {
           // With no URLs there is nothing to connect to, and waiting on the VPN would show a
           // spinner that never resolves. This case therefore comes before the tunnel state.
@@ -99,10 +125,11 @@ class HomeViewModel @Inject constructor(
             val streams = preferences.orderFor(orientation)
             HomeUiState.Ready(
               streams = streams,
-              focusedStream = focusedStream,
+              focusedStream = currentFocus.stream,
               grid = preferences.gridFor(orientation),
               orientation = orientation,
-              failedStreams = failedStreams intersect streams.toSet()
+              failedStreams = failedStreams intersect streams.toSet(),
+              historyCamera = currentFocus.historyCamera
             )
           }
         }
@@ -111,21 +138,22 @@ class HomeViewModel @Inject constructor(
       }
     }
 
-    // A single collector applies the lifecycle to the tunnel, so connect and disconnect never
-    // overlap and the last state always wins: StateFlow drops the intermediate states of a quick
-    // pause/resume, and the ones equal to what was last applied. Not collectLatest, which would
-    // cancel a native setState halfway.
+    // The coordinator owns the tunnel: Home only says whether it needs it. Ordering, conflation
+    // and the grace period between two screens are the coordinator's job.
     viewModelScope.launch {
-      var tunnelRequested = false
-      try {
-        tunnelWanted.filterNotNull().collect { wanted ->
-          tunnelRequested = wanted
-          if (wanted) connectVpn() else disconnectVpn()
-        }
-      } finally {
-        // Cleared with a connect as the last operation: the pause arrived while it ran and was
-        // never applied. Home is the only owner of the tunnel, so it goes down with it.
-        if (tunnelRequested) disconnectVpn()
+      tunnelWanted.filterNotNull().collect { wanted ->
+        if (wanted) tunnelCoordinator.request(HOME_TUNNEL_HOLDER) else tunnelCoordinator.release(HOME_TUNNEL_HOLDER)
+      }
+    }
+
+    // A failure is Home's to report only while Home is on display; another screen may hold the
+    // tunnel by then.
+    viewModelScope.launch {
+      tunnelCoordinator.connectFailures.collect { e ->
+        if (_resumed.value != true) return@collect
+        Log.d(DEBUG_TAG, e.message.toString())
+        showToast(HomeToastMessage.VPN_CONNECTION_ERROR)
+        _navigateUiEvent.send(HomeNavigateUiEvent.ToConfig)
       }
     }
   }
@@ -184,6 +212,55 @@ class HomeViewModel @Inject constructor(
     }
   }
 
+  /**
+   * Downloads the interrupted downloads again. Those that could not start (the tunnel dropped, say)
+   * stay recorded and are offered the next time Home opens.
+   */
+  fun onResumeDownloads() {
+    val downloads = takeInterruptedDownloads()
+    if (downloads.isEmpty()) return
+    viewModelScope.launch {
+      runCatching { resumeDownloadsUseCase(downloads) }
+        .onSuccess { results ->
+          showToast(
+            if (results.all { it == DownloadRequestResult.STARTED }) {
+              HomeToastMessage.DOWNLOADS_RESUMED
+            } else {
+              HomeToastMessage.DOWNLOADS_NOT_ALL_RESUMED
+            }
+          )
+        }
+        .onFailure { e ->
+          Log.e(DEBUG_TAG, "Failed to resume the downloads", e)
+          showToast(HomeToastMessage.DOWNLOADS_ACTION_ERROR)
+        }
+    }
+  }
+
+  /** Deletes what the interrupted downloads left and forgets them. */
+  fun onDiscardDownloads() {
+    val downloads = takeInterruptedDownloads()
+    if (downloads.isEmpty()) return
+    viewModelScope.launch {
+      runCatching { discardDownloadsUseCase(downloads) }.onFailure { e ->
+        Log.e(DEBUG_TAG, "Failed to discard the downloads", e)
+        showToast(HomeToastMessage.DOWNLOADS_ACTION_ERROR)
+      }
+    }
+  }
+
+  /** Sets the question aside until Home is opened again; the downloads stay recorded. */
+  fun onInterruptedDownloadsDismissed() {
+    takeInterruptedDownloads()
+  }
+
+  /** The downloads on offer, marked handled so the dialog closes at once and is not answered twice. */
+  private fun takeInterruptedDownloads(): List<InterruptedDownload> {
+    val downloads = interruptedDownloads.value
+    _handledDownloads.update { it + downloads.map(InterruptedDownload::id) }
+    return downloads
+  }
+
   fun onResumed() {
     _resumed.value = true
   }
@@ -192,29 +269,14 @@ class HomeViewModel @Inject constructor(
     _resumed.value = false
   }
 
-  private suspend fun connectVpn() {
-    // NonCancellable: an operation that started finishes even if the ViewModel is cleared, so the
-    // tunnel is never left halfway.
-    val result = withContext(NonCancellable) {
-      getVpnConfigUseCase().mapCatching { config -> connectVpnUseCase(config).getOrThrow() }
-    }
-    result.onFailure { e ->
-      Log.d(DEBUG_TAG, e.message.toString())
-      showToast(HomeToastMessage.VPN_CONNECTION_ERROR)
-      // Sent apart, so the tunnel collector does not wait for the route to collect the event.
-      viewModelScope.launch { _navigateUiEvent.send(HomeNavigateUiEvent.ToConfig) }
-    }
-  }
-
-  private suspend fun disconnectVpn() {
-    withContext(NonCancellable) { disconnectVpnUseCase() }
-  }
-
   override fun onCleared() {
+    tunnelCoordinator.release(HOME_TUNNEL_HOLDER)
     streamConnectionRepository.closeAll()
     super.onCleared()
   }
 }
+
+private data class Focus(val stream: String?, val historyCamera: String?)
 
 sealed interface HomeNavigateUiEvent {
   data object ToConfig : HomeNavigateUiEvent

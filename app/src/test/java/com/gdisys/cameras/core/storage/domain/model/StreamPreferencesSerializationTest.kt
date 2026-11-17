@@ -31,7 +31,8 @@ class StreamPreferencesSerializationTest {
     assertEquals(
       """{"streamUrls":["a"],"portraitOrder":["a"],"landscapeOrder":["a"],""" +
         """"portraitGrid":{"columns":1,"rows":2,"dynamicRows":true},""" +
-        """"landscapeGrid":{"columns":3,"rows":4,"dynamicRows":false},"schemaVersion":1}""",
+        """"landscapeGrid":{"columns":3,"rows":4,"dynamicRows":false},""" +
+        """"notificationPermissionRequested":false,"schemaVersion":1}""",
       encoded
     )
   }
@@ -46,6 +47,22 @@ class StreamPreferencesSerializationTest {
 
     assertEquals(listOf("a"), decoded.streamUrls)
     assertEquals(STREAM_PREFERENCES_SCHEMA_VERSION, decoded.schemaVersion)
+  }
+
+  @Test
+  fun `a file written before the notification flag existed has not asked yet`() {
+    val legacy = """{"streamUrls":["a"],"schemaVersion":1}"""
+
+    val decoded = json.decodeFromString(StreamPreferences.serializer(), legacy)
+
+    assertEquals(false, decoded.notificationPermissionRequested)
+    assertEquals(
+      true,
+      json.decodeFromString(
+        StreamPreferences.serializer(),
+        json.encodeToString(StreamPreferences.serializer(), decoded.copy(notificationPermissionRequested = true))
+      ).notificationPermissionRequested
+    )
   }
 
   @Test

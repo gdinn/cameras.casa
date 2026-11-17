@@ -84,3 +84,32 @@
 # builds, and `GoBackend$VpnService` is declared in AndroidManifest.xml.
 -keep class com.wireguard.** { *; }
 -dontwarn com.wireguard.**
+
+# ---------------------------------------------------------------------------
+# Samba — com.hierynomus:smbj (+ net.engio:mbassador)
+# ---------------------------------------------------------------------------
+# smbj delivers its internal events (session logoff, connection close) through mbassador, which
+# finds the listener methods by their @Handler annotation and builds its dispatchers by reflection.
+# Nothing in code calls those methods or constructors, so R8 would strip or rename them and the
+# events would be lost without any error. The library is small, so it is kept whole, along with
+# the @Handler methods of every listener.
+-keep class net.engio.mbassy.** { *; }
+-keepclassmembers class * {
+    @net.engio.mbassy.listener.Handler <methods>;
+}
+# Optional paths that Android does not provide and the app never takes: mbassador's EL filters
+# (javax.el) and smbj's Kerberos/SPNEGO login (org.ietf.jgss). The app logs in with NTLM.
+-dontwarn javax.el.**
+-dontwarn org.ietf.jgss.**
+
+# ---------------------------------------------------------------------------
+# Room databases — androidx.work (WorkManager keeps its jobs in a Room database)
+# ---------------------------------------------------------------------------
+# Room creates the generated `<Database>_Impl` by reflection, through its no-argument constructor.
+# Nothing constructs it in code, so R8 in full mode removes that constructor, and WorkManager then
+# fails on first use with `NoSuchMethodException: androidx.work.impl.WorkDatabase_Impl.<init> []`.
+# Found on e2eRelease: Home builds the download repository, so every user's Home crashed. Same class
+# of bug as the ML Kit registrars above: keeping the name is not enough, `<init>()` must stay.
+-keep class * extends androidx.room.RoomDatabase {
+    <init>();
+}

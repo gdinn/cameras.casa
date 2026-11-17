@@ -1,0 +1,81 @@
+---
+title: "MVVM - History and RecordingPlayer routes (feature/history)"
+---
+flowchart LR
+  classDef view fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
+  classDef vm fill:#fff3e0,stroke:#ef6c00,color:#e65100
+  classDef model fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
+  classDef data fill:#eceff1,stroke:#455a64,color:#263238
+  classDef logic fill:#fce4ec,stroke:#ad1457,color:#880e4f
+
+  subgraph V["VIEW - Composables"]
+    direction TB
+    Nav["NavigationRoot<br/>History(camera), RecordingPlayer(camera, fileName, nearestNotice)"]
+    HRoute["HistoryRoute"]
+    HScreen["HistoryScreen<br/>months (accordion) and days"]
+    Picker["TimePickerSheet<br/>96 slots of 15 minutes"]
+    PRoute["RecordingPlayerRoute<br/>asks the storage permission (Android 8-9)"]
+    PScreen["RecordingPlayerScreen<br/>previous / next, download, notice"]
+    Video["RecordingPlayer.Video<br/>(PlayerView)"]
+    Nav --> HRoute
+    HRoute --> HScreen
+    HScreen --> Picker
+    Nav --> PRoute
+    PRoute --> PScreen
+    PScreen --> Video
+  end
+
+  subgraph VMG["VIEWMODELS"]
+    direction TB
+    HVM["HistoryViewModel<br/>HistoryUiState(camera, content, picker)"]
+    PVM["RecordingPlayerViewModel<br/>RecordingPlayerUiState(recording, notice, status, looking, download)"]
+  end
+
+  subgraph L["FEATURE LOGIC - pure"]
+    Slots["TimeSlots.kt: DAY_SLOTS, recordedSlots,<br/>nearestRecording (later one on a tie)"]
+  end
+
+  subgraph M["MODEL - domain and contracts"]
+    direction TB
+    UCmonths["GetRecordingMonths / GetRecordingDays /<br/>GetRecordingsOfDay UseCase"]
+    UCnext["GetNeighborRecordingUseCase"]
+    UCdl["DownloadRecording / ObserveRecordingDownload UseCase"]
+    Coord["TunnelCoordinator<br/>request / release, one holder per screen"]
+    Player["RecordingPlayer (contract)<br/>one per ViewModel"]
+  end
+
+  subgraph D["DATA / EXTERNAL"]
+    direction TB
+    Repo["RecordingsRepositoryImpl -> SmbjRecordingsShare<br/>(listing connection, LeasedResource)"]
+    Exo["ExoRecordingPlayer -> SmbDataSource<br/>(own SMB session, 1 MB read-ahead)"]
+    Work["WorkManagerDownloadRepository -> RecordingDownloadWorker<br/>-> Download/Cameras"]
+    Pi["Raspberry Pi<br/>Samba share backup_cams (SMB 3.1.1)"]
+  end
+
+  HRoute -->|"onResumed/onPaused, onMonthClicked, onDayClicked,<br/>onSlotSelected, onRetry"| HVM
+  HVM -->|"uiState; ToPlayer(choice)"| HRoute
+  HRoute -->|"onNavigateToPlayer(camera, fileName, nearestNotice)"| Nav
+  PRoute -->|"onResumed/onPaused, onPrevious/onNext,<br/>onRetry, onDownload(storageGranted)"| PVM
+  PVM -->|"uiState; toasts"| PRoute
+
+  HVM --> Slots
+  HVM --> UCmonths
+  HVM --> Coord
+  PVM --> UCnext
+  PVM --> UCdl
+  PVM --> Coord
+  PVM -->|"play / stop / release"| Player
+
+  UCmonths --> Repo
+  UCnext --> Repo
+  Player --> Exo
+  UCdl --> Work
+  Repo --> Pi
+  Exo --> Pi
+  Work --> Pi
+
+  class Nav,HRoute,HScreen,Picker,PRoute,PScreen,Video view
+  class HVM,PVM vm
+  class Slots logic
+  class UCmonths,UCnext,UCdl,Coord,Player model
+  class Repo,Exo,Work,Pi data

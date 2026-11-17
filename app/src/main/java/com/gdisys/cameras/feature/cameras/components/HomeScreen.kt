@@ -13,7 +13,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -49,7 +53,9 @@ fun HomeScreen(
   onFocusStream: (String) -> Unit,
   onClearFocusedStream: () -> Unit,
   onStreamsReordered: (List<String>) -> Unit,
-  onNavigateToConfig: () -> Unit
+  onNavigateToConfig: () -> Unit,
+  historyCamera: String? = null,
+  onOpenHistory: (camera: String) -> Unit = {}
 ) {
 
   val gridState = rememberLazyGridState()
@@ -133,6 +139,21 @@ fun HomeScreen(
             onNavigateToConfig = onNavigateToConfig,
             playerFor = ::movablePlayerFor
           )
+        }
+
+        if (focusedStream != null && historyCamera != null) {
+          FilledTonalIconButton(
+            onClick = { onOpenHistory(historyCamera) },
+            modifier = Modifier
+              .align(Alignment.TopEnd)
+              .padding(16.dp)
+              .testTag(HomeTestTags.HISTORY_BUTTON)
+          ) {
+            Icon(
+              imageVector = Icons.Filled.History,
+              contentDescription = stringResource(R.string.home_screen_open_history)
+            )
+          }
         }
       }
     }

@@ -11,3 +11,8 @@ annotation class UserPreferencesStore
 @Qualifier
 @Retention(AnnotationRetention.BINARY)
 annotation class StreamPreferencesStore
+
+/** Disambiguates the `DataStore<DownloadRecords>` (unfinished downloads) in the Hilt graph. */
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class DownloadRecordsStore

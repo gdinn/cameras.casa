@@ -4,9 +4,12 @@ import androidx.annotation.StringRes
 import com.gdisys.cameras.R
 import com.gdisys.cameras.core.ToastMessage
 
-enum class HomeToastMessage(@StringRes override val resId: Int) : ToastMessage {
+enum class HomeToastMessage(@get:StringRes override val resId: Int) : ToastMessage {
   VPN_CONNECTION_ERROR(R.string.home_route_vpn_connection_error),
   STREAM_CONNECTION_ERROR(R.string.home_route_stream_connection_error),
   PRESS_BACK_AGAIN_TO_EXIT(R.string.home_route_press_back_again_to_exit),
   STREAM_ORDER_SAVE_ERROR(R.string.home_route_stream_order_save_error),
+  DOWNLOADS_RESUMED(R.string.home_route_downloads_resumed),
+  DOWNLOADS_NOT_ALL_RESUMED(R.string.home_route_downloads_not_all_resumed),
+  DOWNLOADS_ACTION_ERROR(R.string.home_route_downloads_action_error),
 }

@@ -16,6 +16,8 @@ import androidx.navigation.compose.composable
 import com.gdisys.cameras.feature.cameras.HomeRoute
 import com.gdisys.cameras.feature.config.ConfigRoute
 import com.gdisys.cameras.feature.config.QR_CODE_RESULT_KEY
+import com.gdisys.cameras.feature.history.HistoryRoute
+import com.gdisys.cameras.feature.history.player.RecordingPlayerRoute
 import com.gdisys.cameras.feature.init.InitRoute
 import com.gdisys.cameras.feature.qrcode.QrCodeRoute
 import com.gdisys.cameras.feature.streamurls.StreamURLsRoute
@@ -97,6 +99,28 @@ fun NavigationRoot(
       HomeRoute(
         onNavigateToConfig = {
           navController.navigate(NavigationRoute.Config)
+        },
+        onNavigateToHistory = { camera ->
+          navController.navigate(NavigationRoute.History(camera))
+        }
+      )
+    }
+
+    composable<NavigationRoute.History> {
+      HistoryRoute(
+        onNavigateBack = {
+          navController.popBackStack()
+        },
+        onNavigateToPlayer = { camera, fileName, nearestNotice ->
+          navController.navigate(NavigationRoute.RecordingPlayer(camera, fileName, nearestNotice))
+        }
+      )
+    }
+
+    composable<NavigationRoute.RecordingPlayer> {
+      RecordingPlayerRoute(
+        onNavigateBack = {
+          navController.popBackStack()
         }
       )
     }

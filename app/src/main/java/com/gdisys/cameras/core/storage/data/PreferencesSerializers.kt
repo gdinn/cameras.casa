@@ -1,12 +1,14 @@
 package com.gdisys.cameras.core.storage.data
 
+import com.gdisys.cameras.core.storage.domain.model.DownloadRecords
 import com.gdisys.cameras.core.storage.domain.model.StreamPreferences
 import com.gdisys.cameras.core.storage.domain.model.UserPreferences
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 
 /*
- * The serializers behind `userPreferencesDataStore` and `streamPreferencesDataStore`, exposed so
+ * The serializers behind `userPreferencesDataStore`, `streamPreferencesDataStore` and
+ * `downloadRecordsDataStore`, exposed so
  * instrumented tests can build a store with the same encoding on a file and Keystore alias of
  * their own (`DataStoreFactory.create`), instead of sharing the production file, which lives for
  * the whole process.
@@ -33,6 +35,16 @@ internal fun streamPreferencesSerializer(
 ) = EncryptedPreferencesSerializer(
   serializer = StreamPreferences.serializer(),
   defaultValue = StreamPreferences(),
+  crypto = crypto,
+  ioDispatcher = ioDispatcher
+)
+
+internal fun downloadRecordsSerializer(
+  crypto: CryptoEngine,
+  ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+) = EncryptedPreferencesSerializer(
+  serializer = DownloadRecords.serializer(),
+  defaultValue = DownloadRecords(),
   crypto = crypto,
   ioDispatcher = ioDispatcher
 )
