@@ -10,6 +10,7 @@ import com.gdisys.cameras.core.DEBUG_TAG
 import com.gdisys.cameras.core.coroutines.IoDispatcher
 import com.gdisys.cameras.core.recordings.data.RecordingFileSources
 import com.gdisys.cameras.core.recordings.data.open
+import com.gdisys.cameras.core.storage.domain.DownloadRecordsRepository
 import com.gdisys.cameras.core.vpn.domain.TunnelCoordinator
 import com.gdisys.cameras.core.vpn.domain.TunnelHolder
 import dagger.assisted.Assisted
@@ -23,11 +24,14 @@ import kotlinx.coroutines.withContext
  * Copies one recording from the share to `Download/Cameras`, as a `dataSync` foreground service.
  *
  * - **Tunnel:** the download's [TunnelHolder] was taken when it was enqueued, while the tunnel was
- *   up. No holder means this run is WorkManager's re-run after the process died: the worker fails
- *   as interrupted, without touching the network. It never raises the tunnel.
+ *   up. No holder means this run is WorkManager's re-run after the process died: the worker marks
+ *   the record interrupted and fails, without touching the network. It never raises the tunnel.
+ * - **Record:** it notes where the partial file is as soon as it exists, so a process death leaves
+ *   enough to delete it; success removes the record (see `DownloadRecordRules.kt`).
  * - **Progress:** published as work progress and on the notification, once per percent.
  * - **Cancel** (the notification's action, or the app swiped away): the copy stops within a chunk
- *   and the partial file is deleted.
+ *   and the partial file is deleted. A user cancel forgets the download; a swipe leaves it
+ *   reported as interrupted (`interruptAll` marked it first).
  * - **Failure:** the partial file is deleted and a notification says so. No retry: the user asks
  *   again.
  *
@@ -42,12 +46,15 @@ class RecordingDownloadWorker @AssistedInject constructor(
   private val fileSources: RecordingFileSources,
   private val outputs: DownloadOutputs,
   private val notifications: DownloadNotifications,
+  private val records: DownloadRecordsRepository,
   @param:IoDispatcher private val io: CoroutineDispatcher
 ) : CoroutineWorker(context, params) {
 
   override suspend fun doWork(): Result {
     val recording = inputData.toRecording() ?: return Result.failure(workDataOf(KEY_FAILURE to FAILURE_ERROR))
-    if (!tunnelCoordinator.holds(TunnelHolder.Download(id.toString()))) {
+    val workId = id.toString()
+    if (!tunnelCoordinator.holds(TunnelHolder.Download(workId))) {
+      records.update { it.interrupted(workId) }
       return Result.failure(workDataOf(KEY_FAILURE to FAILURE_INTERRUPTED))
     }
     setForeground(notifications.foregroundInfo(id, recording, percent = null))
@@ -58,6 +65,7 @@ class RecordingDownloadWorker @AssistedInject constructor(
       try {
         files.open(recording).use { file ->
           val output = outputs.create(recording.fileName).also { pending = it }
+          records.update { it.withPartialFile(workId, output.reference) }
           var lastPercent = -1
           val complete = copyRecording(
             file = file,
@@ -75,15 +83,20 @@ class RecordingDownloadWorker @AssistedInject constructor(
           if (!complete) throw CancellationException("Download stopped")
           val savedAs = output.publish()
           pending = null
+          records.update { it.afterSuccess(workId) }
           notifications.showFinished(id, recording, savedAs)
           Result.success(workDataOf(KEY_SAVED_AS to savedAs))
         }
       } catch (e: CancellationException) {
-        withContext(NonCancellable) { pending?.discard() }
+        withContext(NonCancellable) {
+          pending?.discard()
+          records.update { it.afterStop(workId) }
+        }
         throw e
       } catch (e: Exception) {
         Log.d(DEBUG_TAG, "Downloading ${recording.fileName} failed: $e")
         pending?.discard()
+        records.update { it.afterFailure(workId) }
         notifications.showFailed(id, recording)
         Result.failure(workDataOf(KEY_FAILURE to FAILURE_ERROR))
       } finally {

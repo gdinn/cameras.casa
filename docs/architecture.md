@@ -485,7 +485,7 @@ configuration.
 | ViewModel | `HomeViewModel.kt` |
 | State | `HomeUiState.kt` — `Loading` \| `Empty` \| `Ready(streams, focusedStream, grid, orientation, failedStreams, historyCamera)` |
 | Logic | `logic/StreamPaging.kt`, `logic/FixedGridLayout.kt` |
-| Model | 4 use cases + `TunnelCoordinator` + `StreamConnectionRepository` |
+| Model | 7 use cases + `TunnelCoordinator` + `StreamConnectionRepository` |
 
 **State composition.** `HomeUiState` is a single `combine` of five sources — persisted preferences,
 orientation, the focus (focused stream plus admin status), failed streams and VPN tunnel state — collected into a `MutableStateFlow`. The
@@ -562,6 +562,14 @@ Another screen may hold the tunnel by then, and that one reports it.
   `historyCamera` when the user is an admin (`ObserveIsAdminUseCase`) and the focused URL names a
   camera (`RecordingFileName.cameraOfStreamUrl`: its last path segment, `cam_` plus digits). The
   focused view then shows a history button in its top-end corner, which opens `History(camera)`.
+- **Unfinished downloads are offered on Home, to admins.** `interruptedDownloads` (a `StateFlow`
+  apart from `HomeUiState`) lists what `ObserveInterruptedDownloadsUseCase` reports.
+  - `HomeRoute` shows `InterruptedDownloadsDialog` over a ready Home only, since resuming needs
+    the tunnel.
+  - "Resume" and "Discard" go to their use cases.
+  - Dismissing sets the question aside until Home opens again.
+  - Answered downloads are marked handled at once, so the dialog closes and cannot be answered
+    twice.
 - **Back press is a two-stage exit.** The first press toasts "press back again"; a second press
   within a 2 s window emits `ExitApp` and the route calls `activity.finish()`.
 - `onCleared()` calls `streamConnectionRepository.closeAll()`.
@@ -679,7 +687,8 @@ key does not invalidate the other:
 | Store | File | Model | Alias |
 |---|---|---|---|
 | User preferences | `user-preferences` | `UserPreferences` (VPN credentials, admin's Samba login) | `gdi-sys-storage` |
-| Stream preferences | `stream-preferences` | `StreamPreferences` (URLs, orders, grids) | `gdi-sys-stream-preferences` |
+| Stream preferences | `stream-preferences` | `StreamPreferences` (URLs, orders, grids, whether notifications were asked) | `gdi-sys-stream-preferences` |
+| Download records | `download-records` | `DownloadRecords` (downloads not yet ended well, §6.10) | `gdi-sys-download-records` |
 
 The file names and aliases are released values, kept as constants next to each `by dataStore`
 delegate (`DataStore.kt`, `StreamPreferencesDataStore.kt`). `PreferencesSerializersTest` pins them,
@@ -741,7 +750,7 @@ transform underneath is what makes a partial write possible when one is needed.
 | `VpnRepository` / `VpnRepositoryImpl` | Wraps `GoBackend`; exposes `StateFlow<VpnTunnelState>`. The consent `Intent` belongs to `core/permission` (§6.4) |
 | `TunnelCoordinator` / `TunnelCoordinatorImpl` | The single owner of the tunnel. Screens (and, later, downloads) register as `TunnelHolder`s; see below |
 | `VpnLifecycleController` / `Impl` | Starts and stops `VpnLifecycleService` |
-| `VpnLifecycleService` | `START_STICKY` service whose only job is to drop the tunnel on `onTaskRemoved` / `onDestroy`, through `VpnTeardown`. On `onTaskRemoved` it first calls `TunnelCoordinator.clear()`, so no holder left registered brings the tunnel back |
+| `VpnLifecycleService` | `START_STICKY` service whose only job is to drop the tunnel on `onTaskRemoved` / `onDestroy`, through `VpnTeardown`. On `onTaskRemoved` it first calls `TunnelCoordinator.clear()`, so no holder left registered brings the tunnel back, then interrupts the running downloads (`InterruptDownloadsUseCase`, §6.10) |
 | `VpnTeardown` | The service's logic, kept out of it to be JVM-testable: disconnects at most once per service instance (`onTaskRemoved` stops the service, which then reaches `onDestroy`), retries after a failure, and logs instead of throwing, since the service scope has no exception handler |
 | `VpnConfig` | Domain model, plus `isValid()` |
 | Use cases (3) | `ConnectVpnUseCase`, `DisconnectVpnUseCase`, `ObserveVpnStateUseCase` |
@@ -1061,11 +1070,38 @@ factory as the player: a session with its own SMB client per download. This is t
 one area's `data` uses another's, kept because the file source is the recordings area's single way
 to read a file.
 
+**Unfinished downloads.** A download that does not end well is reported the next time Home opens,
+with the choice to start it again or drop it. Either way its partial file is deleted.
+
+- **Records.** Each download has a `DownloadRecord` in the encrypted `download-records` store
+  (§6.1), from the request until it succeeds or the user cancels it. It notes the partial file as
+  soon as it exists: a MediaStore URI, or the `.part` path before Android 10.
+  `DownloadRecordRules.kt` says how each moment changes it.
+- **App swiped from recents.** `VpnLifecycleService.onTaskRemoved` calls `interruptAll`. It marks
+  the running records `INTERRUPTED`, then cancels the work by tag. The cancelled workers delete
+  their partial files and keep the records, because they are no longer `RUNNING` (`afterStop`). A
+  user cancel finds its record still `RUNNING` and forgets it.
+- **Process death.** WorkManager re-runs the work in the new process. The worker finds no tunnel
+  holder (holders live in memory), marks the record `INTERRUPTED` and fails. The partial file stays
+  noted.
+- **Startup.** Any record still `RUNNING` whose holder this process does not hold also counts as
+  interrupted. This covers a process that died before WorkManager re-ran its work.
+- **Failure.** A read or write failure deletes the partial file and marks the record `FAILED`. It
+  is offered the same way.
+- **Resume / Discard.** Both delete the noted partial files (`DownloadOutputs.deletePartial`) and
+  remove the records. Resume then requests the downloads again, which needs the tunnel up: Home
+  only offers them while it is ready.
+
 **Tests.**
 
-- **Unit-tested:** `copyRecording`, `freeFileName` and `DownloadWork.kt`;
-  `WorkManagerDownloadRepository` against a mocked `WorkManager` (unique work, holder taken and
-  released, duplicate, tunnel down, status); the use cases.
+- **Unit-tested:** `copyRecording`, `freeFileName`, `DownloadWork.kt` and `DownloadRecordRules.kt`;
+  `WorkManagerDownloadRepository` against a mocked `WorkManager`, covering:
+  - unique work, holder taken and released, duplicate, tunnel down, status;
+  - records, interrupted downloads, discard, resume, and `interruptAll` marking before it cancels.
+- **Also unit-tested:** the use cases, `DownloadRecordsRepositoryImpl`, and the store's file name,
+  alias and serial names (`PreferencesSerializersTest`).
+- **Instrumented tests:** `TestDownloadsModule` binds `FakeDownloadRepository`. WorkManager starts
+  through `CamerasApp`'s configuration, which `HiltTestApplication` lacks.
 - **Excluded from coverage:** the worker, `DeviceDownloadOutputs` and `DownloadNotifications`,
   which need WorkManager, MediaStore, notifications or the server.
 
@@ -1311,7 +1347,7 @@ runtime.
 
 ## 10. Testing and quality gates
 
-**73 test files** under `app/src/test/`, mirroring the production package structure. Coverage is
+**75 test files** under `app/src/test/`, mirroring the production package structure. Coverage is
 concentrated where the project decided it belongs: ViewModels, use cases, repository
 implementations, pure logic and serialization.
 
@@ -1322,7 +1358,7 @@ implementations, pure logic and serialization.
 | Storage | `EncryptedPreferencesSerializerTest`, `StreamPreferencesSerializationTest`, `DataStoreManagerTest`, repository and all 8 use-case tests |
 | VPN | `VpnRepositoryImplTest`, `VpnConfigTest`, `VpnLifecycleControllerImplTest`, `VpnTeardownTest`, 4 use-case tests |
 | WebRTC | `WhepConnectionManagerTest`, `WhepRemoteDataSourceImplTest` (MockWebServer) |
-| Downloads | `RecordingCopierTest`, `FileNamesTest`, `DownloadWorkTest`, `WorkManagerDownloadRepositoryTest`, `DownloadUseCasesTest` |
+| Downloads | `DownloadRecordRulesTest`, `RecordingCopierTest`, `FileNamesTest`, `DownloadWorkTest`, `WorkManagerDownloadRepositoryTest`, `DownloadUseCasesTest` |
 | Recordings | `RecordingFileSourcesTest`, `RecordingsUseCasesTest`, `RecordingsRepositoryImplTest`, `LeasedResourceTest`, `ReadAheadReaderTest`, `SmbErrorsTest`, `ConnectTimeoutSocketFactoryTest`, `RecordingFileNameTest`, `RecordingSlotsTest`, `RecordingPathsTest` |
 | Architecture | `LayerDependencyTest` (Konsist) |
 | Config drift | `StreamHostTest` (Kotlin constant vs. XML), `JacocoExclusionsTest` (coverage patterns vs. compiled classes) |
@@ -1377,6 +1413,7 @@ service test, one dispatcher test and the default example), with packages mirror
 | `IdlingDispatcherTest` (2) | `IdlingDispatcher` is busy while its work runs and reports the transition to idle; the Compose test rule waits for main → `TestDispatchers.default` → `TestDispatchers.io` → main with no `waitUntil` |
 | `WebRtcVideoPlayerTest` (4) | The real player over a recording `WebRtcConnection`: `CONNECTING` with a spinner before any frame; real I420 frames fed into the sink turn it `PLAYING`; a stream in `LocalFailedStreams` is `FAILED` and shows `StreamErrorOverlay`; "Try again" disconnects and connects the same renderer again |
 | `HomeScreenTest` (14) | The real `HomeScreen` with fake callbacks: the move accessibility actions reorder one place and are absent at the ends; "Reconfigure" is an action in dynamic mode only; one real drag per grid mode reorders on drop; overscrolling the dynamic grid reveals "Reconfigure"; the fixed grid always shows it; the page buttons move between pages; "Reconfigure" never covers the page buttons; a focused stream replaces the grid; the focused view shows the history button only with a camera, and it opens that camera's history |
+| `InterruptedDownloadsDialogTest` (2) | The interrupted downloads dialog lists each download with its camera and reason, and reports Resume and Discard |
 | `HistoryScreenTest` (10) | The History screen with hand-written states: loading and back; a failure's message and retry; empty; a month in each state (expanded with days, failed, loading, no days, collapsed, with the state description); month clicks and a month's retry are reported; a day reports its click; the time picker marks the recorded slots, reports any chosen slot, and shows its loading, empty and failed states |
 | `RecordingPlayerScreenTest` (6) | The player screen with a placeholder video: playing shows the video and the buttons and back report; the nearest-recording notice; both buttons disabled while a neighbor is looked up; a failure's message and retry; the ended state; the download button's state description follows the download (none, running, done) and clicks are reported |
 | `SmbDataSourceTest` (7) | The media3 data source over a fake file source: the URI is the path on the share; a whole file comes out in 1 MB reads; a seek opens at its position; a bounded spec stops at its length; a position past the end is refused; a read failure reaches the player as an `IOException` carrying the domain failure; close closes the file |
@@ -1457,6 +1494,11 @@ shows and which callback each interaction fires, with no Hilt, navigation or fak
   resolves (`CONSENT_ACTION`). Tests answer it with `stubConsentDialog(accept)`, which needs
   Espresso-Intents to be recording (`IntentsRule`). Accepting also sets `granted`, so later reads
   agree, as they do after the system dialog.
+- **`TestDownloadsModule`** replaces `DownloadsModule` with `FakeDownloadRepository`
+  (`testing/FakeDownloadRepository.kt`). WorkManager only starts with `CamerasApp`'s configuration,
+  which `HiltTestApplication` lacks, and Home asks for interrupted downloads as soon as it opens.
+  The fake records requests, resumes, discards and `interruptAll`. Tests set the statuses and the
+  interrupted list.
 - **`TestStreamConnectionModule`** replaces `WhepConnectionModule` (in `ViewModelComponent`) with
   `FakeStreamConnectionRepository` (`testing/FakeStreamConnections.kt`). Like the real one, it is
   unscoped: one instance per ViewModel, and `closeAll` closes only that ViewModel's URLs. Every

@@ -130,4 +130,12 @@
     <string name="config_screen_notifications_subtitle">Opcional: mostra o progresso dos downloads de gravações</string>
     <string name="config_route_notifications_already_granted">Notificações já permitidas</string>
     <string name="config_route_notifications_declined">Notificações recusadas. Os downloads rodam sem elas; dá para permitir nas configurações do sistema</string>
+    <string name="home_interrupted_downloads_title">Downloads não concluídos</string>
+    <string name="home_interrupted_downloads_message">Estas gravações não terminaram de baixar. Retomar começa de novo; nos dois casos os arquivos incompletos são apagados.</string>
+    <string name="home_interrupted_downloads_reason_interrupted">interrompido</string>
+    <string name="home_interrupted_downloads_reason_failed">falhou</string>
+    <string name="home_interrupted_downloads_resume">Retomar</string>
+    <string name="home_interrupted_downloads_discard">Descartar</string>
+    <string name="home_route_downloads_resumed">Downloads iniciados de novo</string>
+    <string name="home_route_downloads_action_error">Falha ao tratar os downloads não concluídos</string>
 </resources>

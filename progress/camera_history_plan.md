@@ -688,7 +688,48 @@ device: the step declined once is not asked again, and a download starts with no
 - Manual device check: background + lock during a download (tunnel stays up and drops at the end);
   swipe during a download; `adb shell am kill` during a download.
 
-**Outcome.** _pending_
+**Outcome (2026-11-17).** `jacocoTestCoverageVerification` passed (unit tests, Konsist, 90%
+gate). The whole instrumented suite passed on an SM-S721B (145 tests), Home's flows included over
+the fake downloads.
+
+The first device run did not compile: `InterruptedDownloadsDialogTest` imported `onAllNodes`,
+which is a member of the compose rule. Fixed.
+
+Manual check with the admin peer:
+- a download stopped by swiping the app from recents is offered on the next launch;
+- Resume starts it again.
+
+Not reported yet: the process death check (`adb shell am kill`) and Discard.
+
+**What was built** (`docs/architecture.md` §5.5, §6.1, §6.2, §6.10, §10)
+
+- `core/storage`:
+  - the encrypted `download-records` store: `DownloadRecords` / `DownloadRecord` /
+    `DownloadRecordState`, `DownloadRecordsRepository`;
+  - provided by `StorageModule`, and by `TestStorageModule` in the instrumented tests.
+- `core/downloads`:
+  - `DownloadRecordRules.kt` (pure);
+  - `interrupted`, `resume`, `discard` and `interruptAll` on the repository, with four use cases;
+  - `DownloadOutputs.deletePartial` and `PendingDownload.reference`.
+- Worker:
+  - notes the partial file in the record;
+  - success removes the record, a user cancel forgets it, a stop after a swipe keeps it;
+  - a failure marks it `FAILED`, and no holder marks it `INTERRUPTED`.
+- `VpnLifecycleService.onTaskRemoved` interrupts the downloads before the teardown.
+- Home: `interruptedDownloads` (admins only) and `InterruptedDownloadsDialog` over a ready Home,
+  with Resume and Discard.
+- `TestDownloadsModule` + `FakeDownloadRepository`. Without them, every Hilt test that opens Home
+  would fail: WorkManager does not start under `HiltTestApplication`.
+
+**Deviations and decisions**
+
+1. **No startup job for "reconciling" records.** A record still `RUNNING` without a tunnel holder
+   in this process is reported as interrupted when Home asks. It is the same rule, applied when it
+   is needed, with nothing to schedule.
+2. **Dismissing the dialog (back, outside)** sets it aside until Home opens again; the records stay.
+3. **The records live in `core/storage`,** like the other two stores, so the instrumented tests'
+   `TestStorageModule` keeps covering every file the app writes.
+
 
 ### Step 11 — Instrumented flows, release check, docs
 

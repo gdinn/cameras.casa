@@ -154,4 +154,12 @@
     <string name="config_screen_notifications_subtitle">Optional: shows the progress of recording downloads</string>
     <string name="config_route_notifications_already_granted">Notifications already allowed</string>
     <string name="config_route_notifications_declined">Notifications declined. Downloads run without them; they can be allowed in the system settings</string>
+    <string name="home_interrupted_downloads_title">Downloads not finished</string>
+    <string name="home_interrupted_downloads_message">These recordings did not finish downloading. Resuming starts them again; either way the incomplete files are deleted.</string>
+    <string name="home_interrupted_downloads_reason_interrupted">interrupted</string>
+    <string name="home_interrupted_downloads_reason_failed">failed</string>
+    <string name="home_interrupted_downloads_resume">Resume</string>
+    <string name="home_interrupted_downloads_discard">Discard</string>
+    <string name="home_route_downloads_resumed">Downloads started again</string>
+    <string name="home_route_downloads_action_error">Could not handle the unfinished downloads</string>
 </resources>

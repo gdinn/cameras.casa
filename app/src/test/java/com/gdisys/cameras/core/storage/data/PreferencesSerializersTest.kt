@@ -1,5 +1,8 @@
 package com.gdisys.cameras.core.storage.data
 
+import com.gdisys.cameras.core.storage.domain.model.DownloadRecord
+import com.gdisys.cameras.core.storage.domain.model.DownloadRecordState
+import com.gdisys.cameras.core.storage.domain.model.DownloadRecords
 import com.gdisys.cameras.core.storage.domain.model.SmbCredentials
 import com.gdisys.cameras.core.storage.domain.model.StreamPreferences
 import com.gdisys.cameras.core.storage.domain.model.UserPreferences
@@ -27,6 +30,8 @@ class PreferencesSerializersTest {
     assertEquals("gdi-sys-storage", USER_PREFERENCES_KEY_ALIAS)
     assertEquals("stream-preferences", STREAM_PREFERENCES_FILE_NAME)
     assertEquals("gdi-sys-stream-preferences", STREAM_PREFERENCES_KEY_ALIAS)
+    assertEquals("download-records", DOWNLOAD_RECORDS_FILE_NAME)
+    assertEquals("gdi-sys-download-records", DOWNLOAD_RECORDS_KEY_ALIAS)
   }
 
   @Test
@@ -76,5 +81,35 @@ class PreferencesSerializersTest {
 
     assertEquals(StreamPreferences(), serializer.defaultValue)
     assertEquals(preferences, serializer.readFrom(ByteArrayInputStream(output.toByteArray())))
+  }
+
+  @Test
+  fun `downloadRecordsSerializer defaults to no records and round-trips through crypto`() = runTest {
+    val serializer = downloadRecordsSerializer(crypto)
+    val records = DownloadRecords(
+      listOf(
+        DownloadRecord("a", "cam_10", "cam_10_2026-11-10_15-00-00.mp4", DownloadRecordState.INTERRUPTED, "content://media/1")
+      )
+    )
+
+    val output = ByteArrayOutputStream()
+    serializer.writeTo(records, output)
+
+    assertEquals(DownloadRecords(), serializer.defaultValue)
+    assertEquals(records, serializer.readFrom(ByteArrayInputStream(output.toByteArray())))
+  }
+
+  @Test
+  fun `download records keep their serial names`() {
+    val encoded = EncryptedPreferencesSerializer.json.encodeToString(
+      DownloadRecords.serializer(),
+      DownloadRecords(listOf(DownloadRecord("a", "cam_10", "f.mp4", DownloadRecordState.FAILED)))
+    )
+
+    assertEquals(
+      """{"records":[{"workId":"a","camera":"cam_10","fileName":"f.mp4","state":"failed","partialFile":null}],""" +
+        """"schemaVersion":1}""",
+      encoded
+    )
   }
 }

@@ -4,6 +4,10 @@ import android.util.Log
 import androidx.lifecycle.viewModelScope
 import com.gdisys.cameras.core.DEBUG_TAG
 import com.gdisys.cameras.core.ToastEventViewModel
+import com.gdisys.cameras.core.downloads.domain.model.InterruptedDownload
+import com.gdisys.cameras.core.downloads.domain.usecase.DiscardDownloadsUseCase
+import com.gdisys.cameras.core.downloads.domain.usecase.ObserveInterruptedDownloadsUseCase
+import com.gdisys.cameras.core.downloads.domain.usecase.ResumeDownloadsUseCase
 import com.gdisys.cameras.core.recordings.domain.RecordingFileName
 import com.gdisys.cameras.core.storage.domain.model.StreamOrientation
 import com.gdisys.cameras.core.storage.domain.model.gridFor
@@ -44,6 +48,9 @@ class HomeViewModel @Inject constructor(
   observeVpnStateUseCase: ObserveVpnStateUseCase,
   getStreamPreferencesUseCase: GetStreamPreferencesUseCase,
   observeIsAdminUseCase: ObserveIsAdminUseCase,
+  observeInterruptedDownloadsUseCase: ObserveInterruptedDownloadsUseCase,
+  private val resumeDownloadsUseCase: ResumeDownloadsUseCase,
+  private val discardDownloadsUseCase: DiscardDownloadsUseCase,
   private val updateStreamOrderUseCase: UpdateStreamOrderUseCase,
   private val tunnelCoordinator: TunnelCoordinator,
   private val streamConnectionRepository: StreamConnectionRepository
@@ -81,6 +88,21 @@ class HomeViewModel @Inject constructor(
   private val focus = combine(_focusedStream, observeIsAdminUseCase()) { stream, isAdmin ->
     Focus(stream, stream?.takeIf { isAdmin }?.let(RecordingFileName::cameraOfStreamUrl))
   }
+
+  /** Downloads the user already answered for (or set aside) on this screen: not asked again. */
+  private val _handledDownloads = MutableStateFlow<Set<String>>(emptySet())
+
+  /**
+   * The downloads that did not end, to offer resuming or discarding them. Only admins download.
+   * The route shows them over a ready Home: resuming needs the tunnel up.
+   */
+  val interruptedDownloads: StateFlow<List<InterruptedDownload>> = combine(
+    observeIsAdminUseCase(),
+    observeInterruptedDownloadsUseCase(),
+    _handledDownloads
+  ) { isAdmin, downloads, handled ->
+    if (isAdmin) downloads.filterNot { it.id in handled } else emptyList()
+  }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
   init {
     viewModelScope.launch {
@@ -187,6 +209,44 @@ class HomeViewModel @Inject constructor(
         exitConfirmationJob = null
       }
     }
+  }
+
+  /** Deletes what the interrupted downloads left and downloads them again. */
+  fun onResumeDownloads() {
+    val downloads = takeInterruptedDownloads()
+    if (downloads.isEmpty()) return
+    viewModelScope.launch {
+      runCatching { resumeDownloadsUseCase(downloads) }
+        .onSuccess { showToast(HomeToastMessage.DOWNLOADS_RESUMED) }
+        .onFailure { e ->
+          Log.e(DEBUG_TAG, "Failed to resume the downloads", e)
+          showToast(HomeToastMessage.DOWNLOADS_ACTION_ERROR)
+        }
+    }
+  }
+
+  /** Deletes what the interrupted downloads left and forgets them. */
+  fun onDiscardDownloads() {
+    val downloads = takeInterruptedDownloads()
+    if (downloads.isEmpty()) return
+    viewModelScope.launch {
+      runCatching { discardDownloadsUseCase(downloads) }.onFailure { e ->
+        Log.e(DEBUG_TAG, "Failed to discard the downloads", e)
+        showToast(HomeToastMessage.DOWNLOADS_ACTION_ERROR)
+      }
+    }
+  }
+
+  /** Sets the question aside until Home is opened again; the downloads stay recorded. */
+  fun onInterruptedDownloadsDismissed() {
+    takeInterruptedDownloads()
+  }
+
+  /** The downloads on offer, marked handled so the dialog closes at once and is not answered twice. */
+  private fun takeInterruptedDownloads(): List<InterruptedDownload> {
+    val downloads = interruptedDownloads.value
+    _handledDownloads.update { it + downloads.map(InterruptedDownload::id) }
+    return downloads
   }
 
   fun onResumed() {

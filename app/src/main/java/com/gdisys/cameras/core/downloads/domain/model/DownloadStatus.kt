@@ -1,5 +1,7 @@
 package com.gdisys.cameras.core.downloads.domain.model
 
+import com.gdisys.cameras.core.recordings.domain.model.Recording
+
 /** Where the download of one recording stands. */
 sealed interface DownloadStatus {
   /** Queued or copying. [progress] is 0..1, `null` until the size is known. */
@@ -21,4 +23,19 @@ enum class DownloadRequestResult {
 
   /** A download never raises the tunnel, and it is not up. */
   TUNNEL_DOWN
+}
+
+/** A download that did not end, reported the next time Home opens. */
+data class InterruptedDownload(
+  val id: String,
+  val recording: Recording,
+  val reason: Reason
+) {
+  enum class Reason {
+    /** The app was closed or the process died. */
+    INTERRUPTED,
+
+    /** A read or write failure. */
+    FAILED
+  }
 }

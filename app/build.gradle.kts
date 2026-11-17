@@ -425,6 +425,7 @@ val outOfScopeFilter = listOf(
   "com/gdisys/cameras/feature/streamurls/components/**",
   "com/gdisys/cameras/ui/theme/**",
   "com/gdisys/cameras/core/storage/data/DataStoreKt*.class", // DI wiring, no logic of its own
+  "com/gdisys/cameras/core/storage/data/DownloadRecordsDataStoreKt*.class", // likewise
   "com/gdisys/cameras/core/storage/data/KeystoreCryptoEngine*.class" // AndroidKeyStore, hardware-backed
 )
 

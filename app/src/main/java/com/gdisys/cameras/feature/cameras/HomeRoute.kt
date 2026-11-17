@@ -23,6 +23,7 @@ import com.gdisys.cameras.core.webrtc.LocalEglBase
 import com.gdisys.cameras.feature.cameras.components.EmptyStreamsScreen
 import com.gdisys.cameras.feature.cameras.components.HomeScreen
 import com.gdisys.cameras.feature.cameras.components.HomeTestTags
+import com.gdisys.cameras.feature.cameras.components.InterruptedDownloadsDialog
 
 @Composable
 fun HomeRoute(
@@ -67,6 +68,18 @@ fun HomeRoute(
   ToastDisplayer(toastUiEvent = viewModel.uiEvent)
 
   val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+  val interruptedDownloads by viewModel.interruptedDownloads.collectAsStateWithLifecycle()
+
+  // Over a ready Home only: resuming needs the tunnel, which Ready means is up.
+  if (uiState is HomeUiState.Ready && interruptedDownloads.isNotEmpty()) {
+    InterruptedDownloadsDialog(
+      downloads = interruptedDownloads,
+      onResume = viewModel::onResumeDownloads,
+      onDiscard = viewModel::onDiscardDownloads,
+      onDismiss = viewModel::onInterruptedDownloadsDismissed
+    )
+  }
+
   when (val state = uiState) {
     HomeUiState.Loading -> LoadingScreen(
       textLabel = stringResource(R.string.home_screen_establishing_secure_connection),

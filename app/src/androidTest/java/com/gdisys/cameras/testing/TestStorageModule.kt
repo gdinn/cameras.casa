@@ -5,11 +5,14 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.core.DataStoreFactory
 import com.gdisys.cameras.core.coroutines.IoDispatcher
 import com.gdisys.cameras.core.storage.data.KeystoreCryptoEngine
+import com.gdisys.cameras.core.storage.data.downloadRecordsSerializer
 import com.gdisys.cameras.core.storage.data.streamPreferencesSerializer
 import com.gdisys.cameras.core.storage.data.userPreferencesSerializer
 import com.gdisys.cameras.core.storage.di.StorageModule
+import com.gdisys.cameras.core.storage.di.DownloadRecordsStore
 import com.gdisys.cameras.core.storage.di.StreamPreferencesStore
 import com.gdisys.cameras.core.storage.di.UserPreferencesStore
+import com.gdisys.cameras.core.storage.domain.model.DownloadRecords
 import com.gdisys.cameras.core.storage.domain.model.StreamPreferences
 import com.gdisys.cameras.core.storage.domain.model.UserPreferences
 import dagger.Module
@@ -26,9 +29,10 @@ import javax.inject.Singleton
 
 private const val TEST_USER_PREFERENCES_KEY_ALIAS = "test-gdi-sys-storage"
 private const val TEST_STREAM_PREFERENCES_KEY_ALIAS = "test-gdi-sys-stream-preferences"
+private const val TEST_DOWNLOAD_RECORDS_KEY_ALIAS = "test-gdi-sys-download-records"
 
 /** Where the current test's stores live. Injected by tests that need to inspect the files. */
-class TestStoreFiles(val userPreferences: File, val streamPreferences: File)
+class TestStoreFiles(val userPreferences: File, val streamPreferences: File, val downloadRecords: File)
 
 /**
  * Replaces the production stores in every `@HiltAndroidTest` with stores built from the same
@@ -51,7 +55,8 @@ object TestStorageModule {
     val directory = File(context.cacheDir, "test-stores/${UUID.randomUUID()}")
     return TestStoreFiles(
       userPreferences = File(directory, "user-preferences"),
-      streamPreferences = File(directory, "stream-preferences")
+      streamPreferences = File(directory, "stream-preferences"),
+      downloadRecords = File(directory, "download-records")
     )
   }
 
@@ -85,5 +90,21 @@ object TestStorageModule {
       ),
       scope = CoroutineScope(ioDispatcher + SupervisorJob()),
       produceFile = { files.streamPreferences }
+    )
+
+  @Provides
+  @Singleton
+  @DownloadRecordsStore
+  fun provideDownloadRecordsStore(
+    files: TestStoreFiles,
+    @IoDispatcher ioDispatcher: CoroutineDispatcher
+  ): DataStore<DownloadRecords> =
+    DataStoreFactory.create(
+      serializer = downloadRecordsSerializer(
+        KeystoreCryptoEngine(TEST_DOWNLOAD_RECORDS_KEY_ALIAS),
+        ioDispatcher
+      ),
+      scope = CoroutineScope(ioDispatcher + SupervisorJob()),
+      produceFile = { files.downloadRecords }
     )
 }

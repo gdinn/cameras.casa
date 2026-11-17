@@ -1,6 +1,8 @@
 package com.gdisys.cameras.core.storage.di
 
+import com.gdisys.cameras.core.storage.data.DownloadRecordsRepositoryImpl
 import com.gdisys.cameras.core.storage.data.StreamPreferencesRepositoryImpl
+import com.gdisys.cameras.core.storage.domain.DownloadRecordsRepository
 import com.gdisys.cameras.core.storage.domain.StreamPreferencesRepository
 import dagger.Binds
 import dagger.Module
@@ -17,4 +19,10 @@ abstract class StreamPreferencesModule {
   abstract fun bindStreamPreferencesRepository(
     streamPreferencesRepositoryImpl: StreamPreferencesRepositoryImpl
   ): StreamPreferencesRepository
+
+  @Binds
+  @Singleton
+  abstract fun bindDownloadRecordsRepository(
+    downloadRecordsRepositoryImpl: DownloadRecordsRepositoryImpl
+  ): DownloadRecordsRepository
 }

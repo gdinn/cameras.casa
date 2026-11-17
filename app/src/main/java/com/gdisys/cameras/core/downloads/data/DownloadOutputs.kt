@@ -22,11 +22,17 @@ internal const val DOWNLOAD_FOLDER = "Cameras"
 interface DownloadOutputs {
   /** Starts a file for [fileName]. Nothing is visible to the user until [PendingDownload.publish]. */
   fun create(fileName: String): PendingDownload
+
+  /** Deletes an unfinished file a dead process left, by its [PendingDownload.reference]. */
+  fun deletePartial(reference: String)
 }
 
 /** A file being written. Exactly one of [publish] or [discard] ends it. */
 interface PendingDownload {
   val stream: OutputStream
+
+  /** Where the unfinished file is, as [DownloadOutputs.deletePartial] takes it. */
+  val reference: String
 
   /** Makes the file visible under its final name, which [freeFileName] chose; returns that name. */
   fun publish(): String
@@ -53,6 +59,15 @@ class DeviceDownloadOutputs @Inject constructor(
   override fun create(fileName: String): PendingDownload =
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) mediaStore(fileName) else legacy(fileName)
 
+  override fun deletePartial(reference: String) {
+    // A MediaStore entry this app created (pending or not), or a .part file before Android 10.
+    if (reference.startsWith("content://")) {
+      runCatching { context.contentResolver.delete(Uri.parse(reference), null, null) }
+    } else {
+      File(reference).delete()
+    }
+  }
+
   @RequiresApi(Build.VERSION_CODES.Q)
   private fun mediaStore(fileName: String): PendingDownload {
     val resolver = context.contentResolver
@@ -74,6 +89,7 @@ class DeviceDownloadOutputs @Inject constructor(
     }
     return object : PendingDownload {
       override val stream = stream
+      override val reference = uri.toString()
 
       override fun publish(): String {
         stream.close()
@@ -107,6 +123,7 @@ class DeviceDownloadOutputs @Inject constructor(
     val stream = FileOutputStream(partial)
     return object : PendingDownload {
       override val stream = stream
+      override val reference: String = partial.path
 
       override fun publish(): String {
         stream.close()

@@ -5,6 +5,11 @@ import app.cash.turbine.test
 import app.cash.turbine.turbineScope
 import com.gdisys.cameras.MainDispatcherRule
 import com.gdisys.cameras.core.components.ToastUiEvent
+import com.gdisys.cameras.core.downloads.domain.model.InterruptedDownload
+import com.gdisys.cameras.core.downloads.domain.usecase.DiscardDownloadsUseCase
+import com.gdisys.cameras.core.downloads.domain.usecase.ObserveInterruptedDownloadsUseCase
+import com.gdisys.cameras.core.downloads.domain.usecase.ResumeDownloadsUseCase
+import com.gdisys.cameras.core.recordings.domain.model.Recording
 import com.gdisys.cameras.core.storage.domain.model.GridPreferences
 import com.gdisys.cameras.core.storage.domain.model.StreamOrientation
 import com.gdisys.cameras.core.storage.domain.model.StreamPreferences
@@ -34,6 +39,7 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.webrtc.VideoSink
+import java.time.LocalDateTime
 
 class HomeViewModelTest {
 
@@ -46,6 +52,10 @@ class HomeViewModelTest {
   private val getStreamPreferencesUseCase = mockk<GetStreamPreferencesUseCase>()
   private val observeIsAdminUseCase = mockk<ObserveIsAdminUseCase>()
   private val isAdmin = MutableStateFlow(false)
+  private val observeInterruptedDownloadsUseCase = mockk<ObserveInterruptedDownloadsUseCase>()
+  private val resumeDownloadsUseCase = mockk<ResumeDownloadsUseCase>()
+  private val discardDownloadsUseCase = mockk<DiscardDownloadsUseCase>()
+  private val interrupted = MutableStateFlow<List<InterruptedDownload>>(emptyList())
   private val updateStreamOrderUseCase = mockk<UpdateStreamOrderUseCase>()
   private val tunnelCoordinator = FakeTunnelCoordinator()
   private val streamConnectionRepository = mockk<StreamConnectionRepository>(relaxed = true)
@@ -78,11 +88,17 @@ class HomeViewModelTest {
     every { observeVpnStateUseCase() } returns vpnState
     every { getStreamPreferencesUseCase() } returns streamPreferences
     every { observeIsAdminUseCase() } returns isAdmin
+    every { observeInterruptedDownloadsUseCase() } returns interrupted
+    coEvery { resumeDownloadsUseCase(any()) } returns Unit
+    coEvery { discardDownloadsUseCase(any()) } returns Unit
     coEvery { updateStreamOrderUseCase(any(), any()) } returns Result.success(Unit)
     viewModel = HomeViewModel(
       observeVpnStateUseCase,
       getStreamPreferencesUseCase,
       observeIsAdminUseCase,
+      observeInterruptedDownloadsUseCase,
+      resumeDownloadsUseCase,
+      discardDownloadsUseCase,
       updateStreamOrderUseCase,
       tunnelCoordinator,
       streamConnectionRepository
@@ -249,6 +265,88 @@ class HomeViewModelTest {
 
     isAdmin.value = false
     assertEquals(null, (viewModel.uiState.value as HomeUiState.Ready).historyCamera)
+  }
+
+  // interrupted downloads
+
+  private val interruptedDownload = InterruptedDownload(
+    "work-1",
+    Recording("cam_160", LocalDateTime.of(2026, 11, 10, 15, 0), "cam_160_2026-11-10_15-00-00.mp4"),
+    InterruptedDownload.Reason.INTERRUPTED
+  )
+
+  @Test
+  fun `interrupted downloads are offered to admins only`() {
+    interrupted.value = listOf(interruptedDownload)
+    assertEquals(emptyList<InterruptedDownload>(), viewModel.interruptedDownloads.value)
+
+    isAdmin.value = true
+    assertEquals(listOf(interruptedDownload), viewModel.interruptedDownloads.value)
+  }
+
+  @Test
+  fun `resume starts the offered downloads again and closes the offer`() = runTest {
+    isAdmin.value = true
+    interrupted.value = listOf(interruptedDownload)
+
+    viewModel.uiEvent.test {
+      viewModel.onResumeDownloads()
+      assertEquals(ToastUiEvent.Show(HomeToastMessage.DOWNLOADS_RESUMED.resId), awaitItem())
+    }
+
+    coVerify { resumeDownloadsUseCase(listOf(interruptedDownload)) }
+    assertEquals(emptyList<InterruptedDownload>(), viewModel.interruptedDownloads.value)
+  }
+
+  @Test
+  fun `discard drops the offered downloads and closes the offer`() {
+    isAdmin.value = true
+    interrupted.value = listOf(interruptedDownload)
+
+    viewModel.onDiscardDownloads()
+
+    coVerify { discardDownloadsUseCase(listOf(interruptedDownload)) }
+    assertEquals(emptyList<InterruptedDownload>(), viewModel.interruptedDownloads.value)
+  }
+
+  @Test
+  fun `dismissing sets the offer aside, but a new interruption is offered`() {
+    isAdmin.value = true
+    interrupted.value = listOf(interruptedDownload)
+
+    viewModel.onInterruptedDownloadsDismissed()
+    assertEquals(emptyList<InterruptedDownload>(), viewModel.interruptedDownloads.value)
+
+    val another = interruptedDownload.copy(id = "work-2")
+    interrupted.value = listOf(interruptedDownload, another)
+    assertEquals(listOf(another), viewModel.interruptedDownloads.value)
+    coVerify(exactly = 0) { discardDownloadsUseCase(any()) }
+  }
+
+  @Test
+  fun `a failed resume or discard is told`() = runTest {
+    isAdmin.value = true
+    coEvery { resumeDownloadsUseCase(any()) } throws IllegalStateException("disk")
+    coEvery { discardDownloadsUseCase(any()) } throws IllegalStateException("disk")
+
+    viewModel.uiEvent.test {
+      interrupted.value = listOf(interruptedDownload)
+      viewModel.onResumeDownloads()
+      assertEquals(ToastUiEvent.Show(HomeToastMessage.DOWNLOADS_ACTION_ERROR.resId), awaitItem())
+
+      interrupted.value = listOf(interruptedDownload.copy(id = "work-2"))
+      viewModel.onDiscardDownloads()
+      assertEquals(ToastUiEvent.Show(HomeToastMessage.DOWNLOADS_ACTION_ERROR.resId), awaitItem())
+    }
+  }
+
+  @Test
+  fun `resume and discard do nothing without an offer`() {
+    viewModel.onResumeDownloads()
+    viewModel.onDiscardDownloads()
+
+    coVerify(exactly = 0) { resumeDownloadsUseCase(any()) }
+    coVerify(exactly = 0) { discardDownloadsUseCase(any()) }
   }
 
   @Test
