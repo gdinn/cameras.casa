@@ -721,6 +721,16 @@ Not reported yet at commit time: the process death check and Discard (see below)
 - **Process death, checked on the device.** `am kill` does not kill the process while the download
   runs as a foreground service. `am crash` does. On the next launch Home offered the download as
   interrupted. The debug build's package is `com.gdisys.cameras.debug`.
+- **Discard, checked on the device:** nothing is left in Download/Cameras, and the dialog does not
+  come back.
+- **Bug: a cancelled download could leave its notification behind, frozen, fixed.**
+  - The user tapped Cancel. The download stopped and the tunnel dropped, but the progress bar stayed
+    with its Cancel action, sometimes.
+  - The copy only sees the stop between 4 MB chunks. A progress update in that gap posted the
+    notification again after WorkManager had removed it. Ongoing and with no work left, it stayed.
+  - Now the worker skips progress updates once stopped, and removes the progress notification in
+    its `finally`. That runs on the copy's thread, after its last update.
+  - Verified on the device: repeated cancels at different moments leave no notification behind.
 
 **What was built** (`docs/architecture.md` §5.5, §6.1, §6.2, §6.10, §10)
 

@@ -45,6 +45,12 @@ class DownloadNotifications @Inject constructor(
 
   fun showProgress(workId: UUID, recording: Recording, percent: Int) = notify(progressId(workId), progress(workId, recording, percent))
 
+  /**
+   * Removes the progress notification. WorkManager removes it too when the work stops, but a
+   * progress update racing the stop would post it again, ongoing and with nothing left to remove it.
+   */
+  fun cancelProgress(workId: UUID) = manager.cancel(progressId(workId))
+
   fun showFinished(workId: UUID, recording: Recording, savedAs: String) = notify(
     resultId(workId),
     builder()

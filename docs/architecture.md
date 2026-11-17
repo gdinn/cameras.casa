@@ -1043,6 +1043,10 @@ be requested again: it saves another copy, with a suffix.
   before Android 10.
 - A cancelled or failed download deletes what it wrote. A cancellation comes from the
   notification's action, or from WorkManager stopping the work.
+- The worker removes the progress notification itself when it leaves, on the copy's thread. The
+  copy only sees a stop between chunks, so a progress update in that gap would post the
+  notification again after WorkManager removed it. It would stay ongoing, with nothing left to
+  remove it.
 - Known limit: MediaStore only shows an app its own files, so the name check cannot see a file left
   by a previous install. MediaStore then renames on its own (`name (1).mp4`).
 

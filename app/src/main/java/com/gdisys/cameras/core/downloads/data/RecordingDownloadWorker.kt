@@ -30,7 +30,9 @@ import kotlinx.coroutines.withContext
  *   enough to delete it; success removes the record (see `DownloadRecordRules.kt`).
  * - **Progress:** published as work progress and on the notification, once per percent.
  * - **Cancel** (the notification's action, or the app swiped away): the copy stops within a chunk
- *   and the partial file is deleted. A user cancel forgets the download; a swipe leaves it
+ *   and the partial file is deleted. The progress notification is removed here too: the copy only
+ *   sees the stop between chunks, and an update in that gap would post it again after WorkManager
+ *   removed it. A user cancel forgets the download; a swipe leaves it
  *   reported as interrupted (`interruptAll` marked it first).
  * - **Failure:** the partial file is deleted and a notification says so. No retry: the user asks
  *   again.
@@ -73,7 +75,8 @@ class RecordingDownloadWorker @AssistedInject constructor(
             isStopped = { isStopped },
             onProgress = { copied, total ->
               val percent = (copied * 100 / total).toInt()
-              if (percent != lastPercent) {
+              // Not once stopped: WorkManager has removed the notification, and this would bring it back.
+              if (percent != lastPercent && !isStopped) {
                 lastPercent = percent
                 setProgressAsync(workDataOf(KEY_PROGRESS to copied.toFloat() / total))
                 notifications.showProgress(id, recording, percent)
@@ -101,6 +104,8 @@ class RecordingDownloadWorker @AssistedInject constructor(
         notifications.showFailed(id, recording)
         Result.failure(workDataOf(KEY_FAILURE to FAILURE_ERROR))
       } finally {
+        // On this thread, after the copy's last progress update: nothing can post it again.
+        notifications.cancelProgress(id)
         files.close()
       }
     }
