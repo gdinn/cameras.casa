@@ -127,7 +127,7 @@ would be inert.
 
 **Release builds are minified.** `isMinifyEnabled = true` with
 `proguard-android-optimize.txt` + `proguard-rules.pro`, so that file is now the contract between R8
-and the parts of the app it cannot see. It holds three keep blocks, each with its rationale next to
+and the parts of the app it cannot see. It holds these keep blocks, each with its rationale next to
 it:
 
 | Keep block | Why R8 cannot infer it |
@@ -136,9 +136,11 @@ it:
 | `ComponentRegistrar` implementors (`<init>()`) | ML Kit discovers its registrars from manifest `<meta-data>` *values* and instantiates them reflectively — see below |
 | `org.webrtc.**` | The native layer instantiates classes, calls methods and reads fields by name through JNI |
 | `com.wireguard.**` | `GoBackend`'s native symbols are bound by fully qualified Java name; `GoBackend$VpnService` is also named in the manifest |
+| `net.engio.mbassy.**` + `@Handler` methods (smbj) | smbj delivers its internal events (logoff, connection close) through mbassador, which finds the listeners by annotation and builds its dispatchers by reflection. `-dontwarn` covers `javax.el.**` (mbassador's EL filters) and `org.ietf.jgss.**` (smbj's Kerberos login), neither used |
 
-Hilt/Dagger, AndroidX and CameraX ship consumer rules that cover them, and are deliberately not
-repeated.
+Hilt/Dagger, AndroidX, CameraX, Media3, WorkManager (with `hilt-work`) and BouncyCastle ship
+consumer rules that cover them, and are deliberately not repeated. The download worker is created by
+`HiltWorkerFactory`, not by reflection, so it needs no rule of its own.
 
 **The ML Kit rule is worth understanding, because it is a whole class of bug.** ML Kit's own
 consumer rules keep the *names* of `BarcodeRegistrar`, `VisionCommonRegistrar` and
@@ -152,8 +154,9 @@ the same silent way.
 
 The caveat that kept minification off for so long has not gone away: a wrong keep rule fails at
 *runtime*, so a green `assembleRelease` is necessary but not sufficient. Any change to the keep
-rules, to a `@Serializable` model, or to the VPN/WebRTC dependencies has to be smoke-tested on a
-real device — scan the QR code, bring the tunnel up, play a stream. The rule set above was
+rules, to a `@Serializable` model, or to the VPN/WebRTC/Samba/Media3/WorkManager dependencies has to
+be smoke-tested on a real device — scan the QR code, bring the tunnel up, play a stream, and for an
+admin list, play and download a recording. The rule set above was
 validated that way end to end on a physical device: QR scan, tunnel up, streams rendering.
 `RealEnvironmentSmokeTest` automates the QR-to-video path ([§10](#10-testing-and-quality-gates))
 on `e2eRelease`, this rule set plus the few keeps the test needs, so the check is one Gradle command
@@ -575,6 +578,8 @@ Another screen may hold the tunnel by then, and that one reports it.
 - `onCleared()` calls `streamConnectionRepository.closeAll()`.
 
 ### 5.6 `feature/history` — an admin's recordings of one camera
+
+![MVVM — History and player routes](images/mvvm-history-route.png)
 
 **What it does.** Lists the months with recordings of one camera, newest first. Expanding a month
 lists its days with a finished file, in calendar order. Tapping a day opens its time picker, and a
@@ -1352,6 +1357,10 @@ UI Automator) and the QR decoder (`QrCodeImageDecodingTest`) are covered
 
 - The scanner's camera feed. The decoder is tested on the example images, and the camera behind it
   is swapped out (`QrCodeScanner`), so a real frame never reaches ML Kit in a test.
+- The recordings against a real share. The flows run on `FakeRecordingsShare`,
+  `FakeRecordingPlayer` and `FakeDownloadRepository`. ExoPlayer over SMB, the download worker
+  (WorkManager, MediaStore, notifications) and the interruptions (swipe, process death) are checked
+  by hand, on a release build against the Pi (the history plan's Steps 8–11).
 - The real world on CI. `RealEnvironmentSmokeTest` (the real QR, the real tunnel and a stream
   playing, on the minified `e2eRelease`) runs only by hand, on the phone of whoever holds the test
   peer's QR.
@@ -1402,9 +1411,10 @@ Useful commands:
 Note that `LayerDependencyTest` and `StreamHostTest` are ordinary unit tests, so a layering
 violation or a host/XML mismatch fails `testDebugUnitTest` like any other regression.
 
-**Instrumented screen tests.** 110 tests under `app/src/androidTest/` (51 Compose UI tests, thirty-seven flow tests, five
-system dialog tests, one QR image decoding test, twelve tests of the Hilt test fakes and flow helpers, two storage tests, one
-service test, one dispatcher test and the default example), with packages mirroring `main`:
+**Instrumented tests.** 153 tests under `app/src/androidTest/`, with packages mirroring `main`:
+Compose UI tests of each screen, flow tests through the real composition root, system dialog tests,
+the QR image decoding test, tests of the Hilt test fakes and flow helpers, storage, service and
+dispatcher tests:
 
 | Test | Covers |
 |---|---|
@@ -1417,6 +1427,7 @@ service test, one dispatcher test and the default example), with packages mirror
 | `QrCodeFlowTest` (8) | Scenario #3: a valid QR turns the step `Done`, stores the credentials and the app stays on Config; an admin QR also stores the Samba login, a regular one stores none; each invalid fixture (including an admin one with an incomplete login) turns it `Error`, stores nothing and stays on Config; an invalid QR after a valid one wipes the stored credentials (current behavior, documented) |
 | `ConfigGateFlowTest` (5) | Scenario #4: with requirements missing, the Home button and the system back keep the app on `[Loading, Config]` and the activity alive; with everything complete but no Home behind, back is still consumed; a refused consent dialog (stubbed) leaves the VPN step `Ready`; a consent already granted starts the step `Done` and its click never launches the consent Intent |
 | `OnboardingFlowTest` (1) | Scenario #2: camera (granted after launch, so the click takes the request path), QR, VPN consent (dialog stubbed to accept) and the default URLs saved; Home is then the only destination, shows a card for each default URL, connected the tunnel and started its lifecycle once, and connected every URL |
+| `RecordingsFlowTest` (8) | Over the fake share, player and downloads: a regular user's focused view has no history button and is offered no unfinished downloads; an admin's opens `History` for the focused camera, with its months and, expanded, the days; a time without a file plays the nearest one with the notice, a time with one plays it without; "Next" plays the following file; "Download" requests the recording on screen and toasts it; Home offers an admin the unfinished downloads, and "Resume" hands them over and closes the dialog |
 | `ReturningUserFlowTest` (3) | Scenario #5: stored credentials and URLs open `[Home]` with their cards, never passing through Config; credentials without URLs open the empty Home and never connect the tunnel; its shortcut opens Config over Home, with "Back to Home" |
 | `StreamUrlValidationFlowTest` (5) | Scenario #6, from Config: an invalid port, an invalid stream name or a duplicate URL keeps the add form open and the list unchanged; a valid URL is persisted on save and turns the Config step `Done`; leaving with an unsaved URL asks to discard, and discarding persists nothing |
 | `GridOrientationFlowTest` (3) | Scenario #7, with a one-column portrait grid and a three-column landscape grid in the reverse order: portrait shows one column; rotating to landscape (`requestedOrientation`, a configuration change the activity handles, not a recreation) shows three columns in the landscape order, and rotating back restores the portrait layout; a portrait grid saved on the URLs screen (reached through a card's "Reconfigure" action) is persisted and laid out on Home |
@@ -1513,6 +1524,10 @@ shows and which callback each interaction fires, with no Hilt, navigation or fak
   resolves (`CONSENT_ACTION`). Tests answer it with `stubConsentDialog(accept)`, which needs
   Espresso-Intents to be recording (`IntentsRule`). Accepting also sets `granted`, so later reads
   agree, as they do after the system dialog.
+- **`TestRecordingPlayerModule`** replaces `RecordingPlayerModule` (in `ViewModelComponent`) with
+  `FakeRecordingPlayer`. The real one is ExoPlayer reading the share. The fake is unscoped, one per
+  ViewModel, and reports what it plays to the `@Singleton` `FakeRecordingPlayback`. It is ready as
+  soon as it plays.
 - **`TestDownloadsModule`** replaces `DownloadsModule` with `FakeDownloadRepository`
   (`testing/FakeDownloadRepository.kt`). WorkManager only starts with `CamerasApp`'s configuration,
   which `HiltTestApplication` lacks, and Home asks for interrupted downloads as soon as it opens.
@@ -1548,11 +1563,15 @@ shows and which callback each interaction fires, with no Hilt, navigation or fak
   - `seed.credentials(fixture)` and `seed.streams(urls, portraitGrid, landscapeGrid, portraitOrder,
     landscapeOrder)` (`Seed`) write through the production use cases;
   - `vpnConsent`, `vpn` and `streams` drive the fakes;
+  - `recordingsShare` (the files on the share), `playback` (what the player played) and
+    `downloads` (requests, statuses and unfinished downloads) drive the recordings' fakes;
   - `DeviceState.grantCameraPermission()` grants the camera through `UiAutomation`.
 
   To act on the app and read it:
   - `injectQr(json)` hands a payload to the Config entry's `savedStateHandle`, as the scanner does;
-  - `backStackRoutes()` reads the back stack as `NavigationRoute` objects after idle;
+  - `backStackRoutes()` reads the back stack as `NavigationRoute` objects after idle. The routes
+    with arguments (`History`, `RecordingPlayer`) come back as instances with empty arguments, so
+    tests compare their classes;
   - `storedUserPreferences()` and `storedStreamPreferences()` read what is persisted.
 
   The scenarios live in `flow/`, one class each, since they cross features. Robots in
@@ -1954,6 +1973,7 @@ done
 | `docs/diagrams/mvvm-qrcode-route.mmd` | `docs/images/mvvm-qrcode-route.png` |
 | `docs/diagrams/mvvm-streamurls-route.mmd` | `docs/images/mvvm-streamurls-route.png` |
 | `docs/diagrams/mvvm-home-route.mmd` | `docs/images/mvvm-home-route.png` |
+| `docs/diagrams/mvvm-history-route.mmd` | `docs/images/mvvm-history-route.png` |
 | `docs/diagrams/package-diagram.mmd` | `docs/images/package-diagram.png` |
 | `docs/diagrams/data-flow-preferences.mmd` | `docs/images/data-flow-preferences.png` |
 | `docs/diagrams/data-flow-streaming.mmd` | `docs/images/data-flow-streaming.png` |

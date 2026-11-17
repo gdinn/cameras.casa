@@ -6,6 +6,7 @@ sequenceDiagram
   participant U as User
   participant HR as HomeRoute<br/>(Composable)
   participant HVM as HomeViewModel
+  participant TC as TunnelCoordinator<br/>(single collector)
   participant VUC as Connect/Disconnect/<br/>ObserveVpnStateUseCase
   participant VR as VpnRepositoryImpl<br/>(GoBackend)
   participant SVC as VpnLifecycleService
@@ -15,11 +16,12 @@ sequenceDiagram
   participant DS as WhepRemoteDataSource<br/>(HttpURLConnection)
   participant SRV as Raspberry Pi<br/>MediaMTX / WHEP server
 
-  Note over HR,VR: 1. Bring the tunnel up - only while the app is in the foreground
+  Note over HR,VR: 1. Bring the tunnel up - while a screen (or a running download) holds it
   U->>HR: opens Home (Lifecycle ON_RESUME)
-  HR->>HVM: connectVpn()
-  HVM->>VUC: GetVpnConfigUseCase() -> Result of VpnConfig
-  HVM->>VUC: ConnectVpnUseCase(config)
+  HR->>HVM: onResumed()
+  HVM->>TC: request(HOME) - resumed and at least one stream URL
+  TC->>VUC: GetVpnConfigUseCase() -> Result of VpnConfig
+  TC->>VUC: ConnectVpnUseCase(config)
   VUC->>VR: connect(config) - VpnConfig.toWireGuardConfig()
   VR->>VR: backend.setState(tunnel, UP, config)
   VUC->>SVC: VpnLifecycleController.start()
@@ -53,8 +55,10 @@ sequenceDiagram
   U->>HR: leaves the cell / changes page / leaves Home (ON_PAUSE)
   PL->>HVM: disconnectStream(streamUrl) then renderer.release()
   HVM->>SCR: disconnect(streamUrl) - cancels the job, closes the client
-  HR->>HVM: disconnectVpn()
-  HVM->>VUC: DisconnectVpnUseCase()
+  HR->>HVM: onPaused()
+  HVM->>TC: release(HOME)
+  Note right of TC: 1.5 s grace period: a request meanwhile<br/>(History resuming) keeps the tunnel up
+  TC->>VUC: DisconnectVpnUseCase() - once no holder is left
   VUC->>VR: backend.setState(tunnel, DOWN, null)
   VUC->>SVC: VpnLifecycleController.stop()
   Note over HVM: onCleared() -> streamConnectionRepository.closeAll()<br/>terminal: cancels the manager scope, so the binding is unscoped

@@ -29,13 +29,18 @@ import org.junit.Rule
 import org.webrtc.EglBase
 import javax.inject.Inject
 
-/** Every destination of the graph, so the back stack reads as routes instead of strings. */
+/**
+ * Every destination of the graph, so the back stack reads as routes instead of strings. The routes
+ * with arguments are represented by an instance with empty ones: compare their classes.
+ */
 private val ROUTES = listOf(
   NavigationRoute.Loading,
   NavigationRoute.Config,
   NavigationRoute.QrCode,
   NavigationRoute.StreamURLs,
-  NavigationRoute.Home
+  NavigationRoute.Home,
+  NavigationRoute.History(camera = ""),
+  NavigationRoute.RecordingPlayer(camera = "", fileName = "", nearestNotice = false)
 )
 
 // Generous: the emulator animates the rotation before the new configuration reaches the activity.
@@ -44,7 +49,8 @@ private const val ROTATION_TIMEOUT_MS = 5_000L
 /**
  * Base class of the flow tests: the real composition root, navigation, ViewModels, use cases and
  * encrypted DataStore, with only what leaves the process replaced (`TestVpnModule`,
- * `TestPermissionModule`, `TestStreamConnectionModule`; storage and dispatchers are isolated by
+ * `TestPermissionModule`, `TestStreamConnectionModule`, `TestRecordingsModule`,
+ * `TestRecordingPlayerModule`, `TestDownloadsModule`; storage and dispatchers are isolated by
  * `TestStorageModule` and `TestDispatchersModule`).
  *
  * Subclasses are annotated `@HiltAndroidTest` (Hilt generates the test component per concrete
@@ -72,6 +78,9 @@ abstract class FlowTest {
   @Inject lateinit var seed: Seed
   @Inject lateinit var userPreferencesRepository: UserPreferencesRepository
   @Inject lateinit var streamPreferencesRepository: StreamPreferencesRepository
+  @Inject lateinit var recordingsShare: FakeRecordingsShare
+  @Inject lateinit var playback: FakeRecordingPlayback
+  @Inject lateinit var downloads: FakeDownloadRepository
 
   /** The toasts the app showed, as string resources, in order. They are recorded, not shown. */
   val toasts = RecordingToastPresenter()

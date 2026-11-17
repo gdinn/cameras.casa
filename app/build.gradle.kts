@@ -193,13 +193,15 @@ android {
       // R8 in full mode (shrink + obfuscate + optimize). The keep rules live in
       // proguard-rules.pro, one commented block per reason: kotlinx.serialization (on-disk schema,
       // QR payload and the type-safe navigation routes), org.webrtc.** and com.wireguard.**
-      // (JNI entry points bound by name). Hilt/Dagger, AndroidX, CameraX and ML Kit are covered by
-      // their own consumer rules.
+      // (JNI entry points bound by name), and smbj's event bus (mbassador, by reflection).
+      // Hilt/Dagger, AndroidX, CameraX, ML Kit, Media3 and WorkManager are covered by their own
+      // consumer rules.
       //
       // This stack fails at *runtime* rather than at build time when a keep rule is wrong, so a
       // green `assembleRelease` is necessary but not sufficient: any change to the keep rules, to
-      // a @Serializable model or to the VPN/WebRTC dependencies must be smoke-tested on a real
-      // device — scan the QR code, bring the tunnel up, and play a stream. RealEnvironmentSmokeTest
+      // a @Serializable model or to the VPN/WebRTC/Samba/Media3/WorkManager dependencies must be
+      // smoke-tested on a real device — scan the QR code, bring the tunnel up, and play a stream;
+      // for an admin, list, play and download a recording. RealEnvironmentSmokeTest
       // automates that path on `e2eRelease`, this build type as R8 makes it (see below).
       isMinifyEnabled = true
       proguardFiles(

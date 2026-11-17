@@ -28,6 +28,7 @@ flowchart TD
     FUrls["feature.streamurls<br/>+ .logic (GridPreferencesValidation)"]
     FCam["feature.cameras<br/>+ .components + .logic<br/>(StreamPaging, FixedGridLayout)"]
     FQr["feature.qrcode<br/>QrCodeRoute, QrCodeViewModel<br/>+ .components (QrCodeScreen, QrCodeAnalyzer)"]
+    FHist["feature.history<br/>HistoryRoute + .player (RecordingPlayerRoute)<br/>+ .logic (TimeSlots)"]
   end
 
   subgraph CORESHARED["core - shared presentation helpers"]
@@ -35,14 +36,17 @@ flowchart TD
     CBase["core<br/>ToastEventViewModel, ToastMessage, Constants"]
     CComp["core.components<br/>ToastDisplayer, LoadingScreen,<br/>LaunchActivityResultOnEvent"]
     CNet["core.network<br/>STREAM_HOST, STREAM_URL_HOST_PREFIX"]
+    CCo["core.coroutines<br/>IoDispatcher, DefaultDispatcher,<br/>ApplicationScope"]
   end
 
   subgraph COREDOMAIN["core.*.domain - abstractions, pure Kotlin"]
     direction LR
-    SDom["core.storage.domain<br/>repositories, models, 8 use cases,<br/>StreamUrlValidation"]
-    VDom["core.vpn.domain<br/>VpnRepository, VpnLifecycleController,<br/>VpnConfig, 4 use cases"]
-    PDom["core.permission.domain<br/>Camera/VpnPermissionRepository,<br/>2 use cases"]
+    SDom["core.storage.domain<br/>repositories, models (incl. DownloadRecords),<br/>10 use cases, StreamUrlValidation"]
+    VDom["core.vpn.domain<br/>VpnRepository, VpnLifecycleController,<br/>TunnelCoordinator, VpnConfig, 3 use cases"]
+    PDom["core.permission.domain<br/>Camera/Vpn/NotificationPermissionRepository,<br/>4 use cases"]
     WDom["core.webrtc (contracts)<br/>StreamConnectionRepository, WhepClient,<br/>LocalEglBase"]
+    RDom["core.recordings.domain<br/>RecordingsRepository, Recording,<br/>RecordingFileName, 4 use cases<br/>+ core.recordings (contract) RecordingPlayer"]
+    DDom["core.downloads.domain<br/>DownloadRepository, DownloadStatus,<br/>InterruptedDownload, 6 use cases"]
   end
 
   subgraph COREDATA["core.*.data - implementations"]
@@ -51,10 +55,12 @@ flowchart TD
     VData["core.vpn.data<br/>VpnRepositoryImpl (GoBackend),<br/>VpnLifecycleService"]
     PData["core.permission.data<br/>RepositoryImpls"]
     WData["core.webrtc.data<br/>WhepConnectionManager, WhepClientImpl,<br/>WhepRemoteDataSourceImpl"]
+    RData["core.recordings.data<br/>RecordingsRepositoryImpl, SmbjRecordingsShare,<br/>SmbDataSource, ExoRecordingPlayer"]
+    DData["core.downloads.data<br/>WorkManagerDownloadRepository,<br/>RecordingDownloadWorker, DeviceDownloadOutputs"]
   end
 
   subgraph COREDI["core.*.di - Hilt modules (bind domain to data)"]
-    DI["storage.di | vpn.di | permission.di | webrtc.di"]
+    DI["storage.di | vpn.di | permission.di | webrtc.di<br/>recordings.di | downloads.di | coroutines.di"]
   end
 
   APP --> FEATURE
@@ -68,6 +74,7 @@ flowchart TD
 
   COREDATA -->|"implements"| COREDOMAIN
   CNet -.->|"host constant used by"| SDom
+  DData -.->|"reads files through RecordingFileSources"| RData
   DI -.->|"@Binds / @Provides"| COREDOMAIN
   DI -.-> COREDATA
   APP -.->|"@HiltAndroidApp builds the graph"| DI
@@ -75,10 +82,10 @@ flowchart TD
   Forbidden["FORBIDDEN, enforced by LayerDependencyTest (Konsist):<br/>feature -x-> core.*.data | domain -x-> data<br/>domain -x-> feature | domain -x-> androidx.compose<br/>feature.A -x-> feature.B"]
 
   class Root,NavPkg appPkg
-  class FInit,FConfig,FUrls,FCam,FQr featPkg
-  class SDom,VDom,PDom,WDom domainPkg
-  class SData,VData,PData,WData dataPkg
+  class FInit,FConfig,FUrls,FCam,FQr,FHist featPkg
+  class SDom,VDom,PDom,WDom,RDom,DDom domainPkg
+  class SData,VData,PData,WData,RData,DData dataPkg
   class DI diPkg
   class Theme uiPkg
-  class CBase,CComp,CNet sharedPkg
+  class CBase,CComp,CNet,CCo sharedPkg
   class Forbidden dataPkg
