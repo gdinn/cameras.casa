@@ -136,10 +136,12 @@ it:
 | `ComponentRegistrar` implementors (`<init>()`) | ML Kit discovers its registrars from manifest `<meta-data>` *values* and instantiates them reflectively — see below |
 | `org.webrtc.**` | The native layer instantiates classes, calls methods and reads fields by name through JNI |
 | `com.wireguard.**` | `GoBackend`'s native symbols are bound by fully qualified Java name; `GoBackend$VpnService` is also named in the manifest |
+| `RoomDatabase` subclasses (`<init>()`) | Room creates the generated `*_Impl` by reflection through its no-argument constructor, which R8 in full mode removes. WorkManager keeps its jobs in such a database (`WorkDatabase_Impl`): without the rule, the first use of WorkManager throws `NoSuchMethodException`, and Home, which builds the download repository, crashed for every user on `e2eRelease` |
 | `net.engio.mbassy.**` + `@Handler` methods (smbj) | smbj delivers its internal events (logoff, connection close) through mbassador, which finds the listeners by annotation and builds its dispatchers by reflection. `-dontwarn` covers `javax.el.**` (mbassador's EL filters) and `org.ietf.jgss.**` (smbj's Kerberos login), neither used |
 
 Hilt/Dagger, AndroidX, CameraX, Media3, WorkManager (with `hilt-work`) and BouncyCastle ship
-consumer rules that cover them, and are deliberately not repeated. The download worker is created by
+consumer rules that cover them, and are deliberately not repeated, except for WorkManager's Room
+database above, which its rules did not keep. The download worker is created by
 `HiltWorkerFactory`, not by reflection, so it needs no rule of its own.
 
 **The ML Kit rule is worth understanding, because it is a whole class of bug.** ML Kit's own
@@ -150,7 +152,8 @@ constructor of a class that nothing constructs in code, and these are only ever 
 failure, so the barcode component is simply never registered and `BarcodeScanning.getClient()`
 throws an NPE the moment the QR screen builds its analyzer. Keeping the class name is not enough;
 the rule has to keep `<init>()`. Any future dependency that is instantiated reflectively will fail
-the same silent way.
+the same silent way. WorkManager's Room database did: it is the second instance, found on the
+release check of the recordings feature.
 
 The caveat that kept minification off for so long has not gone away: a wrong keep rule fails at
 *runtime*, so a green `assembleRelease` is necessary but not sufficient. Any change to the keep

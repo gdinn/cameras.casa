@@ -101,3 +101,15 @@
 # (javax.el) and smbj's Kerberos/SPNEGO login (org.ietf.jgss). The app logs in with NTLM.
 -dontwarn javax.el.**
 -dontwarn org.ietf.jgss.**
+
+# ---------------------------------------------------------------------------
+# Room databases — androidx.work (WorkManager keeps its jobs in a Room database)
+# ---------------------------------------------------------------------------
+# Room creates the generated `<Database>_Impl` by reflection, through its no-argument constructor.
+# Nothing constructs it in code, so R8 in full mode removes that constructor, and WorkManager then
+# fails on first use with `NoSuchMethodException: androidx.work.impl.WorkDatabase_Impl.<init> []`.
+# Found on e2eRelease: Home builds the download repository, so every user's Home crashed. Same class
+# of bug as the ML Kit registrars above: keeping the name is not enough, `<init>()` must stay.
+-keep class * extends androidx.room.RoomDatabase {
+    <init>();
+}
