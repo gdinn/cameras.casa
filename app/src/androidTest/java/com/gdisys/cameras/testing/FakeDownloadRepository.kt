@@ -40,9 +40,10 @@ class FakeDownloadRepository @Inject constructor() : DownloadRepository {
 
   override fun interrupted(): Flow<List<InterruptedDownload>> = interrupted
 
-  override suspend fun resume(downloads: List<InterruptedDownload>) {
+  override suspend fun resume(downloads: List<InterruptedDownload>): List<DownloadRequestResult> {
     resumed += downloads
     interrupted.update { it - downloads.toSet() }
+    return downloads.map { result }
   }
 
   override suspend fun discard(downloads: List<InterruptedDownload>) {

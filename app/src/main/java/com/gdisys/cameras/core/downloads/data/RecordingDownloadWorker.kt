@@ -94,7 +94,8 @@ class RecordingDownloadWorker @AssistedInject constructor(
         }
         throw e
       } catch (e: Exception) {
-        Log.d(DEBUG_TAG, "Downloading ${recording.fileName} failed: $e")
+        // With the throwable, so the log shows the cause chain down to smbj and the socket.
+        Log.w(DEBUG_TAG, "Downloading ${recording.fileName} failed", e)
         pending?.discard()
         records.update { it.afterFailure(workId) }
         notifications.showFailed(id, recording)

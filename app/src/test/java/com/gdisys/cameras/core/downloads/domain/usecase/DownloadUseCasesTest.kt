@@ -39,12 +39,12 @@ class DownloadUseCasesTest {
   fun `the interrupted downloads, resume, discard and interrupt go to the repository`() = runTest {
     val download = InterruptedDownload("a", recording, InterruptedDownload.Reason.FAILED)
     every { repository.interrupted() } returns flowOf(listOf(download))
-    coEvery { repository.resume(any()) } returns Unit
+    coEvery { repository.resume(any()) } returns listOf(DownloadRequestResult.STARTED)
     coEvery { repository.discard(any()) } returns Unit
     coEvery { repository.interruptAll() } returns Unit
 
     assertEquals(listOf(download), ObserveInterruptedDownloadsUseCase(repository)().first())
-    ResumeDownloadsUseCase(repository)(listOf(download))
+    assertEquals(listOf(DownloadRequestResult.STARTED), ResumeDownloadsUseCase(repository)(listOf(download)))
     DiscardDownloadsUseCase(repository)(listOf(download))
     InterruptDownloadsUseCase(repository)()
 

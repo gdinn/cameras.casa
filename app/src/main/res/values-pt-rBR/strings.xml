@@ -138,4 +138,5 @@
     <string name="home_interrupted_downloads_discard">Descartar</string>
     <string name="home_route_downloads_resumed">Downloads iniciados de novo</string>
     <string name="home_route_downloads_action_error">Falha ao tratar os downloads não concluídos</string>
+    <string name="home_route_downloads_not_all_resumed">Alguns downloads não recomeçaram; eles serão oferecidos de novo na próxima vez</string>
 </resources>

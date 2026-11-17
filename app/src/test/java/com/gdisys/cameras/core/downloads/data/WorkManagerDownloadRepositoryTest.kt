@@ -19,11 +19,13 @@ import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -188,15 +190,71 @@ class WorkManagerDownloadRepositoryTest {
   }
 
   @Test
-  fun `resuming discards and downloads the recordings again`() = runTest {
-    every { workManager.getWorkInfoByIdFlow(any()) } returns flowOf()
-    records.state.value = listOf(record("a", DownloadRecordState.INTERRUPTED, partial = "/sdcard/Download/Cameras/.a.part"))
+  fun `resuming downloads again, then forgets the old download and its partial file`() = runTest {
+    val oldId = UUID.randomUUID()
+    every { workManager.getWorkInfoByIdFlow(oldId) } returns flowOf(info(oldId, WorkInfo.State.FAILED))
+    every { workManager.getWorkInfoByIdFlow(neq(oldId)) } returns flowOf(null)
+    records.state.value = listOf(record(oldId.toString(), DownloadRecordState.INTERRUPTED, partial = "/sdcard/Download/Cameras/.a.part"))
 
-    repository().resume(listOf(InterruptedDownload("a", RECORDING, InterruptedDownload.Reason.INTERRUPTED)))
+    val results = repository().resume(listOf(InterruptedDownload(oldId.toString(), RECORDING, InterruptedDownload.Reason.INTERRUPTED)))
 
+    assertEquals(listOf(DownloadRequestResult.STARTED), results)
     verify { outputs.deletePartial("/sdcard/Download/Cameras/.a.part") }
     verify { workManager.enqueueUniqueWork(downloadWorkName(RECORDING), ExistingWorkPolicy.KEEP, any<OneTimeWorkRequest>()) }
-    assertEquals(listOf(DownloadRecordState.RUNNING), records.state.value.map { it.state })
+    assertEquals(listOf(enqueued.captured.id.toString()), records.state.value.map { it.workId })
+  }
+
+  @Test
+  fun `resuming waits for the old work to end before asking again`() = runTest {
+    val oldId = UUID.randomUUID()
+    val oldWork = MutableStateFlow<WorkInfo?>(info(oldId, WorkInfo.State.RUNNING))
+    every { workManager.getWorkInfoByIdFlow(oldId) } returns oldWork
+    every { workManager.getWorkInfoByIdFlow(neq(oldId)) } returns flowOf(null)
+    records.state.value = listOf(record(oldId.toString(), DownloadRecordState.FAILED))
+    val repository = repository()
+
+    val resume = async {
+      repository.resume(listOf(InterruptedDownload(oldId.toString(), RECORDING, InterruptedDownload.Reason.FAILED)))
+    }
+    runCurrent()
+    verify(exactly = 0) { workManager.enqueueUniqueWork(any(), any(), any<OneTimeWorkRequest>()) }
+
+    oldWork.value = info(oldId, WorkInfo.State.FAILED)
+
+    assertEquals(listOf(DownloadRequestResult.STARTED), resume.await())
+  }
+
+  @Test
+  fun `a download that does not start again stays offered`() = runTest {
+    val oldId = UUID.randomUUID()
+    every { workManager.getWorkInfoByIdFlow(oldId) } returns flowOf(null)
+    every { tunnelCoordinator.holdIfUp(any()) } returns false
+    val old = record(oldId.toString(), DownloadRecordState.INTERRUPTED, partial = "content://media/1")
+    records.state.value = listOf(old)
+
+    val results = repository().resume(listOf(InterruptedDownload(oldId.toString(), RECORDING, InterruptedDownload.Reason.INTERRUPTED)))
+
+    assertEquals(listOf(DownloadRequestResult.TUNNEL_DOWN), results)
+    verify(exactly = 0) { outputs.deletePartial(any()) }
+    assertEquals(listOf(old), records.state.value)
+  }
+
+  @Test
+  fun `resuming gives up waiting after a while`() = runTest {
+    val oldId = UUID.randomUUID()
+    every { workManager.getWorkInfoByIdFlow(oldId) } returns MutableStateFlow(info(oldId, WorkInfo.State.RUNNING))
+    every { workManager.getWorkInfosForUniqueWorkFlow(downloadWorkName(RECORDING)) } returns
+      flowOf(listOf(info(oldId, WorkInfo.State.RUNNING)))
+    records.state.value = listOf(record(oldId.toString(), DownloadRecordState.FAILED))
+    val repository = repository()
+
+    val resume = async {
+      repository.resume(listOf(InterruptedDownload(oldId.toString(), RECORDING, InterruptedDownload.Reason.FAILED)))
+    }
+    advanceTimeBy(OLD_WORK_TIMEOUT_MS + 1)
+
+    assertEquals(listOf(DownloadRequestResult.ALREADY_RUNNING), resume.await())
+    assertEquals(1, records.state.value.size)
   }
 
   @Test

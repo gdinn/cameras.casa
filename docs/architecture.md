@@ -1088,9 +1088,16 @@ with the choice to start it again or drop it. Either way its partial file is del
   interrupted. This covers a process that died before WorkManager re-ran its work.
 - **Failure.** A read or write failure deletes the partial file and marks the record `FAILED`. It
   is offered the same way.
-- **Resume / Discard.** Both delete the noted partial files (`DownloadOutputs.deletePartial`) and
-  remove the records. Resume then requests the downloads again, which needs the tunnel up: Home
-  only offers them while it is ready.
+- **Discard** deletes the noted partial files (`DownloadOutputs.deletePartial`) and removes the
+  records.
+- **Resume** requests each download again, once its old work has ended. It waits up to
+  `OLD_WORK_TIMEOUT_MS` (5 s), because the record turns failed or interrupted just before the
+  worker returns, so the offer can be answered while WorkManager still has the old work running.
+  Asked right then, the new request would be refused as a duplicate.
+  - Only a download that started forgets its old record and partial file.
+  - One that did not start (tunnel down, still a duplicate) stays offered for the next time, and
+    Home's toast says not all of them started.
+  - Resuming needs the tunnel up, so Home only offers the downloads while it is ready.
 
 **Tests.**
 

@@ -17,13 +17,23 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
+
+/**
+ * How long a resume waits for an interrupted download's old work to end. The worker returns right
+ * after updating its record, so this only covers a slow WorkManager; past it, the request goes on
+ * and is refused as a duplicate if the old work is still there.
+ */
+internal const val OLD_WORK_TIMEOUT_MS = 5_000L
 
 /**
  * [DownloadRepository] over WorkManager, one unique work per recording ([downloadWorkName]).
@@ -67,7 +77,8 @@ class WorkManagerDownloadRepository @Inject constructor(
     records.update { it + newDownloadRecord(request.id.toString(), recording) }
     workManager.enqueueUniqueWork(name, ExistingWorkPolicy.KEEP, request)
     scope.launch {
-      workManager.getWorkInfoByIdFlow(request.id).first { it == null || it.state.isFinished }
+      // firstOrNull: should the flow ever complete without a final state, the holder still goes.
+      workManager.getWorkInfoByIdFlow(request.id).firstOrNull { it == null || it.state.isFinished }
       tunnelCoordinator.release(holder)
     }
     DownloadRequestResult.STARTED
@@ -81,9 +92,26 @@ class WorkManagerDownloadRepository @Inject constructor(
     list.toInterruptedDownloads { workId -> tunnelCoordinator.holds(TunnelHolder.Download(workId)) }
   }
 
-  override suspend fun resume(downloads: List<InterruptedDownload>) {
-    discard(downloads)
-    downloads.forEach { download(it.recording) }
+  /**
+   * Each download is requested again once its old work has ended. The record is marked failed or
+   * interrupted just before the worker returns, so the offer can be answered while WorkManager
+   * still has the old work running: requested right then, it would be refused as a duplicate. Only
+   * a download that started forgets its old record (and partial file); the others stay offered.
+   */
+  override suspend fun resume(downloads: List<InterruptedDownload>): List<DownloadRequestResult> =
+    downloads.map { interrupted ->
+      awaitEnded(interrupted.id)
+      download(interrupted.recording).also { result ->
+        if (result == DownloadRequestResult.STARTED) discard(listOf(interrupted))
+      }
+    }
+
+  /** Waits, up to [OLD_WORK_TIMEOUT_MS], for the work [workId] to be finished or gone. */
+  private suspend fun awaitEnded(workId: String) {
+    val id = runCatching { UUID.fromString(workId) }.getOrNull() ?: return
+    withTimeoutOrNull(OLD_WORK_TIMEOUT_MS) {
+      workManager.getWorkInfoByIdFlow(id).firstOrNull { it == null || it.state.isFinished }
+    }
   }
 
   override suspend fun discard(downloads: List<InterruptedDownload>) {

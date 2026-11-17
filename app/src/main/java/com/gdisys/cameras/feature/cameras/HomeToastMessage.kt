@@ -10,5 +10,6 @@ enum class HomeToastMessage(@get:StringRes override val resId: Int) : ToastMessa
   PRESS_BACK_AGAIN_TO_EXIT(R.string.home_route_press_back_again_to_exit),
   STREAM_ORDER_SAVE_ERROR(R.string.home_route_stream_order_save_error),
   DOWNLOADS_RESUMED(R.string.home_route_downloads_resumed),
+  DOWNLOADS_NOT_ALL_RESUMED(R.string.home_route_downloads_not_all_resumed),
   DOWNLOADS_ACTION_ERROR(R.string.home_route_downloads_action_error),
 }

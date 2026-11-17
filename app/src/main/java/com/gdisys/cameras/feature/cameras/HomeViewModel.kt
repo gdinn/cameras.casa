@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.lifecycle.viewModelScope
 import com.gdisys.cameras.core.DEBUG_TAG
 import com.gdisys.cameras.core.ToastEventViewModel
+import com.gdisys.cameras.core.downloads.domain.model.DownloadRequestResult
 import com.gdisys.cameras.core.downloads.domain.model.InterruptedDownload
 import com.gdisys.cameras.core.downloads.domain.usecase.DiscardDownloadsUseCase
 import com.gdisys.cameras.core.downloads.domain.usecase.ObserveInterruptedDownloadsUseCase
@@ -211,13 +212,24 @@ class HomeViewModel @Inject constructor(
     }
   }
 
-  /** Deletes what the interrupted downloads left and downloads them again. */
+  /**
+   * Downloads the interrupted downloads again. Those that could not start (the tunnel dropped, say)
+   * stay recorded and are offered the next time Home opens.
+   */
   fun onResumeDownloads() {
     val downloads = takeInterruptedDownloads()
     if (downloads.isEmpty()) return
     viewModelScope.launch {
       runCatching { resumeDownloadsUseCase(downloads) }
-        .onSuccess { showToast(HomeToastMessage.DOWNLOADS_RESUMED) }
+        .onSuccess { results ->
+          showToast(
+            if (results.all { it == DownloadRequestResult.STARTED }) {
+              HomeToastMessage.DOWNLOADS_RESUMED
+            } else {
+              HomeToastMessage.DOWNLOADS_NOT_ALL_RESUMED
+            }
+          )
+        }
         .onFailure { e ->
           Log.e(DEBUG_TAG, "Failed to resume the downloads", e)
           showToast(HomeToastMessage.DOWNLOADS_ACTION_ERROR)

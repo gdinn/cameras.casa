@@ -25,8 +25,11 @@ interface DownloadRepository {
    */
   fun interrupted(): Flow<List<InterruptedDownload>>
 
-  /** Deletes what [downloads] left behind and downloads their recordings again. */
-  suspend fun resume(downloads: List<InterruptedDownload>)
+  /**
+   * Downloads the recordings of [downloads] again, one result each. A download that started has
+   * what it left behind deleted and is forgotten; one that did not stays offered.
+   */
+  suspend fun resume(downloads: List<InterruptedDownload>): List<DownloadRequestResult>
 
   /** Deletes what [downloads] left behind and forgets them. */
   suspend fun discard(downloads: List<InterruptedDownload>)

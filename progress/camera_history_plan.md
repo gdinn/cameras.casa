@@ -701,6 +701,24 @@ Manual check with the admin peer:
 
 Not reported yet: the process death check (`adb shell am kill`) and Discard.
 
+**After the commit (2026-11-17).**
+
+- **Downloads stopped working; the cause was the environment.** The worker failed after ~40 s with
+  `RecordingReadException: unreachable`. Another device was connected with the same WireGuard
+  peer: two devices on one key take the endpoint from each other, so the tunnel carried nothing
+  reliably. With the second device off, downloads complete again. While chasing it, the worker's
+  failure log gained the throwable, so the cause chain down to smbj shows.
+- **Bug: Resume did not always start the download, fixed.**
+  - The worker marks its record failed or interrupted just before it returns, and Home's dialog
+    appears on that change. A quick Resume found the old work still running in WorkManager, was
+    refused as a duplicate, and had already deleted the record. The download was lost, while the
+    toast said it had started.
+  - Now `resume` waits up to 5 s for the old work to end, forgets the old record only when the new
+    download started, and returns one result per download.
+  - Home says when not all started; those stay offered next time.
+  - Verified: `jacocoTestCoverageVerification` passed. On the device, a Resume tapped as soon as
+    the dialog appears always starts the download.
+
 **What was built** (`docs/architecture.md` §5.5, §6.1, §6.2, §6.10, §10)
 
 - `core/storage`:

@@ -5,6 +5,7 @@ import app.cash.turbine.test
 import app.cash.turbine.turbineScope
 import com.gdisys.cameras.MainDispatcherRule
 import com.gdisys.cameras.core.components.ToastUiEvent
+import com.gdisys.cameras.core.downloads.domain.model.DownloadRequestResult
 import com.gdisys.cameras.core.downloads.domain.model.InterruptedDownload
 import com.gdisys.cameras.core.downloads.domain.usecase.DiscardDownloadsUseCase
 import com.gdisys.cameras.core.downloads.domain.usecase.ObserveInterruptedDownloadsUseCase
@@ -89,7 +90,7 @@ class HomeViewModelTest {
     every { getStreamPreferencesUseCase() } returns streamPreferences
     every { observeIsAdminUseCase() } returns isAdmin
     every { observeInterruptedDownloadsUseCase() } returns interrupted
-    coEvery { resumeDownloadsUseCase(any()) } returns Unit
+    coEvery { resumeDownloadsUseCase(any()) } answers { firstArg<List<InterruptedDownload>>().map { DownloadRequestResult.STARTED } }
     coEvery { discardDownloadsUseCase(any()) } returns Unit
     coEvery { updateStreamOrderUseCase(any(), any()) } returns Result.success(Unit)
     viewModel = HomeViewModel(
@@ -296,6 +297,18 @@ class HomeViewModelTest {
 
     coVerify { resumeDownloadsUseCase(listOf(interruptedDownload)) }
     assertEquals(emptyList<InterruptedDownload>(), viewModel.interruptedDownloads.value)
+  }
+
+  @Test
+  fun `a resume where some downloads did not start says so`() = runTest {
+    isAdmin.value = true
+    interrupted.value = listOf(interruptedDownload)
+    coEvery { resumeDownloadsUseCase(any()) } returns listOf(DownloadRequestResult.TUNNEL_DOWN)
+
+    viewModel.uiEvent.test {
+      viewModel.onResumeDownloads()
+      assertEquals(ToastUiEvent.Show(HomeToastMessage.DOWNLOADS_NOT_ALL_RESUMED.resId), awaitItem())
+    }
   }
 
   @Test
