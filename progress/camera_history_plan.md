@@ -699,7 +699,7 @@ Manual check with the admin peer:
 - a download stopped by swiping the app from recents is offered on the next launch;
 - Resume starts it again.
 
-Not reported yet: the process death check (`adb shell am kill`) and Discard.
+Not reported yet at commit time: the process death check and Discard (see below).
 
 **After the commit (2026-11-17).**
 
@@ -718,6 +718,9 @@ Not reported yet: the process death check (`adb shell am kill`) and Discard.
   - Home says when not all started; those stay offered next time.
   - Verified: `jacocoTestCoverageVerification` passed. On the device, a Resume tapped as soon as
     the dialog appears always starts the download.
+- **Process death, checked on the device.** `am kill` does not kill the process while the download
+  runs as a foreground service. `am crash` does. On the next launch Home offered the download as
+  interrupted. The debug build's package is `com.gdisys.cameras.debug`.
 
 **What was built** (`docs/architecture.md` §5.5, §6.1, §6.2, §6.10, §10)
 
