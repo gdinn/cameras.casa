@@ -1959,7 +1959,7 @@ in `docs/images/` are reproducible from source.
 ```bash
 # requires Node.js; no global install needed
 for f in docs/diagrams/*.mmd; do
-  npx --yes @mermaid-js/mermaid-cli \
+  npx --yes @mermaid-js/mermaid-cli@11.17.0 \
     -i "$f" \
     -o "docs/images/$(basename "$f" .mmd).png" \
     -b white -w 2400
@@ -1978,4 +1978,5 @@ done
 | `docs/diagrams/data-flow-preferences.mmd` | `docs/images/data-flow-preferences.png` |
 | `docs/diagrams/data-flow-streaming.mmd` | `docs/images/data-flow-streaming.png` |
 
-Diagrams were generated with `@mermaid-js/mermaid-cli` 11.17.0.
+Diagrams were generated with `@mermaid-js/mermaid-cli` 11.17.0. The command pins it: later majors
+dropped the `-w` option.
