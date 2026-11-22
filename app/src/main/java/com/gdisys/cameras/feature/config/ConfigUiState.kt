@@ -2,8 +2,8 @@ package com.gdisys.cameras.feature.config
 
 /**
  * @property notificationPermissionButtonState the optional notifications step, `null` when it is
- *   not shown: only admins download, and only Android 13+ asks. [ConfigButtonState.Error] means the
- *   user declined it, which is final.
+ *   not shown: only users with a Samba login download, and only Android 13+ asks.
+ *   [ConfigButtonState.Error] means the user declined it, which is final.
  */
 data class ConfigUiState(
   val cameraPermissionButtonState: ConfigButtonState = ConfigButtonState.Loading,

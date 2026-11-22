@@ -16,7 +16,7 @@ import com.gdisys.cameras.core.storage.domain.model.UserPreferences
 import com.gdisys.cameras.core.storage.domain.usecase.GetStreamPreferencesUseCase
 import com.gdisys.cameras.core.storage.domain.usecase.GetVpnConfigStatusUseCase
 import com.gdisys.cameras.core.storage.domain.usecase.MarkNotificationPermissionRequestedUseCase
-import com.gdisys.cameras.core.storage.domain.usecase.ObserveIsAdminUseCase
+import com.gdisys.cameras.core.storage.domain.usecase.ObserveHasRecordingsAccessUseCase
 import com.gdisys.cameras.core.storage.domain.usecase.ParseUserPreferencesFromQrCodeUseCase
 import com.gdisys.cameras.core.storage.domain.usecase.SaveUserPreferencesUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -53,7 +53,7 @@ class ConfigViewModel @Inject constructor(
   hasVpnPermissionUseCase: HasVpnPermissionUseCase,
   private val hasCameraPermissionUseCase: HasCameraPermissionUseCase,
   private val requestVpnPermissionUseCase: RequestVpnPermissionUseCase,
-  observeIsAdminUseCase: ObserveIsAdminUseCase,
+  observeHasRecordingsAccessUseCase: ObserveHasRecordingsAccessUseCase,
   private val getNotificationPermissionUseCase: GetNotificationPermissionUseCase,
   private val markNotificationPermissionRequestedUseCase: MarkNotificationPermissionRequestedUseCase
 ) : ToastEventViewModel() {
@@ -89,18 +89,19 @@ class ConfigViewModel @Inject constructor(
     .onStart { emit(ConfigButtonState.Loading) }
 
   /**
-   * The notifications step: for admins (only they download) on Android 13+. It is asked once and
-   * the answer stands, so a declined permission stays declined (`Error`) instead of asking again.
+   * The notifications step: for users with a Samba login (only they download) on Android 13+. It
+   * is asked once and the answer stands, so a declined permission stays declined (`Error`) instead
+   * of asking again.
    * Asking here, and not when a download starts, matters: the permission dialog pauses the screen,
    * and the player gives the tunnel back on pause.
    */
   private val notificationPermissionButtonState: Flow<ConfigButtonState?> = combine(
-    observeIsAdminUseCase(),
+    observeHasRecordingsAccessUseCase(),
     _notificationPermission,
     getStreamPreferencesUseCase().map { it.notificationPermissionRequested }
-  ) { isAdmin, permission, requested ->
+  ) { hasRecordingsAccess, permission, requested ->
     when {
-      !isAdmin || permission == NotificationPermission.NOT_REQUIRED -> null
+      !hasRecordingsAccess || permission == NotificationPermission.NOT_REQUIRED -> null
       permission == NotificationPermission.GRANTED -> ConfigButtonState.Done
       requested -> ConfigButtonState.Error
       else -> ConfigButtonState.Ready

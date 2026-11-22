@@ -100,7 +100,7 @@
     <string name="history_screen_month_expanded">Expandido</string>
     <string name="history_screen_month_collapsed">Recolhido</string>
     <string name="history_error_vpn_connection">Falha ao conectar à VPN</string>
-    <string name="history_error_not_admin">Este aparelho não tem acesso às gravações. Leia um QR code de admin</string>
+    <string name="history_error_no_samba_login">Este aparelho não tem acesso às gravações. Leia um QR code com acesso às gravações</string>
     <string name="history_error_authentication_failed">O servidor de gravações recusou o login deste aparelho</string>
     <string name="history_error_unreachable">O servidor de gravações não respondeu</string>
     <string name="history_error_failed">Falha ao ler as gravações</string>

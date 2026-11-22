@@ -100,7 +100,7 @@
     <string name="history_screen_month_expanded">Expanded</string>
     <string name="history_screen_month_collapsed">Collapsed</string>
     <string name="history_error_vpn_connection">Could not connect to the VPN</string>
-    <string name="history_error_not_admin">This device has no access to the recordings. Scan an admin QR code</string>
+    <string name="history_error_no_samba_login">This device has no access to the recordings. Scan a QR code with access to the recordings</string>
     <string name="history_error_authentication_failed">The recordings server refused this device\'s login</string>
     <string name="history_error_unreachable">The recordings server did not answer</string>
     <string name="history_error_failed">Could not read the recordings</string>

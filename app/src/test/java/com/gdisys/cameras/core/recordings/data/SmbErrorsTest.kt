@@ -77,7 +77,7 @@ class SmbErrorsTest {
 
   @Test
   fun `a domain failure passes through`() {
-    val error = RecordingsException.NotAdmin()
+    val error = RecordingsException.NoSambaLogin()
 
     assertSame(error, error.toRecordingsException())
   }
@@ -100,7 +100,7 @@ class SmbErrorsTest {
 
   @Test
   fun `a read failure is not wrapped twice`() {
-    val error = RecordingReadException(RecordingsException.NotAdmin())
+    val error = RecordingReadException(RecordingsException.NoSambaLogin())
 
     assertSame(error, error.toReadException())
   }

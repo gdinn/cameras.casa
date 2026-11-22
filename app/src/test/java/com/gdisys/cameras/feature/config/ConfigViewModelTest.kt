@@ -18,7 +18,7 @@ import com.gdisys.cameras.core.storage.domain.model.VpnConfigTokens
 import com.gdisys.cameras.core.storage.domain.usecase.GetStreamPreferencesUseCase
 import com.gdisys.cameras.core.storage.domain.usecase.GetVpnConfigStatusUseCase
 import com.gdisys.cameras.core.storage.domain.usecase.MarkNotificationPermissionRequestedUseCase
-import com.gdisys.cameras.core.storage.domain.usecase.ObserveIsAdminUseCase
+import com.gdisys.cameras.core.storage.domain.usecase.ObserveHasRecordingsAccessUseCase
 import com.gdisys.cameras.core.storage.domain.usecase.ParseUserPreferencesFromQrCodeUseCase
 import com.gdisys.cameras.core.storage.domain.usecase.SaveUserPreferencesUseCase
 import io.mockk.coEvery
@@ -46,10 +46,10 @@ class ConfigViewModelTest {
   private val hasVpnPermissionUseCase = mockk<HasVpnPermissionUseCase>()
   private val hasCameraPermissionUseCase = mockk<HasCameraPermissionUseCase>()
   private val requestVpnPermissionUseCase = mockk<RequestVpnPermissionUseCase>()
-  private val observeIsAdminUseCase = mockk<ObserveIsAdminUseCase>()
+  private val observeHasRecordingsAccessUseCase = mockk<ObserveHasRecordingsAccessUseCase>()
   private val getNotificationPermissionUseCase = mockk<GetNotificationPermissionUseCase>()
   private val markNotificationPermissionRequestedUseCase = mockk<MarkNotificationPermissionRequestedUseCase>()
-  private val isAdmin = MutableStateFlow(false)
+  private val hasRecordingsAccess = MutableStateFlow(false)
   private var notificationPermission = NotificationPermission.NOT_REQUIRED
 
   private val statusFlow = MutableStateFlow<VpnCredentialsStatus>(VpnCredentialsStatus.Loading)
@@ -81,7 +81,7 @@ class ConfigViewModelTest {
     every { getStreamPreferencesUseCase() } returns streamPreferencesFlow
     every { hasVpnPermissionUseCase() } returns hasVpnPermission
     every { hasCameraPermissionUseCase() } returns hasCameraPermission
-    every { observeIsAdminUseCase() } returns isAdmin
+    every { observeHasRecordingsAccessUseCase() } returns hasRecordingsAccess
     every { getNotificationPermissionUseCase() } answers { notificationPermission }
     coEvery { markNotificationPermissionRequestedUseCase() } answers {
       streamPreferencesFlow.value = streamPreferencesFlow.value.copy(notificationPermissionRequested = true)
@@ -95,7 +95,7 @@ class ConfigViewModelTest {
       hasVpnPermissionUseCase,
       hasCameraPermissionUseCase,
       requestVpnPermissionUseCase,
-      observeIsAdminUseCase,
+      observeHasRecordingsAccessUseCase,
       getNotificationPermissionUseCase,
       markNotificationPermissionRequestedUseCase
     )
@@ -601,12 +601,12 @@ class ConfigViewModelTest {
   private val notificationStep get() = viewModel.uiState.value.notificationPermissionButtonState
 
   @Test
-  fun `the notifications step is only for admins on Android 13+`() {
+  fun `the notifications step is only for users with a Samba login on Android 13+`() {
     notificationPermission = NotificationPermission.NOT_GRANTED
     viewModel = createViewModel()
     assertEquals(null, notificationStep)
 
-    isAdmin.value = true
+    hasRecordingsAccess.value = true
     assertEquals(ConfigButtonState.Ready, notificationStep)
 
     notificationPermission = NotificationPermission.NOT_REQUIRED
@@ -616,7 +616,7 @@ class ConfigViewModelTest {
 
   @Test
   fun `the notifications step is optional`() {
-    isAdmin.value = true
+    hasRecordingsAccess.value = true
     notificationPermission = NotificationPermission.NOT_GRANTED
     statusFlow.value = VpnCredentialsStatus.Loaded(hasValidCredentials = true)
     streamPreferencesFlow.value = StreamPreferences(streamUrls = listOf(STREAM_URL))
@@ -628,7 +628,7 @@ class ConfigViewModelTest {
 
   @Test
   fun `a ready step asks for the permission`() = runTest {
-    isAdmin.value = true
+    hasRecordingsAccess.value = true
     notificationPermission = NotificationPermission.NOT_GRANTED
     viewModel = createViewModel()
 
@@ -640,7 +640,7 @@ class ConfigViewModelTest {
 
   @Test
   fun `a granted permission is done and not asked again`() = runTest {
-    isAdmin.value = true
+    hasRecordingsAccess.value = true
     notificationPermission = NotificationPermission.GRANTED
     viewModel = createViewModel()
     assertEquals(ConfigButtonState.Done, notificationStep)
@@ -654,7 +654,7 @@ class ConfigViewModelTest {
 
   @Test
   fun `a declined permission is recorded and never asked again`() = runTest {
-    isAdmin.value = true
+    hasRecordingsAccess.value = true
     notificationPermission = NotificationPermission.NOT_GRANTED
     viewModel = createViewModel()
 
@@ -672,7 +672,7 @@ class ConfigViewModelTest {
 
   @Test
   fun `a granted answer is done and recorded`() {
-    isAdmin.value = true
+    hasRecordingsAccess.value = true
     notificationPermission = NotificationPermission.NOT_GRANTED
     viewModel = createViewModel()
 
@@ -685,7 +685,7 @@ class ConfigViewModelTest {
 
   @Test
   fun `a permission granted later in the settings is picked up`() {
-    isAdmin.value = true
+    hasRecordingsAccess.value = true
     notificationPermission = NotificationPermission.NOT_GRANTED
     streamPreferencesFlow.value = StreamPreferences(notificationPermissionRequested = true)
     viewModel = createViewModel()
@@ -699,7 +699,7 @@ class ConfigViewModelTest {
 
   @Test
   fun `a failure to record the answer is only logged`() {
-    isAdmin.value = true
+    hasRecordingsAccess.value = true
     notificationPermission = NotificationPermission.NOT_GRANTED
     viewModel = createViewModel()
     coEvery { markNotificationPermissionRequestedUseCase() } returns Result.failure(IllegalStateException("disk"))

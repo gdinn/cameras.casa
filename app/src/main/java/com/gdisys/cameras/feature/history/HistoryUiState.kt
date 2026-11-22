@@ -63,7 +63,7 @@ sealed interface DaysState {
 /** What the screen tells the user when something could not be read. */
 enum class HistoryError(@get:StringRes val resId: Int) {
   VPN_CONNECTION(R.string.history_error_vpn_connection),
-  NOT_ADMIN(R.string.history_error_not_admin),
+  NO_SAMBA_LOGIN(R.string.history_error_no_samba_login),
   AUTHENTICATION_FAILED(R.string.history_error_authentication_failed),
   UNREACHABLE(R.string.history_error_unreachable),
   FAILED(R.string.history_error_failed)
@@ -71,7 +71,7 @@ enum class HistoryError(@get:StringRes val resId: Int) {
 
 /** The message for a failure of the share; anything else is [HistoryError.FAILED]. */
 internal fun Throwable.toHistoryError(): HistoryError = when (this) {
-  is RecordingsException.NotAdmin -> HistoryError.NOT_ADMIN
+  is RecordingsException.NoSambaLogin -> HistoryError.NO_SAMBA_LOGIN
   is RecordingsException.AuthenticationFailed -> HistoryError.AUTHENTICATION_FAILED
   is RecordingsException.Unreachable -> HistoryError.UNREACHABLE
   else -> HistoryError.FAILED

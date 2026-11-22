@@ -5,7 +5,7 @@ import java.time.LocalDate
 import java.time.YearMonth
 
 /**
- * The recordings of one camera on the Samba share, as the admin's stored login sees them.
+ * The recordings of one camera on the Samba share, as the stored Samba login sees them.
  *
  * - Every call reads the share: nothing is cached, because the recorder adds a file every 15
  *   minutes.

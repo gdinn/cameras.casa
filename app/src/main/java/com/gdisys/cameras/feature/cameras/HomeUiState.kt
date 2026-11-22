@@ -15,7 +15,7 @@ sealed interface HomeUiState {
    * @property failedStreams the [streams] whose last connection attempt failed; their cards show
    *   the error and a retry button instead of a black frame
    * @property historyCamera the camera (`cam_xx`) whose recordings the focused view offers. Only
-   *   for admins, and only when the focused stream's URL names a camera
+   *   for users with a Samba login, and only when the focused stream's URL names a camera
    */
   data class Ready(
     val streams: List<String>,

@@ -43,8 +43,9 @@ private val OCTOBER: YearMonth = YearMonth.of(2026, 10)
 private val TODAY: LocalDate = LocalDate.of(2026, 11, 10)
 
 /**
- * An admin's way from Home to a recording and its download, over the fake share, player and
- * downloads, and the unfinished downloads Home offers. A regular user sees none of it.
+ * The way of a user with a Samba login (admin or client peer) from Home to a recording and its
+ * download, over the fake share, player and downloads, and the unfinished downloads Home offers. A
+ * user without a Samba login sees none of it.
  */
 @HiltAndroidTest
 class RecordingsFlowTest : FlowTest() {
@@ -75,7 +76,7 @@ class RecordingsFlowTest : FlowTest() {
   }
 
   @Test
-  fun aRegularUserHasNoHistory() {
+  fun aUserWithoutSambaLoginHasNoHistory() {
     seedUser(QrFixture.VALID)
     launchApp()
 
@@ -153,6 +154,20 @@ class RecordingsFlowTest : FlowTest() {
     assertTrue(R.string.player_download_started in toasts.shown)
   }
 
+  /** The recordings follow the Samba login, not the profile: a client peer that got one has them. */
+  @Test
+  fun aClientWithSambaLoginPlaysAndDownloadsARecording() {
+    seedUser(QrFixture.CLIENT_WITH_SAMBA)
+    launchApp()
+    openRecordingAt(LocalTime.of(14, 0))
+
+    composeRule.onNodeWithTag(RecordingPlayerTestTags.DOWNLOAD_BUTTON).performClick()
+    composeRule.waitForIdle()
+
+    assertEquals(listOf(AT_1400), playback.played)
+    assertEquals(listOf(AT_1400), downloads.requested.map { it.fileName })
+  }
+
   @Test
   fun anAdminIsOfferedTheUnfinishedDownloadsAndResumesThem() {
     seedUser(QrFixture.ADMIN)
@@ -174,7 +189,7 @@ class RecordingsFlowTest : FlowTest() {
   }
 
   @Test
-  fun aRegularUserIsNotOfferedUnfinishedDownloads() {
+  fun aUserWithoutSambaLoginIsNotOfferedUnfinishedDownloads() {
     seedUser(QrFixture.VALID)
     downloads.interrupted.value = listOf(
       InterruptedDownload(

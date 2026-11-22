@@ -9,7 +9,7 @@ import javax.inject.Inject
 
 /**
  * Creates the [RecordingFileSource]s the player and the downloads read through: each one an
- * [SmbFileSession] with its own client, logged in with the stored admin login.
+ * [SmbFileSession] with its own client, logged in with the stored Samba login.
  */
 class RecordingFileSources @Inject constructor(
   private val userPreferencesRepository: UserPreferencesRepository
