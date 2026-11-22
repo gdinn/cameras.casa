@@ -5,6 +5,7 @@ For an installation built from an earlier version of [infra_guide.md](infra_guid
 - **Do I need it?** Run `/ipv6 firewall nat print where comment~"VPN admin"` on the router. If it prints a rule, yes.
 - **Same working rules:** [0.5 Working rules](infra_guide.md#05-working-rules) apply (Safe Mode, select by `comment`, checkpoints, placeholders).
 - **Downtime:** none for the app. Each step ends with a test.
+- **Samba for clients:** independent of this guide; [migration_client_samba.md](migration_client_samba.md) can come before or after it. Where a result differs (Step M4), both are given.
 
 ---
 
@@ -111,6 +112,8 @@ sudo ufw show added
 # Exactly 5 rules: 8889/tcp and 8189/udp from fd00:10::/64; 22, 445, 8888/tcp from fd00:10::a:0/112
 ```
 
+After [migration_client_samba.md](migration_client_samba.md) (Samba for client peers): 6 rules, the 5 above plus 445/tcp from `fd00:10::c:0/112`.
+
 ## Step M5 — DNS name for the router
 
 ```routeros
@@ -130,6 +133,8 @@ Repeat the table of [Step 30](infra_guide.md#step-30--validate-each-profile) wit
 
 - `curl -6` / `curl -4` to icanhazip: the **local** network's addresses for both profiles, never the router's `ether1` address.
 - Admin ports: only 22, 445 and 8888.
+
+Before [migration_client_samba.md](migration_client_samba.md), the client's `curl` on `:445` gives ❌ `000` instead of the table's ✅ `200`: only admins reach Samba until then.
 
 ---
 
