@@ -85,7 +85,9 @@ In Safe Mode. Check the two rules to change, then change them:
 
 ```routeros
 /ipv6 firewall filter print where comment~"VPN admin"
-# Only "FORWARD: VPN admin -> Rpi (SSH, SMB, HLS)", with dst-port=22,445,8888
+# Exactly 2 rules:
+#   "INPUT: SSH to router from VPN admins" (unchanged)
+#   "FORWARD: VPN admin -> Rpi (SSH, SMB, HLS)", with dst-port=22,445,8888
 /ipv6 firewall nat print
 # Only "NAT66: HOME -> Internet (no prefix delegation from ISP)"
 ```
