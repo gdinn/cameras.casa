@@ -1150,42 +1150,43 @@ The router's IPv6 address can change when the ISP renews it. A script publishes 
 :local domainName "<vpn-hostname>"
 :local wanInterface "ether1"
 
-# 1. Current global IPv6 on the WAN
+# 1. Current global IPv6 on the WAN (no address: log and stop; the else
+#    branch is the exit, since a bare :return fails in RouterOS 7)
 :local ipList [/ipv6 address find interface=$wanInterface global=yes]
 :if ([:len $ipList] = 0) do={
     :log error "DDNS: no global IPv6 address on $wanInterface"
-    :return
-}
-:local currentIP [/ipv6 address get ($ipList->0) address]
-:local slashPos [:find $currentIP "/"]
-:if ($slashPos >= 0) do={ :set currentIP [:pick $currentIP 0 $slashPos] }
-:set currentIP [:tostr [:toip6 $currentIP]]
+} else={
+    :local currentIP [/ipv6 address get ($ipList->0) address]
+    :local slashPos [:find $currentIP "/"]
+    :if ($slashPos >= 0) do={ :set currentIP [:pick $currentIP 0 $slashPos] }
+    :set currentIP [:tostr [:toip6 $currentIP]]
 
-# 2. What the record currently resolves to
-:local dnsIP ""
-:local dnsResolveFailed false
-:do {
-    :set dnsIP [:tostr [:toip6 [:resolve $domainName type=ipv6]]]
-} on-error={
-    :log warning "DDNS: could not resolve $domainName"
-    :set dnsResolveFailed true
-}
-
-# 3. Update only when needed ("proxied": false is required for UDP/VPN)
-:if ($dnsResolveFailed || $currentIP != $dnsIP) do={
-    :local payload "{\"type\":\"AAAA\",\"name\":\""
-    :set payload ($payload . $domainName . "\",\"content\":\"" . $currentIP)
-    :set payload ($payload . "\",\"ttl\":120,\"proxied\":false}")
-    :local url "https://api.cloudflare.com/client/v4/zones/$cfZoneId/dns_records/$cfRecordId"
+    # 2. What the record currently resolves to
+    :local dnsIP ""
+    :local dnsResolveFailed false
     :do {
-        :local result [/tool fetch mode=https http-method=put url=$url \
-            http-header-field="Authorization: Bearer $cfToken, Content-Type: application/json" \
-            check-certificate=yes http-data=$payload output=user as-value]
-        :if ([:find ($result->"data") "\"success\":true"] < 0) do={
-            :log error ("DDNS: Cloudflare error: " . ($result->"data"))
-        }
+        :set dnsIP [:tostr [:toip6 [:resolve $domainName type=ipv6]]]
     } on-error={
-        :log error "DDNS: request to Cloudflare failed (token, IDs or connectivity)"
+        :log warning "DDNS: could not resolve $domainName"
+        :set dnsResolveFailed true
+    }
+
+    # 3. Update only when needed ("proxied": false is required for UDP/VPN)
+    :if ($dnsResolveFailed || $currentIP != $dnsIP) do={
+        :local payload "{\"type\":\"AAAA\",\"name\":\""
+        :set payload ($payload . $domainName . "\",\"content\":\"" . $currentIP)
+        :set payload ($payload . "\",\"ttl\":120,\"proxied\":false}")
+        :local url "https://api.cloudflare.com/client/v4/zones/$cfZoneId/dns_records/$cfRecordId"
+        :do {
+            :local result [/tool fetch mode=https http-method=put url=$url \
+                http-header-field="Authorization: Bearer $cfToken, Content-Type: application/json" \
+                check-certificate=yes http-data=$payload output=user as-value]
+            :if ([:find ($result->"data") "\"success\":true"] < 0) do={
+                :log error ("DDNS: Cloudflare error: " . ($result->"data"))
+            }
+        } on-error={
+            :log error "DDNS: request to Cloudflare failed (token, IDs or connectivity)"
+        }
     }
 }
 }
@@ -1199,6 +1200,12 @@ Copy it to the router and import it:
 ```bash
 # On the HOME computer
 scp -i ~/.ssh/cameras_router ./ddns.rsc admin@192.168.89.1:~/
+```
+
+If the router already has the script (updating an older version), remove it first, or `add` fails because the name exists. The scheduler stays and picks up the new script by name:
+
+```routeros
+/system script remove update-ddns-cloudflare ; # only when updating
 ```
 
 ```routeros
