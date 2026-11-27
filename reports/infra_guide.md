@@ -1753,7 +1753,20 @@ systemctl is-enabled ufw                     # enabled: survives a reboot
 
 The router's firewall blocks the same things as ufw, so a test through the VPN cannot show which of the two did the blocking. The router can test ufw alone: traffic **it** generates does not pass through its own `forward` rules, and it can pick a source address. `fd00:20::1` (the router on the DMZ) is outside both VPN blocks, and `fd00:10::1` (the router on the tunnel) is in `fd00:10::/64` but outside the admin and client blocks. A dropped request hangs; stop it with `Ctrl+C` after about 10 seconds.
 
-Something must answer on the ports for the allowed cases to show up. Start the three stand-in servers again, exactly as in Step 30 (from an admin SSH session, which keeps working with ufw active). The server on `::` also accepts IPv4, so the IPv4 test below is a real one.
+Something must answer on the ports for the allowed cases to show up. Step 30 ended by stopping its stand-in servers, so start them again, from an admin SSH session (it keeps working with ufw active). `big.bin` is for the large transfer row when the Step 30 table is repeated below. The servers on `::` also accept IPv4, so the IPv4 test below is a real one.
+
+```bash
+# On the Pi (SSH through the VPN as an admin)
+STUB=$(mktemp -d)
+head -c 50M /dev/urandom > "$STUB/big.bin"
+python3 -m http.server 8889 --bind :: --directory "$STUB" >/dev/null 2>&1 &
+python3 -m http.server 8888 --bind :: --directory "$STUB" >/dev/null 2>&1 &
+sudo -v
+sudo python3 -m http.server 445 --bind :: --directory "$STUB" >/dev/null 2>&1 &
+ss -tln | grep -E ':(8889|8888|445) '
+```
+
+`ss` must show the three ports in `LISTEN`, on `[::]`. Keep this SSH session open: the servers stop with it. Without a server, an allowed port answers "Connection refused" instead of HTTP. That still proves that ufw let the packet through, because ufw drops blocked packets silently (a timeout), but the test below expects an HTTP answer.
 
 ```routeros
 # Source fd00:20::1: not a VPN peer, so ufw drops everything (hangs until timeout)
@@ -1794,7 +1807,13 @@ sudo journalctl -k --since "-10 min" | grep 'UFW BLOCK'
 # Nothing from the client's address: the router dropped it first
 ```
 
-Stop the stand-in servers and delete their folder, as at the end of Step 30.
+When done, stop the stand-in servers and delete their folder:
+
+```bash
+# On the Pi, in the same SSH session
+sudo pkill -f 'python3 -m http.server'
+rm -rf "$STUB"
+```
 
 **Keeping ufw in sync with the router.** The two layers must use the same blocks: `fd00:10::/64` for the app ports, the router's `vpn-admin` (`fd00:10::a:0/112`) for the admin ports and its `vpn-clients` (`fd00:10::c:0/112`) for the clients' Samba. If either list ever changes, for example to one `/128` per admin device, change both layers (and Samba's `hosts allow`, Part 13), in the same session.
 
