@@ -508,7 +508,7 @@ testparm -s
 | `server min protocol = SMB3` | No SMB1 or SMB2. Every current macOS, Windows and Linux client speaks SMB3 |
 | `hosts allow = fd00:10::a:0/112 fd00:10::c:0/112 ::1 127.0.0.1`, `hosts deny = ALL` | A third check of the source, after the router and ufw, with the same admin and client blocks (`vpn-admin`, `vpn-clients`). Localhost is allowed for the tests on the Pi |
 | `security = user`, `passdb backend = tdbsam` | Local Samba users with their own passwords (Step 44) |
-| `map to guest = never`, `restrict anonymous = 2` | No guest login and no anonymous session: without a password, not even the list of shares is visible |
+| `map to guest = never`, `restrict anonymous = 2` | No guest login. SMB always lets a client open an empty session without a user (smbclient prints `Anonymous login successful`), but that session can read nothing: not even the list of shares |
 | Printing off | No printers on this host. Samba does not look for CUPS |
 | Share `backup_cams`, `valid users = @smb_viewer`, `read only = yes` | Only members of `smb_viewer` connect, and only to read. The disk permissions (Step 40) give the group read access only, so the filesystem refuses writes too |
 | `veto files = /lost+found/` | Hides the folder that ext4 keeps for `fsck` at the root of the disk. Only root can open it |
@@ -586,7 +586,9 @@ sudo userdel <name>
 **On the Pi** (localhost is in `hosts allow`):
 
 ```bash
-smbclient -N -L //localhost                                  # refused: no anonymous session
+smbclient -N -L //localhost
+# Anonymous login successful
+# tree connect failed: NT_STATUS_ACCESS_DENIED: the empty session sees no shares
 smbclient //localhost/backup_cams -U <name> -c 'ls'          # cam_10 ... cam_13
 smbclient //localhost/backup_cams -U <name> -c 'put /etc/hostname test.txt'
 # NT_STATUS_ACCESS_DENIED: read only

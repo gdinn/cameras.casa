@@ -13,7 +13,7 @@ Client peers (`fd00:10::c:N`) gain read-only Samba access to the recordings (`ba
 | Generator | Changed only inside `infra_guide.md` (Step 26), no file in `qr-code-gen/` |
 | Existing client peers | Not migrated: new peers are issued when needed |
 | App | Recordings access depends only on a stored Samba login (already true); "admin" naming renamed to "recordings access" |
-| Client without login | Reaches 445 (firewall opens the block) but Samba refuses it (no anonymous session) |
+| Client without login | Reaches 445 (firewall opens the block) but Samba gives it nothing (an anonymous session sees no shares) |
 
 ## Steps
 
