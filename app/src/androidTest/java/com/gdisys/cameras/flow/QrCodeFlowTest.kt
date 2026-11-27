@@ -48,6 +48,19 @@ class QrCodeFlowTest : FlowTest() {
   }
 
   @Test
+  fun clientQrWithSambaAccessStoresTheSambaLogin() {
+    launchApp()
+
+    injectQr(QrFixture.CLIENT_WITH_SAMBA.read())
+
+    config { assertStep(ConfigStep.QR_CODE, ConfigButtonState.Done) }
+    assertEquals(
+      SmbCredentials(smbUser = "client-c-20", smbPassword = "bogus-samba-password"),
+      storedUserPreferences().smbCredentials
+    )
+  }
+
+  @Test
   fun regularQrStoresNoSambaLogin() {
     launchApp()
 

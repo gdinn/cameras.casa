@@ -14,9 +14,9 @@ flowchart LR
     Route["HomeRoute<br/>feature/cameras/HomeRoute.kt"]
     Loading["LoadingScreen"]
     Empty["EmptyStreamsScreen"]
-    Screen["HomeScreen<br/>DynamicStreamGrid | FixedStreamGrid | FocusedStreamView<br/>+ history button (admins)"]
+    Screen["HomeScreen<br/>DynamicStreamGrid | FixedStreamGrid | FocusedStreamView<br/>+ history button (Samba login)"]
     Player["WebRtcVideoPlayer<br/>SurfaceViewRenderer (VideoSink)"]
-    Dialog["InterruptedDownloadsDialog<br/>(admins, over a ready Home)"]
+    Dialog["InterruptedDownloadsDialog<br/>(Samba login, over a ready Home)"]
     Nav --> Route
     Route --> Loading
     Route --> Empty
@@ -29,8 +29,8 @@ flowchart LR
     direction TB
     VM["HomeViewModel : ToastEventViewModel"]
     Inputs["_orientation, _focusedStream, _resumed<br/>MutableStateFlow, UI-driven inputs"]
-    State["HomeUiState = Loading | Empty | Ready(..., historyCamera)<br/>combine(prefs, orientation, focus + isAdmin, failed, vpnState)"]
-    Offer["interruptedDownloads: StateFlow<br/>(admins only)"]
+    State["HomeUiState = Loading | Empty | Ready(..., historyCamera)<br/>combine(prefs, orientation, focus + hasRecordingsAccess, failed, vpnState)"]
+    Offer["interruptedDownloads: StateFlow<br/>(Samba login only)"]
     Inputs --> State
     VM --> Inputs
     VM --> State
@@ -47,7 +47,7 @@ flowchart LR
     UCprefs["GetStreamPreferencesUseCase"]
     UCorder["UpdateStreamOrderUseCase"]
     UCvpnState["ObserveVpnStateUseCase"]
-    UCadmin["ObserveIsAdminUseCase"]
+    UCadmin["ObserveHasRecordingsAccessUseCase"]
     UCdl["Observe/Resume/DiscardDownloadsUseCase"]
     Coord["TunnelCoordinator<br/>request / release HOME holder"]
     StreamRepo["StreamConnectionRepository<br/>core/webrtc/ (contract)"]

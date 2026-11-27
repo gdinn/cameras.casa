@@ -158,7 +158,7 @@ class HistoryViewModelTest {
   @Test
   fun `each listing failure has its own message`() {
     mapOf(
-      RecordingsException.NotAdmin() to HistoryError.NOT_ADMIN,
+      RecordingsException.NoSambaLogin() to HistoryError.NO_SAMBA_LOGIN,
       RecordingsException.AuthenticationFailed(IOException()) to HistoryError.AUTHENTICATION_FAILED,
       RecordingsException.Unreachable(IOException()) to HistoryError.UNREACHABLE,
       RecordingsException.Failed(IOException()) to HistoryError.FAILED,

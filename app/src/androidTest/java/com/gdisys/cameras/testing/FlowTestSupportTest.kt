@@ -23,9 +23,9 @@ class FlowTestSupportTest : FlowTest() {
   @Inject lateinit var cameraPermissionRepository: CameraPermissionRepository
 
   @Test
-  fun onlyTheValidAndAdminFixturesHoldValidCredentials() {
+  fun onlyTheValidAndSambaFixturesHoldValidCredentials() {
     val parse = ParseUserPreferencesFromQrCodeUseCase()
-    val accepted = setOf(QrFixture.VALID, QrFixture.ADMIN)
+    val accepted = setOf(QrFixture.VALID, QrFixture.ADMIN, QrFixture.CLIENT_WITH_SAMBA)
 
     accepted.forEach { fixture -> assertNotNull("$fixture was rejected", parse(fixture.read()).getOrThrow()) }
     QrFixture.entries.filter { it !in accepted }.forEach { fixture ->

@@ -28,7 +28,7 @@ The Pi's services continue in a second guide, [pi_services_guide.md](pi_services
 - [Part 12 — Recorder (NVR)](pi_services_guide.md#part-12--recorder-nvr) (steps 40–42)
 - [Part 13 — Samba](pi_services_guide.md#part-13--samba) (steps 43–45)
 
-Installation built from an earlier version of this guide, with a full tunnel and internet for admins? See [migration_split_tunnel.md](migration_split_tunnel.md).
+Installation built from an earlier version of this guide, with a full tunnel and internet for admins? See [migration_split_tunnel.md](migration_split_tunnel.md). Only admins reach Samba? See [migration_client_samba.md](migration_client_samba.md).
 
 ---
 
@@ -66,7 +66,7 @@ Installation built from an earlier version of this guide, with a full tunnel and
 | HOME | `bridge` (`ether2`, `ether3`) | `192.168.89.1/24` | `fd00:30::1/64`, advertised (SLAAC) | Medium | Personal devices, router management |
 | DMZ | `ether4` | `192.168.91.1/24` | `fd00:20::1/64`, not advertised | Low, exposed | Raspberry Pi (`192.168.91.2`, `fd00:20::cafe`) running MediaMTX and Samba |
 | CAM | `ether5` | `192.168.90.1/24` | none (dropped) | Very low | IP cameras: no internet, only RTSP to the Pi |
-| VPN | `wireguard-ipv6` | none | `fd00:10::1/64` | Admins: high. Clients: none | Remote access |
+| VPN | `wireguard-ipv6` | none | `fd00:10::1/64` | Admins: high. Clients: low (read only) | Remote access |
 
 ### 0.3 Who reaches what
 
@@ -76,6 +76,7 @@ Installation built from an earlier version of this guide, with a full tunnel and
 | DMZ (Pi) | ✅ IPv4 only (updates) | DHCP, DNS, NTP, ping | — | ✅ TCP 554 (RTSP) | ❌ |
 | CAM | ❌, except a temporary allow list | DHCP, NTP | ❌ | (same switch) | ❌ |
 | VPN, every peer | ❌ | DNS, ping | ✅ TCP 8889, UDP 8189, ping | ❌ | ❌ |
+| VPN, client | ❌ | — | + TCP 445 (Samba) | ❌ | ❌ |
 | VPN, admin | ❌ | + SSH | + TCP 22 (SSH), 445 (Samba), 8888 (HLS) | ❌ | ❌ |
 
 VPN peers never talk to each other, and nothing can open a connection toward a VPN peer. The VPN only gives access to the Pi and the router, not to the internet: peers use a split tunnel (Step 25), and the rest of their traffic leaves through their own network.
@@ -608,7 +609,7 @@ add action=drop chain=forward \
 | HOME computer | `curl -4 -m5 https://example.com -o /dev/null -w '%{http_code}\n'` | ✅ 200 |
 | HOME computer | `ssh -i ~/.ssh/cameras_pi <user>@192.168.91.2` | ❌ timeout |
 | Pi | `curl -4 -m5 https://deb.debian.org -o /dev/null -w '%{http_code}\n'` | ✅ |
-| Pi | `ping -c2 -W2 <a HOME computer's IP>` | ❌ |
+| Pi | `ping -c2 -W2 <home-computer-ip>` | ❌ |
 
 **Test the CAM zone with a laptop** (before connecting the real cameras). Plug a laptop into `ether5`:
 
@@ -812,7 +813,7 @@ IPv6 has no NAT protecting the inside by default, and in this design it carries 
 /ipv6 firewall address-list
 add address=fd00:20::cafe/128 list=cameras.casa comment="Rpi (MediaMTX, Samba)"
 add address=fd00:10::a:0/112 list=vpn-admin comment="VPN admins: fd00:10::a:N"
-add address=fd00:10::c:0/112 list=vpn-clients comment="Documentation only: clients fd00:10::c:N"
+add address=fd00:10::c:0/112 list=vpn-clients comment="VPN clients: fd00:10::c:N"
 
 /ipv6 firewall raw
 add action=drop chain=prerouting in-interface=!wireguard-ipv6 \
@@ -826,7 +827,7 @@ add action=drop chain=prerouting in-interface=!bridge \
 **Why**
 
 - **`vpn-admin`** is an *allow list*: addresses in `fd00:10::a:0/112` (`fd00:10::a:1`, `::a:2`, …) get admin rights, and every other VPN address gets only what the app needs. The `/112` ends exactly at a group boundary, so each profile is one list entry and the profile can be read from the address itself: `a` for admin, `c` for client. See Part 8.
-- **`vpn-clients`** is not referenced by any rule. It only documents the client block (`fd00:10::c:0/112`); the allow-list model already gives the minimum to anyone outside `vpn-admin`.
+- **`vpn-clients`** is also an allow list, with a single right: Samba (Step 19). Addresses in `fd00:10::c:0/112` get it; an address in neither list gets only what the app needs to play video.
 - **Raw anti-spoofing.** Every IPv6 rule that follows trusts the *source address* (`vpn-admin`, `cameras.casa`). Inside the tunnel, the source is trustworthy: WireGuard only accepts from a peer packets whose source is in that peer's `allowed-address`. Outside the tunnel nothing guarantees it. Without these rules, a host on the ISP router's network could send a packet with an admin source address toward the router. The `raw` table drops such packets before connection tracking. Only the project's three prefixes are dropped, not all of `fd00::/8`, because many ISP routers use a ULA of their own on the WAN side.
 
 **Test:** spoofing cannot be tested without extra tooling. Instead, check that legitimate traffic is not hit:
@@ -936,6 +937,9 @@ add action=accept chain=forward dst-address-list=cameras.casa dst-port=8189 \
 add action=accept chain=forward dst-address-list=cameras.casa \
     dst-port=22,445,8888 in-interface=wireguard-ipv6 protocol=tcp \
     src-address-list=vpn-admin comment="FORWARD: VPN admin -> Rpi (SSH, SMB, HLS)"
+add action=accept chain=forward dst-address-list=cameras.casa dst-port=445 \
+    in-interface=wireguard-ipv6 protocol=tcp src-address-list=vpn-clients \
+    comment="FORWARD: VPN client -> Rpi (SMB)"
 add action=drop chain=forward in-interface=wireguard-ipv6 \
     comment="FORWARD: Drop everything else from VPN"
 add action=accept chain=forward in-interface-list=LAN out-interface-list=WAN \
@@ -959,6 +963,7 @@ add action=drop chain=forward \
 | VPN ping → Pi | Diagnostics: any peer can check that the Pi is reachable. |
 | VPN → Pi, TCP 8889 and UDP 8189 | What the app needs: WHEP signaling (HTTP) and WebRTC media (ICE over UDP). Every peer, admin or client. |
 | VPN admin → Pi, admin ports | SSH (22), Samba (445, the recordings) and HLS (8888, the streams in a browser). Admins only. |
+| VPN client → Pi, Samba | Samba (445) only, for the recordings in the app. SSH and HLS stay admin only. Samba still asks for a login, so a client generated without one (Step 26) reaches the port but cannot open the share. |
 | Drop everything else from VPN | Closes everything else for the tunnel: HOME, CAM, the rest of the DMZ, and the internet. The tunnel only carries the Pi and the router (split tunnel, Step 25), so no peer, admin or client, uses the home connection as an internet exit. |
 | LAN → WAN | IPv6 internet for HOME (through NAT66, Step 20). |
 | Drop unsolicited from WAN | Nothing from the internet may open a connection inside. Redundant with the final drop; kept for a separate counter. |
@@ -971,7 +976,7 @@ add action=drop chain=forward \
 |---|---|---|
 | HOME computer | `ping6 -c2 fd00:20::cafe` (Linux: `ping -6`) | ❌ (the Pi is reachable only through the VPN) |
 | Pi | `ping6 -c2 fd00:30::1` | ✅ (to the router, `input`) |
-| Pi | `ping6 -c2 <a HOME device's fd00:30:: address>` | ❌ |
+| Pi | `ping6 -c2 <home-device-fd00:30::-address>` | ❌ |
 
 ### Step 20 — MSS clamp and NAT66
 
@@ -1145,42 +1150,43 @@ The router's IPv6 address can change when the ISP renews it. A script publishes 
 :local domainName "<vpn-hostname>"
 :local wanInterface "ether1"
 
-# 1. Current global IPv6 on the WAN
+# 1. Current global IPv6 on the WAN (no address: log and stop; the else
+#    branch is the exit, since a bare :return fails in RouterOS 7)
 :local ipList [/ipv6 address find interface=$wanInterface global=yes]
 :if ([:len $ipList] = 0) do={
     :log error "DDNS: no global IPv6 address on $wanInterface"
-    :return
-}
-:local currentIP [/ipv6 address get ($ipList->0) address]
-:local slashPos [:find $currentIP "/"]
-:if ($slashPos >= 0) do={ :set currentIP [:pick $currentIP 0 $slashPos] }
-:set currentIP [:tostr [:toip6 $currentIP]]
+} else={
+    :local currentIP [/ipv6 address get ($ipList->0) address]
+    :local slashPos [:find $currentIP "/"]
+    :if ($slashPos >= 0) do={ :set currentIP [:pick $currentIP 0 $slashPos] }
+    :set currentIP [:tostr [:toip6 $currentIP]]
 
-# 2. What the record currently resolves to
-:local dnsIP ""
-:local dnsResolveFailed false
-:do {
-    :set dnsIP [:tostr [:toip6 [:resolve $domainName type=ipv6]]]
-} on-error={
-    :log warning "DDNS: could not resolve $domainName"
-    :set dnsResolveFailed true
-}
-
-# 3. Update only when needed ("proxied": false is required for UDP/VPN)
-:if ($dnsResolveFailed || $currentIP != $dnsIP) do={
-    :local payload "{\"type\":\"AAAA\",\"name\":\""
-    :set payload ($payload . $domainName . "\",\"content\":\"" . $currentIP)
-    :set payload ($payload . "\",\"ttl\":120,\"proxied\":false}")
-    :local url "https://api.cloudflare.com/client/v4/zones/$cfZoneId/dns_records/$cfRecordId"
+    # 2. What the record currently resolves to
+    :local dnsIP ""
+    :local dnsResolveFailed false
     :do {
-        :local result [/tool fetch mode=https http-method=put url=$url \
-            http-header-field="Authorization: Bearer $cfToken, Content-Type: application/json" \
-            check-certificate=yes http-data=$payload output=user as-value]
-        :if ([:find ($result->"data") "\"success\":true"] < 0) do={
-            :log error ("DDNS: Cloudflare error: " . ($result->"data"))
-        }
+        :set dnsIP [:tostr [:toip6 [:resolve $domainName type=ipv6]]]
     } on-error={
-        :log error "DDNS: request to Cloudflare failed (token, IDs or connectivity)"
+        :log warning "DDNS: could not resolve $domainName"
+        :set dnsResolveFailed true
+    }
+
+    # 3. Update only when needed ("proxied": false is required for UDP/VPN)
+    :if ($dnsResolveFailed || $currentIP != $dnsIP) do={
+        :local payload "{\"type\":\"AAAA\",\"name\":\""
+        :set payload ($payload . $domainName . "\",\"content\":\"" . $currentIP)
+        :set payload ($payload . "\",\"ttl\":120,\"proxied\":false}")
+        :local url "https://api.cloudflare.com/client/v4/zones/$cfZoneId/dns_records/$cfRecordId"
+        :do {
+            :local result [/tool fetch mode=https http-method=put url=$url \
+                http-header-field="Authorization: Bearer $cfToken, Content-Type: application/json" \
+                check-certificate=yes http-data=$payload output=user as-value]
+            :if ([:find ($result->"data") "\"success\":true"] < 0) do={
+                :log error ("DDNS: Cloudflare error: " . ($result->"data"))
+            }
+        } on-error={
+            :log error "DDNS: request to Cloudflare failed (token, IDs or connectivity)"
+        }
     }
 }
 }
@@ -1194,6 +1200,12 @@ Copy it to the router and import it:
 ```bash
 # On the HOME computer
 scp -i ~/.ssh/cameras_router ./ddns.rsc admin@192.168.89.1:~/
+```
+
+If the router already has the script (updating an older version), remove it first, or `add` fails because the name exists. The scheduler stays and picks up the new script by name:
+
+```routeros
+/system script remove update-ddns-cloudflare ; # only when updating
 ```
 
 ```routeros
@@ -1231,14 +1243,16 @@ Each person or device gets its **own** WireGuard peer, its own `/128` address an
 |---|---|---|
 | `fd00:10::1` | Router | — |
 | `fd00:10::a:0/112` → `fd00:10::a:N` | **Admin** (`vpn-admin`) | App + SSH/Samba/HLS on the Pi + SSH on the router |
-| `fd00:10::c:0/112` → `fd00:10::c:N` | **Client** (`vpn-clients`, documentation only) | App only: TCP 8889 and UDP 8189 to the Pi, DNS and ping |
-| Anything else in `fd00:10::/64` | Not assigned | Same as client, if ever used |
+| `fd00:10::c:0/112` → `fd00:10::c:N` | **Client** (`vpn-clients`) | App: TCP 8889 and UDP 8189 to the Pi, DNS and ping + Samba (TCP 445, read only) on the Pi |
+| Anything else in `fd00:10::/64` | Not assigned | App only (TCP 8889, UDP 8189, DNS, ping), if ever used |
 
 The last group (`N`, `1`–`ffff` in hex) is just a counter, so each profile has room for 65,535 devices and needs no range arithmetic.
 
 The profile is decided **only by the address**: a client issued `fd00:10::a:7` is an admin. The generator in Step 26 derives the block from the chosen profile and only asks for the index, so the block is never typed by hand. Keep a record of every address handed out. For an even stricter setup, keep only one `/128` per admin device in `vpn-admin`, at the cost of editing the list (and the Pi's ufw) for every new admin.
 
-The Pi's ufw (Part 9) uses the same blocks: `fd00:10::/64` for ports 8889/TCP and 8189/UDP, and `fd00:10::a:0/112` for 22, 445 and 8888/TCP.
+The Pi's ufw (Part 9) and Samba (Part 13) use the same blocks: `fd00:10::/64` for ports 8889/TCP and 8189/UDP, `fd00:10::a:0/112` for 22, 445 and 8888/TCP, and `fd00:10::c:0/112` for 445/TCP.
+
+The address only opens the Samba port. Reading the recordings also takes a Samba login, which the generator (Step 26) gives every admin peer and, when asked to, the client peers of a batch. A client without a login reaches port 445 but cannot open the share.
 
 ### Step 25 — Collect the shared values
 
@@ -1259,7 +1273,7 @@ These go into every QR code (`vpnConfigDefaults`):
 
 The VPN exists only to reach the Pi and the router, so the tunnel carries only those two addresses (a split tunnel), for admins and clients alike:
 
-- `fd00:20::cafe/128`, the Pi: the app (WHEP and WebRTC) for every peer; SSH, Samba and HLS for admins.
+- `fd00:20::cafe/128`, the Pi: the app (WHEP and WebRTC) for every peer; Samba for admins and clients; SSH and HLS for admins.
 - `fd00:10::1/128`, the router: DNS (`iDns`) for every peer, and SSH for admins. The DNS server must be routed through the tunnel, or the device loses name resolution while the tunnel is up.
 
 Everything else, IPv4 and IPv6, leaves through the device's own network, so other apps keep working while the tunnel is up. This is not a privacy VPN: on an untrusted network, that other traffic is as exposed as it would be without the tunnel.
@@ -1270,15 +1284,17 @@ Everything else, IPv4 and IPv6, leaves through the device's own network, so othe
 
 Generate keys on the HOME computer, not on the router. The router only needs each peer's **public** key and the preshared key. A private key stored on the router ends up in every `export show-sensitive` and backup. (Creating a peer in Winbox with client config generation stores the private key on the router.)
 
-The script asks for the profile, the number of peers and the first index, then writes the RouterOS commands, the `vpn.json` entries and one WireGuard desktop config per peer from the same data, so the router, the QR codes and the desktop configs cannot disagree. Before asking anything, it shows the RouterOS commands that list the addresses already in use in each block, so that you pick a free index.
+The script asks for the profile, whether client peers get a Samba login, the number of peers and the first index, then writes the RouterOS commands, the `vpn.json` entries and one WireGuard desktop config per peer from the same data, so the router, the QR codes and the desktop configs cannot disagree. Before asking anything, it shows the RouterOS commands that list the addresses already in use in each block, so that you pick a free index.
 
-For **admin** peers it also creates one Samba login per peer, for the recordings (Part 13 of [pi_services_guide.md](pi_services_guide.md)):
+For **admin** peers, and for **client** peers when you answer yes, it also creates one Samba login per peer, for the recordings (Part 13 of [pi_services_guide.md](pi_services_guide.md)):
 
-- the user is named after the peer (`admin-a-7`), and the password is random (`openssl rand`);
+- the user is named after the peer (`admin-a-7`, `client-c-5`), and the password is random (`openssl rand`);
 - the login goes into the peer's `vpn.json` entry as `smbCredentials`, which is what makes the app show the recordings to that peer;
 - the script writes `pi-smb-users.sh`, which creates those users on the Pi (Step 44 of that guide).
 
-One login per peer, not per person: revoking a lost device removes its peer and its Samba user, and the admin's other devices keep working.
+One login per peer, not per person: revoking a lost device removes its peer and its Samba user, and the person's other devices keep working.
+
+The choice is made per batch: every client of one run gets a login, or none does. To give one more client access later, generate a new peer for it in a batch with logins.
 
 Save as `qr-code-gen/gen-peers.sh` on the HOME computer and fill in the two values at the top:
 
@@ -1286,8 +1302,9 @@ Save as `qr-code-gen/gen-peers.sh` on the HOME computer and fill in the two valu
 #!/usr/bin/env bash
 # Interactive WireGuard peer generator: RouterOS commands, vpn.json entries
 # for the QR generator (main.py) and one .conf per peer for WireGuard desktop.
-# Admins: fd00:10::a:N, clients: fd00:10::c:N. Admin peers also get a Samba
-# login (smbCredentials in vpn.json) and pi-smb-users.sh to create it on the Pi.
+# Admins: fd00:10::a:N, clients: fd00:10::c:N. Admin peers, and client peers
+# when asked to, also get a Samba login (smbCredentials in vpn.json) and
+# pi-smb-users.sh to create it on the Pi.
 set -euo pipefail
 
 SERVER_PUB="<router public key>"
@@ -1318,6 +1335,13 @@ while true; do
     esac
 done
 
+# 1b. Samba login for the recordings: always for admins, a choice per client batch
+SMB=yes
+if [ "$PROFILE" = client ]; then
+    read -r -p "Give these clients a Samba login (read-only recordings in the app)? [y/N] " answer
+    [[ "$answer" =~ ^[yY]$ ]] || SMB=no
+fi
+
 # 2. How many peers
 while true; do
     read -r -p "How many peers? " COUNT
@@ -1341,6 +1365,8 @@ printf '\nAbout to generate %d %s peer(s): fd00:10::%s:%x to fd00:10::%s:%x\n' \
     "$COUNT" "$PROFILE" "$BLOCK" "$FIRST" "$BLOCK" "$LAST"
 if [ "$PROFILE" = admin ]; then
     echo "WARNING: admin peers get SSH to the router and the Pi, Samba (the recordings) and HLS."
+elif [ "$SMB" = yes ]; then
+    echo "NOTE: these client peers get a Samba login: they read and download the recordings."
 fi
 read -r -p "Proceed? [y/N] " answer
 [[ "$answer" =~ ^[yY]$ ]] || { echo "Cancelled."; exit 0; }
@@ -1362,10 +1388,10 @@ for ((i = 0; i < COUNT; i++)); do
     pub=$(printf '%s' "$priv" | wg pubkey)
     psk=$(wg genpsk)
 
-    # Samba login for the recordings: admins only, one per peer
+    # Samba login for the recordings: one per peer, admins and (if chosen) clients
     smb_user=""
     smb_pass=""
-    if [ "$PROFILE" = admin ]; then
+    if [ "$SMB" = yes ]; then
         smb_user="$name"
         smb_pass=$(openssl rand -hex 16)
         smb_users+=("add_smb_user $smb_user $smb_pass")
@@ -1403,12 +1429,12 @@ done
 
 printf '%s\n' "${entries[@]}" | jq -s . > "$OUT/vpn.json"
 
-# 6. Admins: the script that creates their Samba users on the Pi (Step 44 of pi_services_guide.md)
-if [ "$PROFILE" = admin ]; then
+# 6. Peers with a login: the script that creates their Samba users on the Pi (Step 44 of pi_services_guide.md)
+if [ "$SMB" = yes ]; then
     {
         cat <<'SMB'
 #!/usr/bin/env bash
-# Samba users for the admin peers of one gen-peers.sh batch. Run on the Pi once
+# Samba users for the peers of one gen-peers.sh batch. Run on the Pi once
 # Samba is installed (pi_services_guide.md, Steps 40 and 43):
 #   sudo bash pi-smb-users.sh && rm pi-smb-users.sh
 # It holds the Samba passwords: never commit it, delete it once it has run.
@@ -1438,7 +1464,7 @@ SMB
 fi
 
 echo "Wrote $OUT/peers.rsc, $OUT/vpn.json, $OUT/index.txt and $COUNT .conf file(s)"
-if [ "$PROFILE" = admin ]; then
+if [ "$SMB" = yes ]; then
     echo "Wrote $OUT/pi-smb-users.sh: run it on the Pi (pi_services_guide.md, Step 44)"
 fi
 ```
@@ -1456,17 +1482,20 @@ Example session:
 
 ```
 Generate [c]lient or [a]dmin peers? c
+Give these clients a Samba login (read-only recordings in the app)? [y/N] y
 How many peers? 3
 First address: fd00:10::c:5
 
 About to generate 3 client peer(s): fd00:10::c:5 to fd00:10::c:7
+NOTE: these client peers get a Samba login: they read and download the recordings.
 Proceed? [y/N] y
 Wrote peers/peers.rsc, peers/vpn.json, peers/index.txt and 3 .conf file(s)
+Wrote peers/pi-smb-users.sh: run it on the Pi (pi_services_guide.md, Step 44)
 ```
 
-Each run overwrites `peers.rsc`, `vpn.json` and `index.txt` in `peers/` and removes the `.conf` files and the `pi-smb-users.sh` of the previous batch. Finish Steps 27 and 28 (and, for admins, Step 44 of the Pi guide) for one batch before generating the next.
+Each run overwrites `peers.rsc`, `vpn.json` and `index.txt` in `peers/` and removes the `.conf` files and the `pi-smb-users.sh` of the previous batch. Finish Steps 27 and 28 (and, for a batch with Samba logins, Step 44 of the Pi guide) for one batch before generating the next.
 
-An admin batch adds `smbCredentials` to each entry of `vpn.json`:
+An admin batch, or a client batch with logins, adds `smbCredentials` to each entry of `vpn.json`:
 
 ```json
 { "vpnConfigDefaults": { ... }, "vpnConfigTokens": { ... },
@@ -1488,7 +1517,7 @@ scp -i ~/.ssh/cameras_router ./peers/peers.rsc admin@192.168.89.1:~/
 /interface wireguard peers print proplist=name,allowed-address where name~"^(client|admin)-"
 ```
 
-**Admin batch, Samba already installed** (Part 13 of the Pi guide done): create the batch's Samba users now, as in [Step 44](pi_services_guide.md#step-44--samba-users). Before Part 13, Step 44 does it.
+**Batch with Samba logins, Samba already installed** (Part 13 of the Pi guide done): create the batch's Samba users now, as in [Step 44](pi_services_guide.md#step-44--samba-users). Before Part 13, Step 44 does it.
 
 **Audit:** every peer must own exactly one `/128`. A wider `allowed-address` (for example a copied `fd00:10::/64`) would let that peer use any source address, including an admin one.
 
@@ -1506,7 +1535,7 @@ scp -i ~/.ssh/cameras_router ./peers/peers.rsc admin@192.168.89.1:~/
 
 ### Step 28 — Render the QR codes
 
-`main.py` reads `vpn.json` from the current folder and writes one PNG per entry, named after the peer's address: `qrcode-fd00:10::c:5.png`, `qrcode-fd00:10::a:3.png` and so on. The file name already tells which peer it belongs to. Each entry goes into its QR code whole, so an admin's QR code also carries its Samba login.
+`main.py` reads `vpn.json` from the current folder and writes one PNG per entry, named after the peer's address: `qrcode-fd00:10::c:5.png`, `qrcode-fd00:10::a:3.png` and so on. The file name already tells which peer it belongs to. Each entry goes into its QR code whole, so the QR code of a peer with a login also carries its Samba login.
 
 ```bash
 # On the HOME computer
@@ -1523,16 +1552,16 @@ Each PNG contains a private key. Send each one through a private channel to its 
 
 In the app: **Config → scan QR code → grant VPN permission → configure stream URLs** (port `8889` and stream name `cam_10`, which the app stores as `http://[fd00:20::cafe]:8889/cam_10` and calls with `/whep` appended; one per camera: `cam_10` to `cam_13`, named after the camera's address). The tunnel comes up when the Home screen opens. The streams only play once MediaMTX is running (Part 11).
 
-An **admin** phone shows the recordings once its Samba user exists on the Pi (Step 44 of the Pi guide): in the app, open a camera and use the history button. The login came in the QR code; nothing is typed.
+A phone whose QR code carries a Samba login (every admin, and the clients of a batch with logins) shows the recordings once its Samba user exists on the Pi (Step 44 of the Pi guide): in the app, open a camera and use the history button to watch or download them. The login came in the QR code; nothing is typed. A QR code without a login shows no history button.
 
-An admin computer also needs its own SSH keys for the router and the Pi (Step 10, "Other admin devices"), and its Samba login, which the `.conf` does not carry. Read it from `vpn.json` and send it with the `.conf`, through the same private channel:
+An admin computer also needs its own SSH keys for the router and the Pi (Step 10, "Other admin devices"). A computer whose peer has a Samba login (admin, or client from a batch with logins) also needs that login, which the `.conf` does not carry. Read it from `vpn.json` and send it with the `.conf`, through the same private channel:
 
 ```bash
 # On the HOME computer
 jq -r '.[] | select(.smbCredentials) | [.smbCredentials.smbUser, .smbCredentials.smbPassword] | @tsv' peers/vpn.json
 ```
 
-For a computer (admin with Samba, for example), import `peers/<peer-name>.conf` in the WireGuard app (**Import tunnel(s) from file**; on Linux, `sudo wg-quick up ./<peer-name>.conf`). The file name becomes the tunnel name. It holds the same values as the QR code:
+For a computer (an admin, or a client that opens the share), import `peers/<peer-name>.conf` in the WireGuard app (**Import tunnel(s) from file**; on Linux, `sudo wg-quick up ./<peer-name>.conf`). The file name becomes the tunnel name. It holds the same values as the QR code:
 
 ```ini
 [Interface]
@@ -1556,7 +1585,7 @@ PersistentKeepalive = 25
 # last-handshake a few seconds ago, rx/tx growing
 ```
 
-MediaMTX and Samba are only installed in Parts 11 and 13, so nothing listens on the Pi's service ports yet. Python's built-in web server stands in for them: an HTTP answer proves that the port is reachable through the router, and a timeout that it is blocked. Start it on the app port (8889) and on the admin ports (8888, 445), from an admin SSH session to the Pi through the VPN. Port 445 is below 1024, so that one needs `sudo`:
+MediaMTX and Samba are only installed in Parts 11 and 13, so nothing listens on the Pi's service ports yet. Python's built-in web server stands in for them: an HTTP answer proves that the port is reachable through the router, and a timeout that it is blocked. Start it on the app port (8889), on the Samba port (445) and on the HLS port (8888), from an admin SSH session to the Pi through the VPN. Port 445 is below 1024, so that one needs `sudo`:
 
 ```bash
 # On the Pi (SSH through the VPN as an admin)
@@ -1580,7 +1609,8 @@ Run the table from a computer with each profile's tunnel up (the `.conf` from St
 | `dig @fd00:10::1 mk.cameras.casa AAAA +short` | ✅ `fd00:10::1` | ✅ |
 | `ssh -i ~/.ssh/cameras_router admin@fd00:10::1` (router) | ❌ timeout | ✅ |
 | `curl -m5 -so /dev/null -w '%{http_code}\n' 'http://[fd00:20::cafe]:8889/'` (app port) | ✅ `200` | ✅ `200` |
-| The same `curl` on `:8888` and on `:445` (admin ports) | ❌ `000` | ✅ `200` |
+| The same `curl` on `:445` (Samba) | ✅ `200` | ✅ `200` |
+| The same `curl` on `:8888` (HLS, admins only) | ❌ `000` | ✅ `200` |
 | `ssh -i ~/.ssh/cameras_pi <user>@fd00:20::cafe` | ❌ timeout | ✅ |
 | `curl -6 https://ipv6.icanhazip.com` and `curl -4 https://ipv4.icanhazip.com` | ✅ the local network's addresses, never the router's ether1 address (an error is fine if the local network lacks that IP version) | ✅ the same |
 | Ping another peer's `fd00:10::` address, with `fd00:10::/64` temporarily added to `AllowedIPs` in the `.conf` (the split tunnel does not route it, so without this the ping never reaches the router). Restore the `.conf` afterwards | ❌ | ❌ |
@@ -1607,7 +1637,7 @@ Also run these from inside the home (computer on HOME with the VPN up): the tunn
 
 The QR code stops working immediately. Reusing the address later is safe, because the old QR code's key no longer exists on the router. Still, prefer the next free index, so that logs and address records stay unambiguous.
 
-For an **admin** peer, also remove its Samba user, named after the peer, on the Pi:
+For a peer with a Samba login (every admin, and clients from a batch with logins), also remove its Samba user, named after the peer, on the Pi:
 
 ```bash
 # On the Pi
@@ -1619,7 +1649,7 @@ sudo userdel <peer-name>
 
 ## Part 9 — Raspberry Pi firewall (ufw)
 
-The router already decides who reaches the Pi. The Pi's own firewall repeats the same policy as a **second layer**: if a router rule is ever wrong, or someone plugs another device into the DMZ, the Pi still only accepts what the app and the admins need. Since there is no NAT between the VPN and the DMZ (Step 20), the Pi sees each peer's real address and can tell admins from clients by itself.
+The router already decides who reaches the Pi. The Pi's own firewall repeats the same policy as a **second layer**: if a router rule is ever wrong, or someone plugs another device into the DMZ, the Pi still only accepts what the app, the clients' Samba access and the admins need. Since there is no NAT between the VPN and the DMZ (Step 20), the Pi sees each peer's real address and can tell admins from clients by itself.
 
 This part assumes a Pi with no firewall configured yet, and at least one admin peer installed and working (Part 8). Step 33 reaches the Pi over SSH through the VPN with that peer.
 
@@ -1640,7 +1670,7 @@ sudo ufw logging low
 | Setting | Reason |
 |---|---|
 | `IPV6=yes` | Every rule in this part is IPv6. With `no`, ufw ignores them and IPv6 stays open |
-| `deny incoming` | Anything not listed in Step 32 is dropped (silently, so a scan sees a timeout and not a refusal). This also covers whatever else may listen on the Pi. MediaMTX, for example, only needs 8888, 8889 and 8189 (Part 11); its RTSP, RTMP and SRT servers are turned off, and would stay closed here if they were ever turned on |
+| `deny incoming` | Anything not listed in Step 32 is dropped (silently, so a scan sees a timeout and not a refusal). This also covers whatever else may listen on the Pi. MediaMTX, for example, only needs 8888, 8889 and 8189 (Part 11); its RTSP, RTMP, SRT and MoQ servers are turned off, and would stay closed here if they were ever turned on |
 | `allow outgoing` | The Pi starts its own connections: RTSP to the cameras, package updates over IPv4, DNS and NTP to the router. What it may reach is already limited by the router (Steps 12 and 19) |
 | `deny routed` | The Pi does not forward traffic between interfaces. If IP forwarding were ever enabled by mistake, it still could not act as a bridge between the DMZ and anything else |
 | `logging low` | Blocked packets are logged with rate limiting (`journalctl -k \| grep 'UFW BLOCK'`) |
@@ -1666,6 +1696,9 @@ sudo ufw allow from fd00:10::/64 to any port 8189 proto udp comment 'VPN peers: 
 sudo ufw allow from fd00:10::a:0/112 to any port 22 proto tcp comment 'VPN admins: SSH'
 sudo ufw allow from fd00:10::a:0/112 to any port 445 proto tcp comment 'VPN admins: Samba'
 sudo ufw allow from fd00:10::a:0/112 to any port 8888 proto tcp comment 'VPN admins: HLS'
+
+# VPN clients: Samba only (same block as the router's vpn-clients list)
+sudo ufw allow from fd00:10::c:0/112 to any port 445 proto tcp comment 'VPN clients: Samba'
 ```
 
 **Why each rule exists**
@@ -1673,7 +1706,8 @@ sudo ufw allow from fd00:10::a:0/112 to any port 8888 proto tcp comment 'VPN adm
 | Rule | Reason |
 |---|---|
 | 8889/TCP and 8189/UDP from `fd00:10::/64` | What the app needs, for every peer. The whole `/64` matches the router, which also allows these ports to every peer |
-| 22, 445, 8888/TCP from `fd00:10::a:0/112` | SSH, Samba (recordings) and HLS for admins only. The block is the router's `vpn-admin` list |
+| 22, 445, 8888/TCP from `fd00:10::a:0/112` | SSH, Samba (recordings) and HLS for admins. The block is the router's `vpn-admin` list |
+| 445/TCP from `fd00:10::c:0/112` | Samba (recordings) for clients, and nothing else. The block is the router's `vpn-clients` list. Two rules for 445, one per block, instead of one for the whole `/64`: an address outside both blocks gets no Samba |
 | No IPv4 rules | Nothing needs to open a connection *to* the Pi over IPv4: the VPN is IPv6 only, and RTSP is started by the Pi |
 
 ufw's built-in rules (`/etc/ufw/before.rules` and `before6.rules`) already accept established connections, DHCP replies, the ICMPv6 that IPv6 needs (neighbor discovery, "packet too big") and ping. That is why `ping6 fd00:20::cafe` keeps working for every peer, matching the router's `VPN ping -> Rpi` rule.
@@ -1682,7 +1716,7 @@ ufw's built-in rules (`/etc/ufw/before.rules` and `before6.rules`) already accep
 
 ```bash
 sudo ufw show added
-# Exactly the 5 rules above, all with a fd00:10:: source
+# Exactly the 6 rules above, all with a fd00:10:: source
 ```
 
 ### Step 33 — Enable with a safety net
@@ -1711,15 +1745,28 @@ If the new session fails, wait for the rollback (10 minutes), reconnect and fix 
 sudo ufw status verbose
 # Status: active
 # Default: deny (incoming), allow (outgoing), deny (routed)
-# 5 rules, all with a fd00:10:: source
+# 6 rules, all with a fd00:10:: source
 systemctl is-enabled ufw                     # enabled: survives a reboot
 ```
 
 ### Step 34 — Test ufw on its own, from the router
 
-The router's firewall blocks the same things as ufw, so a test through the VPN cannot show which of the two did the blocking. The router can test ufw alone: traffic **it** generates does not pass through its own `forward` rules, and it can pick a source address. `fd00:20::1` (the router on the DMZ) is outside both VPN blocks, and `fd00:10::1` (the router on the tunnel) is in `fd00:10::/64` but outside the admin block. A dropped request hangs; stop it with `Ctrl+C` after about 10 seconds.
+The router's firewall blocks the same things as ufw, so a test through the VPN cannot show which of the two did the blocking. The router can test ufw alone: traffic **it** generates does not pass through its own `forward` rules, and it can pick a source address. `fd00:20::1` (the router on the DMZ) is outside both VPN blocks, and `fd00:10::1` (the router on the tunnel) is in `fd00:10::/64` but outside the admin and client blocks. A dropped request hangs; stop it with `Ctrl+C` after about 10 seconds.
 
-Something must answer on the ports for the allowed cases to show up. Start the three stand-in servers again, exactly as in Step 30 (from an admin SSH session, which keeps working with ufw active). The server on `::` also accepts IPv4, so the IPv4 test below is a real one.
+Something must answer on the ports for the allowed cases to show up. Step 30 ended by stopping its stand-in servers, so start them again, from an admin SSH session (it keeps working with ufw active). `big.bin` is for the large transfer row when the Step 30 table is repeated below. The servers on `::` also accept IPv4, so the IPv4 test below is a real one.
+
+```bash
+# On the Pi (SSH through the VPN as an admin)
+STUB=$(mktemp -d)
+head -c 50M /dev/urandom > "$STUB/big.bin"
+python3 -m http.server 8889 --bind :: --directory "$STUB" >/dev/null 2>&1 &
+python3 -m http.server 8888 --bind :: --directory "$STUB" >/dev/null 2>&1 &
+sudo -v
+sudo python3 -m http.server 445 --bind :: --directory "$STUB" >/dev/null 2>&1 &
+ss -tln | grep -E ':(8889|8888|445) '
+```
+
+`ss` must show the three ports in `LISTEN`, on `[::]`. Keep this SSH session open: the servers stop with it. Without a server, an allowed port answers "Connection refused" instead of HTTP. That still proves that ufw let the packet through, because ufw drops blocked packets silently (a timeout), but the test below expects an HTTP answer.
 
 ```routeros
 # Source fd00:20::1: not a VPN peer, so ufw drops everything (hangs until timeout)
@@ -1728,6 +1775,8 @@ Something must answer on the ports for the allowed cases to show up. Start the t
 /tool fetch url="http://[fd00:20::cafe]:8889/" src-address=fd00:10::1 output=none
 # Same source, admin port: not in fd00:10::a:0/112, so dropped (timeout)
 /tool fetch url="http://[fd00:20::cafe]:8888/" src-address=fd00:10::1 output=none
+# Same source, Samba port: in neither fd00:10::a:0/112 nor fd00:10::c:0/112, so dropped (timeout)
+/tool fetch url="http://[fd00:20::cafe]:445/" src-address=fd00:10::1 output=none
 # IPv4: no IPv4 rule, so dropped (timeout)
 /tool fetch url="http://192.168.91.2:8889/" output=none
 # Ping is always allowed
@@ -1739,6 +1788,7 @@ Something must answer on the ports for the allowed cases to show up. Start the t
 | `fd00:20::1` | 8889 | ❌ timeout |
 | `fd00:10::1` | 8889 | ✅ HTTP answer (any status) |
 | `fd00:10::1` | 8888 | ❌ timeout |
+| `fd00:10::1` | 445 | ❌ timeout |
 | `192.168.91.1` (IPv4) | 8889 | ❌ timeout |
 | any | ping | ✅ |
 
@@ -1749,7 +1799,7 @@ On the Pi, the blocked attempts appear in the log:
 sudo journalctl -k --since "-5 min" | grep 'UFW BLOCK'
 ```
 
-**Test with real peers.** With ufw active, repeat the Step 30 table with an admin and a client peer. The results must not change: the admin side (`fd00:10::a:N` on 22, 445 and 8888) still works, and the client is still blocked. Then check that the client's attempts never reached the Pi:
+**Test with real peers.** With ufw active, repeat the Step 30 table with an admin and a client peer. The results must not change: the admin side (`fd00:10::a:N` on 22, 445 and 8888) still works, the client (`fd00:10::c:N`) still reaches 445, and the client is still blocked on 22 and 8888. Then check that the client's attempts never reached the Pi:
 
 ```bash
 # On the Pi, after the client tests
@@ -1757,8 +1807,14 @@ sudo journalctl -k --since "-10 min" | grep 'UFW BLOCK'
 # Nothing from the client's address: the router dropped it first
 ```
 
-Stop the stand-in servers and delete their folder, as at the end of Step 30.
+When done, stop the stand-in servers and delete their folder:
 
-**Keeping ufw in sync with the router.** The two layers must use the same blocks: `fd00:10::/64` for the app ports and the router's `vpn-admin` (`fd00:10::a:0/112`) for the admin ports. If `vpn-admin` ever changes, for example to one `/128` per admin device, change both, in the same session.
+```bash
+# On the Pi, in the same SSH session
+sudo pkill -f 'python3 -m http.server'
+rm -rf "$STUB"
+```
+
+**Keeping ufw in sync with the router.** The two layers must use the same blocks: `fd00:10::/64` for the app ports, the router's `vpn-admin` (`fd00:10::a:0/112`) for the admin ports and its `vpn-clients` (`fd00:10::c:0/112`) for the clients' Samba. If either list ever changes, for example to one `/128` per admin device, change both layers (and Samba's `hosts allow`, Part 13), in the same session.
 
 The router and the Pi's firewall are complete. The Pi's services continue in [pi_services_guide.md](pi_services_guide.md), from Part 10.

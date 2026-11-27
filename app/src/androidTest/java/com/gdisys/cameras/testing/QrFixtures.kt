@@ -21,11 +21,14 @@ enum class QrFixture(private val fileName: String) {
   /** Valid JSON with a shape the app does not know. */
   UNKNOWN_SHAPE("4_validqr_dif_type_2.json"),
 
-  /** [VALID] plus a complete Samba login: an admin. */
+  /** [VALID] plus a complete Samba login, for an admin peer: access to the recordings. */
   ADMIN("5_validqr_admin.json"),
 
   /** [VALID] plus a Samba login without the password: rejected as a whole. */
-  ADMIN_INCOMPLETE("6_validqr_admin_incomplete.json");
+  ADMIN_INCOMPLETE("6_validqr_admin_incomplete.json"),
+
+  /** A client peer (`fd00:10::c:N`) generated with Samba access: access to the recordings too. */
+  CLIENT_WITH_SAMBA("7_validqr_client_samba.json");
 
   /** The raw JSON, as the scanner would hand it over. */
   fun read(): String = open(fileName).bufferedReader().use { it.readText() }

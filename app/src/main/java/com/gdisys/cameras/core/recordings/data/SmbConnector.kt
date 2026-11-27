@@ -35,7 +35,7 @@ internal class SmbShareHandle(
 }
 
 /**
- * Opens the recordings share with an admin login.
+ * Opens the recordings share with the stored Samba login.
  *
  * **Each user owns its own [SMBClient].** smbj hands out the client's existing connection to the
  * same host, so the listing and the player sharing one client would share one connection, and

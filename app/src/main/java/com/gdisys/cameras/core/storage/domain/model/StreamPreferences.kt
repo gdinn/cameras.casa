@@ -30,8 +30,8 @@ data class StreamPreferences(
   @SerialName("landscapeGrid")
   val landscapeGrid: GridPreferences = GridPreferences(columns = 2, rows = 1, dynamicRows = true),
   /**
-   * Whether the notification permission was already asked (Config, for admins on Android 13+).
-   * The user's first answer stands, so it is asked once. It lives here because this is the store
+   * Whether the notification permission was already asked (Config, for users with a Samba login on
+   * Android 13+). The user's first answer stands, so it is asked once. It lives here because this is the store
    * of the app's own settings; the other one holds the credentials and is replaced by every QR scan.
    */
   @SerialName("notificationPermissionRequested") val notificationPermissionRequested: Boolean = false,

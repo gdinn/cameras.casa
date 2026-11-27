@@ -15,7 +15,7 @@ import com.gdisys.cameras.core.storage.domain.model.GridPreferences
 import com.gdisys.cameras.core.storage.domain.model.StreamOrientation
 import com.gdisys.cameras.core.storage.domain.model.StreamPreferences
 import com.gdisys.cameras.core.storage.domain.usecase.GetStreamPreferencesUseCase
-import com.gdisys.cameras.core.storage.domain.usecase.ObserveIsAdminUseCase
+import com.gdisys.cameras.core.storage.domain.usecase.ObserveHasRecordingsAccessUseCase
 import com.gdisys.cameras.core.storage.domain.usecase.UpdateStreamOrderUseCase
 import com.gdisys.cameras.core.vpn.domain.TunnelCoordinator
 import com.gdisys.cameras.core.vpn.domain.TunnelHolder
@@ -51,8 +51,8 @@ class HomeViewModelTest {
 
   private val observeVpnStateUseCase = mockk<ObserveVpnStateUseCase>()
   private val getStreamPreferencesUseCase = mockk<GetStreamPreferencesUseCase>()
-  private val observeIsAdminUseCase = mockk<ObserveIsAdminUseCase>()
-  private val isAdmin = MutableStateFlow(false)
+  private val observeHasRecordingsAccessUseCase = mockk<ObserveHasRecordingsAccessUseCase>()
+  private val hasRecordingsAccess = MutableStateFlow(false)
   private val observeInterruptedDownloadsUseCase = mockk<ObserveInterruptedDownloadsUseCase>()
   private val resumeDownloadsUseCase = mockk<ResumeDownloadsUseCase>()
   private val discardDownloadsUseCase = mockk<DiscardDownloadsUseCase>()
@@ -88,7 +88,7 @@ class HomeViewModelTest {
   fun setUp() {
     every { observeVpnStateUseCase() } returns vpnState
     every { getStreamPreferencesUseCase() } returns streamPreferences
-    every { observeIsAdminUseCase() } returns isAdmin
+    every { observeHasRecordingsAccessUseCase() } returns hasRecordingsAccess
     every { observeInterruptedDownloadsUseCase() } returns interrupted
     coEvery { resumeDownloadsUseCase(any()) } answers { firstArg<List<InterruptedDownload>>().map { DownloadRequestResult.STARTED } }
     coEvery { discardDownloadsUseCase(any()) } returns Unit
@@ -96,7 +96,7 @@ class HomeViewModelTest {
     viewModel = HomeViewModel(
       observeVpnStateUseCase,
       getStreamPreferencesUseCase,
-      observeIsAdminUseCase,
+      observeHasRecordingsAccessUseCase,
       observeInterruptedDownloadsUseCase,
       resumeDownloadsUseCase,
       discardDownloadsUseCase,
@@ -212,8 +212,8 @@ class HomeViewModelTest {
   }
 
   @Test
-  fun `an admin's focused stream offers the history of its camera`() = runTest {
-    isAdmin.value = true
+  fun `the focused stream of a user with a Samba login offers the history of its camera`() = runTest {
+    hasRecordingsAccess.value = true
     vpnState.value = VpnTunnelState.CONNECTED
 
     viewModel.focusStream(defaultStreams[1])
@@ -226,7 +226,7 @@ class HomeViewModelTest {
 
   @Test
   fun `no history is offered without a focused stream`() = runTest {
-    isAdmin.value = true
+    hasRecordingsAccess.value = true
     vpnState.value = VpnTunnelState.CONNECTED
 
     assertEquals(readyState(), viewModel.uiState.value)
@@ -248,7 +248,7 @@ class HomeViewModelTest {
       streamUrls = listOf(garage),
       portraitOrder = listOf(garage)
     )
-    isAdmin.value = true
+    hasRecordingsAccess.value = true
     vpnState.value = VpnTunnelState.CONNECTED
 
     viewModel.focusStream(garage)
@@ -257,14 +257,14 @@ class HomeViewModelTest {
   }
 
   @Test
-  fun `the history button follows the admin status`() = runTest {
+  fun `the history button follows the Samba login`() = runTest {
     vpnState.value = VpnTunnelState.CONNECTED
     viewModel.focusStream(defaultStreams[0])
 
-    isAdmin.value = true
+    hasRecordingsAccess.value = true
     assertEquals("cam_160", (viewModel.uiState.value as HomeUiState.Ready).historyCamera)
 
-    isAdmin.value = false
+    hasRecordingsAccess.value = false
     assertEquals(null, (viewModel.uiState.value as HomeUiState.Ready).historyCamera)
   }
 
@@ -277,17 +277,17 @@ class HomeViewModelTest {
   )
 
   @Test
-  fun `interrupted downloads are offered to admins only`() {
+  fun `interrupted downloads are offered to users with a Samba login only`() {
     interrupted.value = listOf(interruptedDownload)
     assertEquals(emptyList<InterruptedDownload>(), viewModel.interruptedDownloads.value)
 
-    isAdmin.value = true
+    hasRecordingsAccess.value = true
     assertEquals(listOf(interruptedDownload), viewModel.interruptedDownloads.value)
   }
 
   @Test
   fun `resume starts the offered downloads again and closes the offer`() = runTest {
-    isAdmin.value = true
+    hasRecordingsAccess.value = true
     interrupted.value = listOf(interruptedDownload)
 
     viewModel.uiEvent.test {
@@ -301,7 +301,7 @@ class HomeViewModelTest {
 
   @Test
   fun `a resume where some downloads did not start says so`() = runTest {
-    isAdmin.value = true
+    hasRecordingsAccess.value = true
     interrupted.value = listOf(interruptedDownload)
     coEvery { resumeDownloadsUseCase(any()) } returns listOf(DownloadRequestResult.TUNNEL_DOWN)
 
@@ -313,7 +313,7 @@ class HomeViewModelTest {
 
   @Test
   fun `discard drops the offered downloads and closes the offer`() {
-    isAdmin.value = true
+    hasRecordingsAccess.value = true
     interrupted.value = listOf(interruptedDownload)
 
     viewModel.onDiscardDownloads()
@@ -324,7 +324,7 @@ class HomeViewModelTest {
 
   @Test
   fun `dismissing sets the offer aside, but a new interruption is offered`() {
-    isAdmin.value = true
+    hasRecordingsAccess.value = true
     interrupted.value = listOf(interruptedDownload)
 
     viewModel.onInterruptedDownloadsDismissed()
@@ -338,7 +338,7 @@ class HomeViewModelTest {
 
   @Test
   fun `a failed resume or discard is told`() = runTest {
-    isAdmin.value = true
+    hasRecordingsAccess.value = true
     coEvery { resumeDownloadsUseCase(any()) } throws IllegalStateException("disk")
     coEvery { discardDownloadsUseCase(any()) } throws IllegalStateException("disk")
 

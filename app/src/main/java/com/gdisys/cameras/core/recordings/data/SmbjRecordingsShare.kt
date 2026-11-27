@@ -28,7 +28,7 @@ private const val IDLE_CLOSE_MS = 30_000L
 
 /**
  * [RecordingsShare] over smbj: one connection, session and share for listing, opened with the
- * stored admin login on first use and closed when idle (see [LeasedResource]). It has its own
+ * stored Samba login on first use and closed when idle (see [LeasedResource]). It has its own
  * client (see [SmbConnector]). smbj multiplexes concurrent requests over the connection, which is
  * what lets a month's days be listed in parallel.
  *
@@ -79,7 +79,7 @@ class SmbjRecordingsShare @Inject constructor(
   private suspend fun <T> onShare(block: (DiskShare) -> T): T {
     val credentials = userPreferencesRepository.userPreferences.first().smbCredentials
       ?.takeIf { it.isValid() }
-      ?: throw RecordingsException.NotAdmin()
+      ?: throw RecordingsException.NoSambaLogin()
     return try {
       shares.use(credentials) { open -> withContext(io) { block(open.share) } }
     } catch (e: CancellationException) {

@@ -10,8 +10,9 @@ sealed interface NavigationRoute {
   data object Home
 
   /**
-   * The recordings of [camera] (`cam_xx`), for admins. `HistoryViewModel` reads [camera] from its
-   * `SavedStateHandle` under `HISTORY_CAMERA_ARG`, which must stay this property's name.
+   * The recordings of [camera] (`cam_xx`), for users with a Samba login. `HistoryViewModel` reads
+   * [camera] from its `SavedStateHandle` under `HISTORY_CAMERA_ARG`, which must stay this
+   * property's name.
    */
   @Serializable
   data class History(val camera: String)

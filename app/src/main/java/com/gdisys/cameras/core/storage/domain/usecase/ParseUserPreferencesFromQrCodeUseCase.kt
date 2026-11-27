@@ -9,7 +9,7 @@ class ParseUserPreferencesFromQrCodeUseCase @Inject constructor() {
   /**
    * Decodes the QR payload. Success with `null` means valid JSON with unusable content: incomplete
    * VPN fields, or an `smbCredentials` object without both a user and a password. An absent
-   * `smbCredentials` is fine: it is a regular (non-admin) user.
+   * `smbCredentials` is fine: it is a user without access to the recordings.
    */
   operator fun invoke(rawJson: String): Result<UserPreferences?> {
     val sanitizedJson = rawJson

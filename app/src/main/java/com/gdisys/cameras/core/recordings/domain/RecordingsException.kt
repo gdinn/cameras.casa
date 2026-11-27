@@ -3,8 +3,8 @@ package com.gdisys.cameras.core.recordings.domain
 /** Why the share could not be read. Screens tell these apart; nothing else is thrown. */
 sealed class RecordingsException(message: String, cause: Throwable? = null) : Exception(message, cause) {
 
-  /** No complete Samba login is stored: the user is not an admin. */
-  class NotAdmin : RecordingsException("No Samba login is stored")
+  /** No complete Samba login is stored: the user has no access to the recordings. */
+  class NoSambaLogin : RecordingsException("No Samba login is stored")
 
   /** The server refused the stored login (wrong password, user removed from the Pi). */
   class AuthenticationFailed(cause: Throwable) : RecordingsException("The Samba login was refused", cause)

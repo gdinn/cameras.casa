@@ -83,13 +83,13 @@ class SmbDataSourceTest {
   @Test
   fun aReadFailureReachesThePlayerAsAnIoException() {
     val failing = SmbDataSource(object : RecordingFileSource {
-      override fun open(path: String): RemoteFile = throw RecordingReadException(RecordingsException.NotAdmin())
+      override fun open(path: String): RemoteFile = throw RecordingReadException(RecordingsException.NoSambaLogin())
       override fun close() = Unit
     })
 
     val thrown = runCatching { failing.open(spec()) }.exceptionOrNull()
 
-    assertTrue((thrown as RecordingReadException).reason is RecordingsException.NotAdmin)
+    assertTrue((thrown as RecordingReadException).reason is RecordingsException.NoSambaLogin)
   }
 
   @Test

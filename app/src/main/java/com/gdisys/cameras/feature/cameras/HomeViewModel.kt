@@ -14,7 +14,7 @@ import com.gdisys.cameras.core.storage.domain.model.StreamOrientation
 import com.gdisys.cameras.core.storage.domain.model.gridFor
 import com.gdisys.cameras.core.storage.domain.model.orderFor
 import com.gdisys.cameras.core.storage.domain.usecase.GetStreamPreferencesUseCase
-import com.gdisys.cameras.core.storage.domain.usecase.ObserveIsAdminUseCase
+import com.gdisys.cameras.core.storage.domain.usecase.ObserveHasRecordingsAccessUseCase
 import com.gdisys.cameras.core.storage.domain.usecase.UpdateStreamOrderUseCase
 import com.gdisys.cameras.core.vpn.domain.TunnelCoordinator
 import com.gdisys.cameras.core.vpn.domain.TunnelHolder
@@ -48,7 +48,7 @@ internal val HOME_TUNNEL_HOLDER = TunnelHolder.Screen("home")
 class HomeViewModel @Inject constructor(
   observeVpnStateUseCase: ObserveVpnStateUseCase,
   getStreamPreferencesUseCase: GetStreamPreferencesUseCase,
-  observeIsAdminUseCase: ObserveIsAdminUseCase,
+  observeHasRecordingsAccessUseCase: ObserveHasRecordingsAccessUseCase,
   observeInterruptedDownloadsUseCase: ObserveInterruptedDownloadsUseCase,
   private val resumeDownloadsUseCase: ResumeDownloadsUseCase,
   private val discardDownloadsUseCase: DiscardDownloadsUseCase,
@@ -85,24 +85,27 @@ class HomeViewModel @Inject constructor(
   ) { resumed, hasStreams -> resumed?.let { it && hasStreams } }
     .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
-  /** The focused stream, and the camera whose history it offers to an admin. */
-  private val focus = combine(_focusedStream, observeIsAdminUseCase()) { stream, isAdmin ->
-    Focus(stream, stream?.takeIf { isAdmin }?.let(RecordingFileName::cameraOfStreamUrl))
+  /** The focused stream, and the camera whose history it offers to a user with a Samba login. */
+  private val focus = combine(
+    _focusedStream,
+    observeHasRecordingsAccessUseCase()
+  ) { stream, hasRecordingsAccess ->
+    Focus(stream, stream?.takeIf { hasRecordingsAccess }?.let(RecordingFileName::cameraOfStreamUrl))
   }
 
   /** Downloads the user already answered for (or set aside) on this screen: not asked again. */
   private val _handledDownloads = MutableStateFlow<Set<String>>(emptySet())
 
   /**
-   * The downloads that did not end, to offer resuming or discarding them. Only admins download.
-   * The route shows them over a ready Home: resuming needs the tunnel up.
+   * The downloads that did not end, to offer resuming or discarding them. Only users with a Samba
+   * login download. The route shows them over a ready Home: resuming needs the tunnel up.
    */
   val interruptedDownloads: StateFlow<List<InterruptedDownload>> = combine(
-    observeIsAdminUseCase(),
+    observeHasRecordingsAccessUseCase(),
     observeInterruptedDownloadsUseCase(),
     _handledDownloads
-  ) { isAdmin, downloads, handled ->
-    if (isAdmin) downloads.filterNot { it.id in handled } else emptyList()
+  ) { hasRecordingsAccess, downloads, handled ->
+    if (hasRecordingsAccess) downloads.filterNot { it.id in handled } else emptyList()
   }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
   init {

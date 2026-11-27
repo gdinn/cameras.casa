@@ -158,8 +158,8 @@ release check of the recordings feature.
 The caveat that kept minification off for so long has not gone away: a wrong keep rule fails at
 *runtime*, so a green `assembleRelease` is necessary but not sufficient. Any change to the keep
 rules, to a `@Serializable` model, or to the VPN/WebRTC/Samba/Media3/WorkManager dependencies has to
-be smoke-tested on a real device — scan the QR code, bring the tunnel up, play a stream, and for an
-admin list, play and download a recording. The rule set above was
+be smoke-tested on a real device — scan the QR code, bring the tunnel up, play a stream, and with a
+Samba login list, play and download a recording. The rule set above was
 validated that way end to end on a physical device: QR scan, tunnel up, streams rendering.
 `RealEnvironmentSmokeTest` automates the QR-to-video path ([§10](#10-testing-and-quality-gates))
 on `e2eRelease`, this rule set plus the few keeps the test needs, so the check is one Gradle command
@@ -291,7 +291,7 @@ in release builds. Its theme and `configChanges` must match `MainActivity`'s; bo
 requirements are met (credentials, VPN permission, at least one stream URL) and consumes the system
 back press with a toast otherwise. `navigateToHome()` pops back to an existing `Home` entry when
 there is one, instead of stacking duplicates. `History` is reached only from Home's focused view, by
-admins, and goes back to it with a plain `popBackStack`. `RecordingPlayer` is reached from
+users with a Samba login, and goes back to it with a plain `popBackStack`. `RecordingPlayer` is reached from
 `History`'s time picker, and goes back to it the same way.
 
 **Route arguments.** Type-safe navigation stores a route's properties in the destination's
@@ -348,8 +348,8 @@ nobody collects.
 
 **What it does.** Presents the four setup steps as buttons with a shared `ConfigButtonState`
 (`Loading` / `Ready` / `Done` / `Error`): grant camera permission, scan the QR code, grant VPN
-permission, configure stream URLs. It then gates navigation to `Home`. Admins on Android 13+
-also see a fifth, optional step: notifications.
+permission, configure stream URLs. It then gates navigation to `Home`. Users with a Samba login
+on Android 13+ also see a fifth, optional step: notifications.
 
 | Role | Type |
 |---|---|
@@ -379,8 +379,8 @@ Points of interest:
 - **QR result arrives via navigation, not a shared ViewModel.** `QrCodeRoute` writes the raw JSON
   into `previousBackStackEntry.savedStateHandle[QR_CODE_RESULT_KEY]`; `ConfigRoute` observes it,
   hands it to `onQrCodeScanned`, then clears it through `onQrCodeResultConsumed`.
-- **Notifications are asked here, once.** The step exists for admins (only they download, §6.10)
-  on Android 13+ (`GetNotificationPermissionUseCase`: `NOT_REQUIRED` \| `GRANTED` \| `NOT_GRANTED`).
+- **Notifications are asked here, once.** The step exists for users with a Samba login (only they
+  download, §6.10) on Android 13+ (`GetNotificationPermissionUseCase`: `NOT_REQUIRED` \| `GRANTED` \| `NOT_GRANTED`).
   - It is optional: it is not one of the `missingRequirement`s.
   - Whatever the answer, `MarkNotificationPermissionRequestedUseCase` records that it was asked
     (`StreamPreferences.notificationPermissionRequested`). A declined permission then shows as
@@ -494,7 +494,7 @@ configuration.
 | Model | 7 use cases + `TunnelCoordinator` + `StreamConnectionRepository` |
 
 **State composition.** `HomeUiState` is a single `combine` of five sources — persisted preferences,
-orientation, the focus (focused stream plus admin status), failed streams and VPN tunnel state — collected into a `MutableStateFlow`. The
+orientation, the focus (focused stream plus recordings access), failed streams and VPN tunnel state — collected into a `MutableStateFlow`. The
 precedence matters: an empty URL list yields `Empty` *before* the VPN state is considered, because
 waiting for a tunnel with nothing to connect to would show a permanent spinner.
 
@@ -564,11 +564,11 @@ Another screen may hold the tunnel by then, and that one reports it.
   renderer again, the same path as leaving and coming back. Any new attempt, and any disconnect,
   clears the failure. Only the negotiation is covered: a stream that drops after connecting reports
   nothing.
-- **The focused view offers the camera's history to admins.** `HomeViewModel` sets
-  `historyCamera` when the user is an admin (`ObserveIsAdminUseCase`) and the focused URL names a
+- **The focused view offers the camera's history to users with a Samba login.** `HomeViewModel`
+  sets `historyCamera` when the user has one (`ObserveHasRecordingsAccessUseCase`) and the focused URL names a
   camera (`RecordingFileName.cameraOfStreamUrl`: its last path segment, `cam_` plus digits). The
   focused view then shows a history button in its top-end corner, which opens `History(camera)`.
-- **Unfinished downloads are offered on Home, to admins.** `interruptedDownloads` (a `StateFlow`
+- **Unfinished downloads are offered on Home, to users with a Samba login.** `interruptedDownloads` (a `StateFlow`
   apart from `HomeUiState`) lists what `ObserveInterruptedDownloadsUseCase` reports.
   - `HomeRoute` shows `InterruptedDownloadsDialog` over a ready Home only, since resuming needs
     the tunnel.
@@ -580,14 +580,14 @@ Another screen may hold the tunnel by then, and that one reports it.
   within a 2 s window emits `ExitApp` and the route calls `activity.finish()`.
 - `onCleared()` calls `streamConnectionRepository.closeAll()`.
 
-### 5.6 `feature/history` — an admin's recordings of one camera
+### 5.6 `feature/history` — the recordings of one camera
 
 ![MVVM — History and player routes](images/mvvm-history-route.png)
 
 **What it does.** Lists the months with recordings of one camera, newest first. Expanding a month
 lists its days with a finished file, in calendar order. Tapping a day opens its time picker, and a
 time picks the nearest recording of that day. Reached from the history button of Home's focused
-view, for admins only.
+view, for users with a Samba login only.
 
 | Role | Type |
 |---|---|
@@ -601,7 +601,7 @@ view, for admins only.
 `onCleared`. Coming from the focused view, Home releases and History requests within the
 coordinator's grace period, so the tunnel never drops on the way (§6.2). A connect failure is
 reported in place (`VPN_CONNECTION`), only while History waits for its months: there is no Config to
-send an admin to from here.
+send the user to from here.
 
 **When it reads the share.**
 
@@ -615,7 +615,7 @@ send an admin to from here.
 
 | Error | Shown when |
 |---|---|
-| `NOT_ADMIN` | No login is stored |
+| `NO_SAMBA_LOGIN` | No login is stored |
 | `AUTHENTICATION_FAILED` | The server refused the login |
 | `UNREACHABLE` | The server did not answer |
 | `FAILED` | Anything else |
@@ -694,7 +694,7 @@ key does not invalidate the other:
 
 | Store | File | Model | Alias |
 |---|---|---|---|
-| User preferences | `user-preferences` | `UserPreferences` (VPN credentials, admin's Samba login) | `gdi-sys-storage` |
+| User preferences | `user-preferences` | `UserPreferences` (VPN credentials, optional Samba login) | `gdi-sys-storage` |
 | Stream preferences | `stream-preferences` | `StreamPreferences` (URLs, orders, grids, whether notifications were asked) | `gdi-sys-stream-preferences` |
 | Download records | `download-records` | `DownloadRecords` (downloads not yet ended well, §6.10) | `gdi-sys-download-records` |
 
@@ -737,7 +737,7 @@ never become a silent bug.
 **Use cases (9):** `GetStreamPreferencesUseCase`, `SaveStreamUrlsUseCase`,
 `SaveGridPreferencesUseCase`, `UpdateStreamOrderUseCase`, `GetVpnConfigUseCase`,
 `GetVpnConfigStatusUseCase`, `SaveUserPreferencesUseCase`, `ParseUserPreferencesFromQrCodeUseCase`,
-`ObserveIsAdminUseCase`.
+`ObserveHasRecordingsAccessUseCase`.
 
 **Error-handling split.** `StreamPreferencesRepositoryImpl` logs a read failure and rethrows —
 reporting is a data concern. `GetStreamPreferencesUseCase` then decides what the app shows,
@@ -910,9 +910,9 @@ of video frames (drag handle, drag preview).
 
 ### 6.9 `core/recordings` — the Samba recordings share
 
-The admin's history reads the recordings the Pi's recorder keeps on the `backup_cams` share of
+The history reads the recordings the Pi's recorder keeps on the `backup_cams` share of
 `STREAM_HOST`, laid out as `cam_xx/YYYY/MM/DD/<file>.mp4`. Every read goes through the tunnel and
-uses the Samba login stored in the QR payload (§8.1, "Admins").
+uses the Samba login stored in the QR payload (§8.1, "Recordings access").
 
 | Layer | Type | Role |
 |---|---|---|
@@ -920,7 +920,7 @@ uses the Samba login stored in the QR payload (§8.1, "Admins").
 | domain | `RecordingFileName` | Parses both name formats (`cam_10_2026-11-10_15-00-00.mp4`, which the recorder writes, and `cam_10_2026_11_10_15-00-00.mp4`) and drops the seconds. `isValidCamera` (`cam_` + digits) also keeps a camera name from walking out of its folder |
 | domain | `RecordingSlots.kt` | The 15-minute slots on the clock (`slotStart`, `slotEnd`) and `isRecordingFinished` |
 | domain | `RecordingsRepository` | Months, days with a finished file, files of a day, `next`/`previous` across days, months and years |
-| domain | `RecordingsException` | What a screen can tell apart: `NotAdmin`, `AuthenticationFailed`, `Unreachable`, `Failed` |
+| domain | `RecordingsException` | What a screen can tell apart: `NoSambaLogin`, `AuthenticationFailed`, `Unreachable`, `Failed` |
 | data | `RecordingsShare` / `ShareEntry` | "List this folder", the only thing the repository needs from Samba. A missing folder is empty |
 | data | `RecordingsRepositoryImpl` | The folder rules, over `RecordingsShare` and an injected `Clock` |
 | data | `SmbjRecordingsShare` | `RecordingsShare` over smbj (`BCSecurityProvider`, SMB 3.1.1) |
@@ -969,7 +969,7 @@ connection. Without the retry, the first listing after every return to the scree
 
 | Exception | Cause |
 |---|---|
-| `NotAdmin` | No complete login is stored |
+| `NoSambaLogin` | No complete login is stored |
 | `AuthenticationFailed` | A logon or access status from the server |
 | `Unreachable` | Network failures and lost sessions |
 | `Failed` | Anything else |
@@ -1017,7 +1017,7 @@ the clock fixed at `RECORDINGS_NOW` (§10).
 
 ### 6.10 `core/downloads` — recordings saved to the phone
 
-An admin downloads the recording on screen in the player. Each download is requested on its own,
+A user with a Samba login downloads the recording on screen in the player. Each download is requested on its own,
 several can run at once, and they go on in the background.
 
 | Layer | Type | Role |
@@ -1077,7 +1077,7 @@ worker. The manifest also declares:
 
 **Permissions.**
 
-- **Notifications (Android 13+):** asked once in Config, for admins (§5.2). Without them the
+- **Notifications (Android 13+):** asked once in Config, for users with a Samba login (§5.2). Without them the
   download still runs, unseen.
 - **Storage (Android 8–9):** asked by the player route when the user taps Download. If refused,
   the player says so and nothing is downloaded.
@@ -1207,7 +1207,7 @@ tunnel and stops the lifecycle service after the grace period, and after any con
 |---|---|---|
 | **WHEP media server** (MediaMTX on a Raspberry Pi) | HTTP `POST {streamUrl}/whep`, `application/sdp`, then SRTP | `WhepRemoteDataSourceImpl`, `WhepClientImpl` |
 | **WireGuard peer** (home gateway) | WireGuard over UDP/IPv6, endpoint from `pEndpoint` | `VpnRepositoryImpl` (`GoBackend`) |
-| **QR-code provisioning payload** | JSON blob scanned from screen/paper, carrying `[Interface]`/`[Peer]` fields and, for admins, a Samba login | `ParseUserPreferencesFromQrCodeUseCase` |
+| **QR-code provisioning payload** | JSON blob scanned from screen/paper, carrying `[Interface]`/`[Peer]` fields and, for peers generated with Samba access, a Samba login | `ParseUserPreferencesFromQrCodeUseCase` |
 | **Recordings share** (Samba on the same Pi, `backup_cams`) | SMB 3.1.1 over TCP 445, through the tunnel | `SmbjRecordingsShare` (§6.9) |
 | **Android Keystore** | Hardware-backed key storage | `KeystoreCryptoEngine` |
 | **Device camera** | CameraX + ML Kit (on-device, no network) | `CameraXQrCodeScanner`, `QrCodeAnalyzer` |
@@ -1236,23 +1236,26 @@ silently disappeared. Excluding the files makes the app ask for the QR code agai
 Both must pass `isValid()` (all fields non-null) before the payload is accepted, and
 `toVpnConfigOrNull()` performs a second null-check pass when building the connection config.
 
-**Admins.** A third, optional object makes the user an admin:
+**Recordings access.** A third, optional object gives the user the recordings (history, playback
+and downloads). Admin peers always get it; client peers get it when their batch was generated with
+Samba access. The app never looks at the profile, only at this object:
 
 - `SmbCredentials` — `smbUser` and `smbPassword`, the Samba login for the recordings share. The
   host (`STREAM_HOST`) and the share (`backup_cams`) are fixed, so only the login travels.
 
-`ObserveIsAdminUseCase` is the single answer to "is this an admin?": true when both fields are
-present and non-blank.
+`ObserveHasRecordingsAccessUseCase` is the single answer to "can this user see the recordings?":
+true when both fields are present and non-blank.
 
-- A payload without the object is a regular user, so every QR code issued before it still works.
+- A payload without the object is a user without the recordings, so every QR code issued before it
+  still works.
 - A payload with the object but without both fields is rejected as a whole, like incomplete VPN
   fields.
 - `SmbCredentials.toString()` masks the password, in line with the rule that the payload is
   never logged.
 
-Hiding admin screens is UX only. The Pi enforces access itself: the router and ufw let only the
-admin block (`fd00:10::a:0/112`) reach port 445, and Samba checks the address again and asks for
-the login (`reports/pi_services_guide.md`, Part 13).
+Hiding the recordings screens is UX only. The Pi enforces access itself: the router and ufw let
+only the admin and client blocks (`fd00:10::a:0/112`, `fd00:10::c:0/112`) reach port 445, and Samba checks the address
+again and asks for the login (`reports/pi_services_guide.md`, Part 13).
 
 ### 8.2 Gradle dependencies
 
@@ -1434,10 +1437,10 @@ dispatcher tests:
 | `ToastDisplayerTest` (1) | Toast events reach the `ToastPresenter` provided through `LocalToastPresenter`, in order |
 | `MainActivitySmokeTest` (1) | Scenario #0: the real `MainActivity`, with its injected `EglBase`, opens the four Config steps on a first run |
 | `FirstRunFlowTest` (2) | Scenario #1, on `FlowTest`: the first run lands on `[Loading, Config]` (read with `backStackRoutes()` after idle, with no `waitUntil`), every step is `Ready` and the button reads "Navigate to Home" |
-| `QrCodeFlowTest` (8) | Scenario #3: a valid QR turns the step `Done`, stores the credentials and the app stays on Config; an admin QR also stores the Samba login, a regular one stores none; each invalid fixture (including an admin one with an incomplete login) turns it `Error`, stores nothing and stays on Config; an invalid QR after a valid one wipes the stored credentials (current behavior, documented) |
+| `QrCodeFlowTest` (9) | Scenario #3: a valid QR turns the step `Done`, stores the credentials and the app stays on Config; an admin QR and a client QR with Samba access also store the Samba login, a QR without one stores none; each invalid fixture (including an admin one with an incomplete login) turns it `Error`, stores nothing and stays on Config; an invalid QR after a valid one wipes the stored credentials (current behavior, documented) |
 | `ConfigGateFlowTest` (5) | Scenario #4: with requirements missing, the Home button and the system back keep the app on `[Loading, Config]` and the activity alive; with everything complete but no Home behind, back is still consumed; a refused consent dialog (stubbed) leaves the VPN step `Ready`; a consent already granted starts the step `Done` and its click never launches the consent Intent |
 | `OnboardingFlowTest` (1) | Scenario #2: camera (granted after launch, so the click takes the request path), QR, VPN consent (dialog stubbed to accept) and the default URLs saved; Home is then the only destination, shows a card for each default URL, connected the tunnel and started its lifecycle once, and connected every URL |
-| `RecordingsFlowTest` (8) | Over the fake share, player and downloads: a regular user's focused view has no history button and is offered no unfinished downloads; an admin's opens `History` for the focused camera, with its months and, expanded, the days; a time without a file plays the nearest one with the notice, a time with one plays it without; "Next" plays the following file; "Download" requests the recording on screen and toasts it; Home offers an admin the unfinished downloads, and "Resume" hands them over and closes the dialog |
+| `RecordingsFlowTest` (9) | Over the fake share, player and downloads: the focused view of a user without a Samba login has no history button and is offered no unfinished downloads; an admin's opens `History` for the focused camera, with its months and, expanded, the days; a time without a file plays the nearest one with the notice, a time with one plays it without; "Next" plays the following file; "Download" requests the recording on screen and toasts it; Home offers an admin the unfinished downloads, and "Resume" hands them over and closes the dialog; a client peer with a Samba login plays and downloads a recording too |
 | `ReturningUserFlowTest` (3) | Scenario #5: stored credentials and URLs open `[Home]` with their cards, never passing through Config; credentials without URLs open the empty Home and never connect the tunnel; its shortcut opens Config over Home, with "Back to Home" |
 | `StreamUrlValidationFlowTest` (5) | Scenario #6, from Config: an invalid port, an invalid stream name or a duplicate URL keeps the add form open and the list unchanged; a valid URL is persisted on save and turns the Config step `Done`; leaving with an unsaved URL asks to discard, and discarding persists nothing |
 | `GridOrientationFlowTest` (3) | Scenario #7, with a one-column portrait grid and a three-column landscape grid in the reverse order: portrait shows one column; rotating to landscape (`requestedOrientation`, a configuration change the activity handles, not a recreation) shows three columns in the landscape order, and rotating back restores the portrait layout; a portrait grid saved on the URLs screen (reached through a card's "Reconfigure" action) is persisted and laid out on Home |
@@ -1554,7 +1557,8 @@ shows and which callback each interaction fires, with no Hilt, navigation or fak
 - The QR fixtures in `qr-code-gen/examples/` are assets of the test APK, read through
   `InstrumentationRegistry.getInstrumentation().context.assets` by the `QrFixture` enum
   (`testing/QrFixtures.kt`): `VALID`, `INCOMPLETE`, `WRONG_TYPE`, `UNKNOWN_SHAPE`, `ADMIN` (`VALID`
-  plus a Samba login) and `ADMIN_INCOMPLETE` (a login without the password). `read()` returns the
+  plus a Samba login), `ADMIN_INCOMPLETE` (a login without the password) and `CLIENT_WITH_SAMBA` (a
+  client address, `fd00:10::c:20`, with a Samba login). `read()` returns the
   JSON and `readImage()` the PNG next to it.
 - **`SystemDialogs`** (`testing/SystemDialogs.kt`) answers the windows of other processes through
   UI Automator: the VPN consent (`com.android.vpndialogs`) and the runtime permission dialog. It

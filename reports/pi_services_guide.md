@@ -1,6 +1,6 @@
 # Raspberry Pi services for the camera VPN: MediaMTX, recordings and Samba
 
-The second half of [infra_guide.md](infra_guide.md). That guide builds the router, the VPN and the Pi's firewall (Parts 0–9). This one installs what runs on the Pi: the recordings disk, **MediaMTX** (live video for the app), the **recorder** (24/7 recording to the disk) and **Samba** (read-only access to the recordings for admins).
+The second half of [infra_guide.md](infra_guide.md). That guide builds the router, the VPN and the Pi's firewall (Parts 0–9). This one installs what runs on the Pi: the recordings disk, **MediaMTX** (live video for the app), the **recorder** (24/7 recording to the disk) and **Samba** (read-only access to the recordings for admins and clients with a login).
 
 - **Numbering:** it continues the first guide, from Part 10 and Step 35.
 - **Same working rules:** [0.5 Working rules](infra_guide.md#05-working-rules) still apply (placeholders like `<THIS>`, comments in pasted zsh commands).
@@ -35,7 +35,7 @@ The second half of [infra_guide.md](infra_guide.md). That guide builds the route
 │ 8888/TCP HLS   │        └────────────────┘                │ read only
 └──┬─────────────┘                                  ┌───────┴────────┐
    │ WebRTC: every VPN peer (the app)               │ Samba 445/TCP  │
-   │ HLS: VPN admins (browser)                      │ VPN admins     │
+   │ HLS: VPN admins (browser)                      │ admins+clients │
    ▼                                                └────────────────┘
 ```
 
@@ -44,7 +44,7 @@ The second half of [infra_guide.md](infra_guide.md). That guide builds the route
 | MediaMTX | `/opt/mediamtx`, user `mediamtx` | 8889/TCP, 8189/UDP, 8888/TCP | Every VPN peer on 8889 and 8189, admins on 8888 |
 | Recorder | `/usr/local/bin/nvr-*`, `/etc/nvr`, user `nvr` | nothing | — |
 | Recordings disk | `/mnt/backup_cams`, owned by `nvr:smb_viewer` | — | — |
-| Samba | `smbd` | 445/TCP | VPN admins, read only, with a password |
+| Samba | `smbd` | 445/TCP | VPN admins and clients, read only, with a password |
 
 These are exactly the ports that the router (Step 19) and ufw (Step 32) already open. Nothing in this guide changes the firewalls.
 
@@ -278,7 +278,7 @@ The file is minimal: it only lists what differs from MediaMTX's defaults.
 | `udpMaxPayloadSize: 1200` | The tunnel MTU is 1280 (Step 14). An IPv6 packet of 1280 leaves 1280 − 40 (IPv6) − 8 (UDP) = 1232 bytes of payload. 1200 also leaves room for the SRTP overhead, so WebRTC media never needs fragmentation inside the tunnel |
 | `publish` only from `127.0.0.1` and `::1` | Every VPN peer reaches 8889, and WebRTC can also publish (WHIP). Without this, any peer could push a stream into the server |
 | `read` for any IP | The router and ufw already decide who reaches the Pi. MediaMTX needs no second login for the app |
-| `rtsp`, `rtmp`, `srt: false` | Nothing reads or publishes through these protocols. Pulling RTSP from the cameras is done by a client inside MediaMTX and does not need the RTSP server |
+| `rtsp`, `rtmp`, `srt`, `moq: false` | Nothing reads or publishes through these protocols. MoQ (Media over QUIC, 8892/TCP+UDP and 8893/UDP) is on by default in recent versions; a new MediaMTX release may add another such server, which the `ss` test in Step 39 reveals. Pulling RTSP from the cameras is done by a client inside MediaMTX and does not need the RTSP server |
 | `webrtcIPsFromInterfaces: false`, `webrtcAdditionalHosts: ['fd00:20::cafe']` | The app receives a single ICE candidate: the Pi's fixed address (Step 16). Without this, MediaMTX would also announce the Pi's IPv4 and link-local addresses, which the app cannot reach through the tunnel |
 | `sourceOnDemand: yes` | A camera is pulled only while someone watches it, and released 10 s after the last viewer leaves. Saves the cameras' sessions and the Pi's CPU |
 | `rtspTransport: tcp` | The router only allows TCP 554 from the Pi to the cameras (Step 12). With the default (`automatic`), MediaMTX would try UDP first, wait for it to fail, and only then use TCP |
@@ -303,7 +303,7 @@ ps -o user= -C mediamtx                        # mediamtx
 sudo ss -tulpn | grep mediamtx
 # Only: tcp 8888, tcp 8889, udp 8189
 journalctl -u mediamtx -n 20 --no-pager
-# Listeners for HLS and WebRTC only. No RTSP, RTMP or SRT. No configuration error
+# Listeners for HLS and WebRTC only. No RTSP, RTMP, SRT or MoQ. No configuration error
 ```
 
 An unknown or misspelled setting in `mediamtx.yml` stops MediaMTX at start, with the line in the log. This is the first thing to check after updating MediaMTX to a new version.
@@ -485,7 +485,7 @@ The same happens at boot without the disk: the Pi comes up and MediaMTX serves t
 
 ## Part 13 — Samba
 
-Samba gives admins read-only access to the recordings, with a user and a password, from the admin computer through the VPN.
+Samba gives read-only access to the recordings, with a user and a password, through the VPN: to admins (app and computer) and to clients whose QR code carries a Samba login (app). Both profiles read the same share, every camera; neither can write.
 
 ### Step 43 — Install and configure
 
@@ -506,9 +506,9 @@ testparm -s
 |---|---|
 | `disable netbios = yes`, `smb ports = 445` | SMB over TCP 445 only. The router and ufw never open the NetBIOS ports (137–139), so `nmbd` has nothing to do. To reach the Pi by name, use the DNS name from Step 22 |
 | `server min protocol = SMB3` | No SMB1 or SMB2. Every current macOS, Windows and Linux client speaks SMB3 |
-| `hosts allow = fd00:10::a:0/112 ::1 127.0.0.1`, `hosts deny = ALL` | A third check of the source, after the router and ufw, with the same admin block (`vpn-admin`). Localhost is allowed for the tests on the Pi |
+| `hosts allow = fd00:10::a:0/112 fd00:10::c:0/112 ::1 127.0.0.1`, `hosts deny = ALL` | A third check of the source, after the router and ufw, with the same admin and client blocks (`vpn-admin`, `vpn-clients`). Localhost is allowed for the tests on the Pi |
 | `security = user`, `passdb backend = tdbsam` | Local Samba users with their own passwords (Step 44) |
-| `map to guest = never`, `restrict anonymous = 2` | No guest login and no anonymous session: without a password, not even the list of shares is visible |
+| `map to guest = never`, `restrict anonymous = 2` | No guest login. SMB always lets a client open an empty session without a user (smbclient prints `Anonymous login successful`), but that session can read nothing: not even the list of shares |
 | Printing off | No printers on this host. Samba does not look for CUPS |
 | Share `backup_cams`, `valid users = @smb_viewer`, `read only = yes` | Only members of `smb_viewer` connect, and only to read. The disk permissions (Step 40) give the group read access only, so the filesystem refuses writes too |
 | `veto files = /lost+found/` | Hides the folder that ext4 keeps for `fsck` at the root of the disk. Only root can open it |
@@ -533,9 +533,9 @@ sudo ss -tlnp | grep smbd                    # only 445
 
 ### Step 44 — Samba users
 
-Each admin **peer** has its own Samba account, named after the peer (`admin-a-7`). It is a Linux account with no shell, no home and no Linux password, so it cannot log in to the Pi. Its only use is Samba, and its only group with access to the recordings is `smb_viewer`.
+Each **peer** with access to the recordings has its own Samba account, named after the peer (`admin-a-7`, `client-c-5`): every admin peer, and the client peers of a batch generated with logins. It is a Linux account with no shell, no home and no Linux password, so it cannot log in to the Pi. Its only use is Samba, and its only group with access to the recordings is `smb_viewer`.
 
-**a) Admin peers from the generator (the normal path).** For an admin batch, `gen-peers.sh` ([infra_guide.md, Step 26](infra_guide.md#step-26--generate-keys-and-entries-interactive-script)) already chose each user and a random password, put them in the peers' QR codes (that is how the app logs in) and wrote `peers/pi-smb-users.sh`. Copy it to the Pi, run it and delete it on both sides:
+**a) Peers from the generator (the normal path).** For an admin batch, or a client batch with logins, `gen-peers.sh` ([infra_guide.md, Step 26](infra_guide.md#step-26--generate-keys-and-entries-interactive-script)) already chose each user and a random password, put them in the peers' QR codes (that is how the app logs in) and wrote `peers/pi-smb-users.sh`. Copy it to the Pi, run it and delete it on both sides:
 
 ```bash
 # On the HOME computer, from qr-code-gen/
@@ -563,7 +563,7 @@ sudo useradd --no-create-home --shell /usr/sbin/nologin -G smb_viewer <name>
 sudo smbpasswd -a <name>                     # the Samba password, asked twice
 ```
 
-Use a long password: it is the only thing between a lost admin device and the recordings. An account created this way is unknown to the app: the app only logs in with a login that came in its QR code.
+Use a long password: it is the only thing between a lost device and the recordings. An account created this way is unknown to the app: the app only logs in with a login that came in its QR code.
 
 **Test**
 
@@ -586,13 +586,15 @@ sudo userdel <name>
 **On the Pi** (localhost is in `hosts allow`):
 
 ```bash
-smbclient -N -L //localhost                                  # refused: no anonymous session
+smbclient -N -L //localhost
+# Anonymous login successful
+# tree connect failed: NT_STATUS_ACCESS_DENIED: the empty session sees no shares
 smbclient //localhost/backup_cams -U <name> -c 'ls'          # cam_10 ... cam_13
 smbclient //localhost/backup_cams -U <name> -c 'put /etc/hostname test.txt'
 # NT_STATUS_ACCESS_DENIED: read only
 ```
 
-**On the admin computer, with the admin tunnel up**, connect to the share:
+**On a computer, with an admin tunnel up** (then again with a **client** tunnel whose peer has a login), connect to the share:
 
 | System | Address |
 |---|---|
@@ -602,11 +604,13 @@ smbclient //localhost/backup_cams -U <name> -c 'put /etc/hostname test.txt'
 
 | Test | Expected |
 |---|---|
-| Log in with the user from Step 44 | ✅ the four camera folders |
+| Log in with the peer's user from Step 44 (admin or client) | ✅ the four camera folders |
 | Log in without a password, or as guest | ❌ |
 | Copy a recording to the computer | ✅ no stalls (MSS clamp, Step 20) |
 | Delete or create a file on the share | ❌ read only |
-| The same address from a **client** profile | ❌ timeout (router and ufw) |
+| From a client tunnel: SSH (22) or HLS (8888) on the Pi | ❌ timeout (router and ufw): a client only gains Samba |
+
+**In the app.** On a phone whose QR code carries a Samba login (an admin, or a client from a batch with logins), open a camera and use the history button: the recordings list, play and download. A client QR code without a login shows no history button.
 
 ---
 

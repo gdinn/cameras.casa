@@ -107,7 +107,8 @@ fun ConfigScreen(
             onClicked = onNavigateToStreamURLs
           )
 
-          // Optional: it does not gate Home. Only admins (who download) on Android 13+ see it.
+          // Optional: it does not gate Home. Only users with a Samba login (who download) on
+          // Android 13+ see it.
           uiState.notificationPermissionButtonState?.let { state ->
             ConfigButton(
               modifier = Modifier.testTag(ConfigTestTags.NOTIFICATION_PERMISSION_STEP),

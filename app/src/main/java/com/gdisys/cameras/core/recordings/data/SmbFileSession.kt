@@ -53,7 +53,7 @@ internal class SmbFileSession(
 
   private fun share(): DiskShare {
     handle?.let { return it.share }
-    val login = credentials() ?: throw RecordingsException.NotAdmin()
+    val login = credentials() ?: throw RecordingsException.NoSambaLogin()
     val smbClient = client ?: SmbConnector.newClient().also { client = it }
     return SmbConnector.open(smbClient, login).also { handle = it }.share
   }
