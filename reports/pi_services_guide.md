@@ -278,7 +278,7 @@ The file is minimal: it only lists what differs from MediaMTX's defaults.
 | `udpMaxPayloadSize: 1200` | The tunnel MTU is 1280 (Step 14). An IPv6 packet of 1280 leaves 1280 − 40 (IPv6) − 8 (UDP) = 1232 bytes of payload. 1200 also leaves room for the SRTP overhead, so WebRTC media never needs fragmentation inside the tunnel |
 | `publish` only from `127.0.0.1` and `::1` | Every VPN peer reaches 8889, and WebRTC can also publish (WHIP). Without this, any peer could push a stream into the server |
 | `read` for any IP | The router and ufw already decide who reaches the Pi. MediaMTX needs no second login for the app |
-| `rtsp`, `rtmp`, `srt: false` | Nothing reads or publishes through these protocols. Pulling RTSP from the cameras is done by a client inside MediaMTX and does not need the RTSP server |
+| `rtsp`, `rtmp`, `srt`, `moq: false` | Nothing reads or publishes through these protocols. MoQ (Media over QUIC, 8892/TCP+UDP and 8893/UDP) is on by default in recent versions; a new MediaMTX release may add another such server, which the `ss` test in Step 39 reveals. Pulling RTSP from the cameras is done by a client inside MediaMTX and does not need the RTSP server |
 | `webrtcIPsFromInterfaces: false`, `webrtcAdditionalHosts: ['fd00:20::cafe']` | The app receives a single ICE candidate: the Pi's fixed address (Step 16). Without this, MediaMTX would also announce the Pi's IPv4 and link-local addresses, which the app cannot reach through the tunnel |
 | `sourceOnDemand: yes` | A camera is pulled only while someone watches it, and released 10 s after the last viewer leaves. Saves the cameras' sessions and the Pi's CPU |
 | `rtspTransport: tcp` | The router only allows TCP 554 from the Pi to the cameras (Step 12). With the default (`automatic`), MediaMTX would try UDP first, wait for it to fail, and only then use TCP |
@@ -303,7 +303,7 @@ ps -o user= -C mediamtx                        # mediamtx
 sudo ss -tulpn | grep mediamtx
 # Only: tcp 8888, tcp 8889, udp 8189
 journalctl -u mediamtx -n 20 --no-pager
-# Listeners for HLS and WebRTC only. No RTSP, RTMP or SRT. No configuration error
+# Listeners for HLS and WebRTC only. No RTSP, RTMP, SRT or MoQ. No configuration error
 ```
 
 An unknown or misspelled setting in `mediamtx.yml` stops MediaMTX at start, with the line in the log. This is the first thing to check after updating MediaMTX to a new version.

@@ -23,10 +23,11 @@ authInternalUsers:
   permissions:
   - action: read
 
-# Unused protocols. Pulling RTSP from the cameras does not need the RTSP server.
+# Unused protocols (MoQ = Media over QUIC, on by default in recent versions). Pulling RTSP from the cameras does not need the RTSP server.
 rtsp: false
 rtmp: false
 srt: false
+moq: false
 
 # WebRTC: announce only the fixed DMZ address to clients.
 webrtcIPsFromInterfaces: false

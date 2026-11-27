@@ -1670,7 +1670,7 @@ sudo ufw logging low
 | Setting | Reason |
 |---|---|
 | `IPV6=yes` | Every rule in this part is IPv6. With `no`, ufw ignores them and IPv6 stays open |
-| `deny incoming` | Anything not listed in Step 32 is dropped (silently, so a scan sees a timeout and not a refusal). This also covers whatever else may listen on the Pi. MediaMTX, for example, only needs 8888, 8889 and 8189 (Part 11); its RTSP, RTMP and SRT servers are turned off, and would stay closed here if they were ever turned on |
+| `deny incoming` | Anything not listed in Step 32 is dropped (silently, so a scan sees a timeout and not a refusal). This also covers whatever else may listen on the Pi. MediaMTX, for example, only needs 8888, 8889 and 8189 (Part 11); its RTSP, RTMP, SRT and MoQ servers are turned off, and would stay closed here if they were ever turned on |
 | `allow outgoing` | The Pi starts its own connections: RTSP to the cameras, package updates over IPv4, DNS and NTP to the router. What it may reach is already limited by the router (Steps 12 and 19) |
 | `deny routed` | The Pi does not forward traffic between interfaces. If IP forwarding were ever enabled by mistake, it still could not act as a bridge between the DMZ and anything else |
 | `logging low` | Blocked packets are logged with rate limiting (`journalctl -k \| grep 'UFW BLOCK'`) |
